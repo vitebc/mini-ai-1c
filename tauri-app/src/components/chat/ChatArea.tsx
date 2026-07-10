@@ -1,0 +1,2111 @@
+import { Fragment, useRef, useEffect, useState, useMemo, useCallback, memo } from 'react';
+import { listen } from '@tauri-apps/api/event';
+import type { BslDiagnostic } from '../../api/bsl';
+import { useChat, ToolCall, ChatMessage } from '../../contexts/ChatContext';
+import { useProfiles } from '../../contexts/ProfileContext';
+import { useSettings } from '../../contexts/SettingsContext';
+import { useConfigurator } from '../../contexts/ConfiguratorContext';
+import { parseConfiguratorTitle, ConfiguratorTitleContext } from '../../utils/configurator';
+import { MarkdownRenderer, cleanDiffArtifacts } from '../MarkdownRenderer';
+import { Loader2, Square, ArrowUp, Settings, ChevronDown, ChevronRight, Monitor, RefreshCw, FileText, MousePointerClick, Brain, BrainCircuit, Check, X, Terminal, Pencil, Play, Send, User, HardHat, Mic, MoreHorizontal, Info, Wrench } from 'lucide-react';
+import logo from '../../assets/logo.png';
+import ToolCallBlock from './ToolCallBlock';
+import { MessageActions } from './MessageActions';
+import { applyDiffWithDiagnostics, formatDiffErrorMessage, parseDiffBlocks, getApplicableDiffContent, hasBlockingIncompleteDiffBlocks } from '../../utils/diffViewer';
+import { isOllamaCloudProfile } from '../../utils/profileHelpers';
+import { FileDiff, Plus, Minus, Edit2, PanelRight } from 'lucide-react';
+import { CommandMenu } from './CommandMenu';
+import { ContextChips } from './ContextChips';
+import { DEFAULT_SLASH_COMMANDS, SlashCommand, CliStatus, CliUsageWindow } from '../../types/settings';
+import type { OverlayQuickActionSessionPayload } from '../../types/quickActionSessions';
+import { cliProvidersApi } from '../../api/cli_providers';
+import { QwenAuthModal } from '../settings/QwenAuthModal';
+import { CodexAuthModal } from '../settings/CodexAuthModal';
+import { QueuedMessages } from './QueuedMessages';
+import McpToolsPopover from './McpToolsPopover';
+import { VoiceInputControl } from '../voice/VoiceInputControl';
+import { ContextUsageBar } from './ContextUsageBar';
+import { SearchProfileBar } from './SearchProfileBar';
+import { applySelectiveFixScopeInstructions } from '../../utils/fixPromptScope';
+import { formatSyntaxSafeFallbackMessage, isRecoverableSyntaxValidationMessage, salvageSyntaxSafeDiffBlocks } from '../../utils/bslSyntaxGuard';
+import { resolveEffectiveSelectedDiagnostics } from '../../utils/diagnosticsSelection';
+import {
+    findSlashCommandById,
+    getQuickActionCommandId,
+    resolveSlashCommandsForRuntime,
+} from '../../utils/slashCommands';
+import { getStreamingAutoScrollTop, isChatNearBottom } from '../../utils/chatAutoScroll';
+import {
+    createDiffRenderSummaryCache,
+    createTextFingerprintCache,
+} from '../../utils/diffRenderCache';
+import { markInputLatency } from '../../utils/performanceDiagnostics';
+
+interface ChatAreaProps {
+    originalCode?: string;
+    modifiedCode?: string;
+    loadedContextCode?: string | null;
+    isContextSelection?: boolean;
+    onClearContext?: () => void;
+    onPrepareDiffBase?: (code: string) => void;
+    onApplyCode?: (code: string) => void;
+    onValidateAppliedCode?: (baseCode: string, candidateCode: string) => Promise<string | null>;
+    onCommitCode?: (code: string) => void;
+    onCodeLoaded?: (code: string, isSelection: boolean) => void;
+    diagnostics?: any[];
+    selectedDiagnostics?: any[] | null;
+    onOpenSettings?: (tab?: string) => void;
+    onActiveDiffChange?: (content: string) => void;
+    activeDiffContent?: string;
+    getLatestWorkingCode?: () => string;
+}
+
+interface CachedDiffRenderSummary {
+    cleanedContent: string;
+    hasVisibleContent: boolean;
+    applicableDiffContent: string | null;
+    hasApplicableDiff: boolean;
+    hasBlockingIncompleteDiff: boolean;
+}
+
+const LARGE_DIFF_CONTENT_CHAR_LIMIT = 180_000;
+
+function isLargeDiffContent(content: string | null | undefined): boolean {
+    return (content?.length ?? 0) > LARGE_DIFF_CONTENT_CHAR_LIMIT;
+}
+
+interface OverlayExplainPayload {
+    confHwnd: number;
+    scope: 'selection' | 'current_method' | 'module';
+    code: string;
+    originalCode?: string | null;
+    runtimeId?: string | null;
+}
+
+function formatDiagnosticsLines(diagnostics?: Array<BslDiagnostic | string> | null): string[] {
+    return (diagnostics || []).map((diagnostic) => {
+        if (typeof diagnostic === 'string') {
+            return diagnostic;
+        }
+
+        return `- Line ${diagnostic.line + 1}: ${diagnostic.message} (${diagnostic.severity})`;
+    });
+}
+
+function resolveDiagnosticsForChat(
+    diagnostics: any[] | undefined,
+    selectedDiagnostics: any[] | null | undefined,
+) {
+    return resolveEffectiveSelectedDiagnostics(diagnostics || [], selectedDiagnostics);
+}
+
+function buildCopyContent(msg: ChatMessage): string {
+    if (msg.role !== 'assistant' || !msg.parts) {
+        return msg.content;
+    }
+    const sections: string[] = [];
+    const merged = msg.parts.reduce<{ type: string; content?: string; toolCallId?: string }[]>((acc, part) => {
+        if (part.type === 'text' && acc.length > 0 && acc[acc.length - 1].type === 'text') {
+            acc[acc.length - 1] = { ...acc[acc.length - 1], content: (acc[acc.length - 1].content || '') + (part.content || '') };
+        } else {
+            acc.push({ ...part });
+        }
+        return acc;
+    }, []);
+    for (const part of merged) {
+        if (part.type === 'text' && part.content?.trim()) {
+            sections.push(part.content.trim());
+        } else if (part.type === 'tool' && part.toolCallId) {
+            const tc = msg.toolCalls?.find(t => t.id === part.toolCallId);
+            if (tc && (tc.status === 'done' || tc.status === 'error')) {
+                const lines: string[] = [`[Tool: ${tc.name}]`];
+                if (tc.arguments?.trim()) {
+                    lines.push(`Аргументы: ${tc.arguments}`);
+                }
+                if (tc.result?.trim()) {
+                    lines.push(`Результат: ${tc.result}`);
+                }
+                sections.push(lines.join('\n'));
+            }
+        }
+    }
+    return sections.join('\n\n') || msg.content;
+}
+
+const INCOMPLETE_DIFF_MESSAGE = 'Ответ модели содержит незавершённый diff-блок. Применение отменено: попросите модель прислать изменения повторно целиком.';
+
+const BSL_VALIDATION_FAILURE_MESSAGE = 'Применение отменено: не удалось проверить синтаксис BSL перед применением.';
+
+function formatProfileSummary(profile: { provider: string; model: string; reasoning_effort?: string | null }) {
+    const parts = [profile.provider, profile.model];
+    if (profile.provider === 'CodexCli') {
+        parts.push(profile.reasoning_effort || 'xhigh');
+    }
+    return parts.filter(Boolean).join(' • ');
+}
+
+function formatCliUsageSummary(status?: CliStatus, isCodex?: boolean) {
+    if (isCodex && status?.usage_windows?.length) {
+        return status.usage_windows
+            .map((window: CliUsageWindow) => `${window.label} ${Math.round(window.remaining_percent)}%`)
+            .join(' • ');
+    }
+
+    if (isCodex) {
+        return null;
+    }
+
+    if (status?.usage) {
+        return `${status.usage.requests_used}${status.usage.requests_limit > 0 ? `/${status.usage.requests_limit}` : ''}`;
+    }
+
+    return null;
+}
+
+function parseWaitingChatStatus(chatStatus: string) {
+    if (!chatStatus) {
+        return null;
+    }
+
+    const normalized = chatStatus.toLowerCase();
+    const isExplicitWait =
+        normalized.includes('повторю автоматически')
+        || normalized.includes('отправлю запрос через')
+        || normalized.includes('жду ');
+
+    if (!isExplicitWait) {
+        return null;
+    }
+
+    const waitMatch = chatStatus.match(/(?:через|жду)\s+(\d+)с/i);
+    const seconds = waitMatch ? Number.parseInt(waitMatch[1], 10) : null;
+
+    let title = 'Ожидание ответа';
+    if (normalized.includes('повторю автоматически')) {
+        title = 'Qwen повторит запрос автоматически';
+    } else if (normalized.includes('отправлю запрос через')) {
+        title = 'Qwen ждёт окно лимита';
+    }
+
+    const details = normalized.includes('повторю автоматически')
+        ? 'Сервис временно ограничил частоту запросов. Повтор выполнится автоматически.'
+        : 'Приложение выравнивает частоту запросов, чтобы не упереться в лимит Qwen.';
+
+    return {
+        title,
+        seconds: Number.isFinite(seconds) ? seconds : null,
+        details
+    };
+}
+
+function WaitingStatusNotice({ chatStatus }: { chatStatus: string }) {
+    const waitingState = parseWaitingChatStatus(chatStatus);
+    if (!waitingState) {
+        return null;
+    }
+
+    return (
+        <div className="mt-2 rounded-xl border border-amber-300/60 bg-amber-50/95 px-3 py-2.5 text-amber-950 shadow-sm dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-100">
+            <div className="flex items-center gap-2 text-[11px] font-semibold">
+                <Info className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{waitingState.title}</span>
+                {waitingState.seconds !== null && (
+                    <span className="ml-auto rounded-full border border-amber-300/80 bg-white/70 px-2 py-0.5 font-mono text-[10px] text-amber-900 dark:border-amber-300/20 dark:bg-amber-200/10 dark:text-amber-50">
+                        {waitingState.seconds}с
+                    </span>
+                )}
+            </div>
+            <div className="mt-1 text-[11px] leading-relaxed text-amber-800 dark:text-amber-100/80">
+                {waitingState.details}
+            </div>
+        </div>
+    );
+}
+
+function formatElapsed(ms: number): string {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}с`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem > 0 ? `${m}м ${rem}с` : `${m}м`;
+}
+
+function ElapsedTimer({ startTime }: { startTime: number }) {
+    const [elapsed, setElapsed] = useState(() => Date.now() - startTime);
+    useEffect(() => {
+        const id = setInterval(() => setElapsed(Date.now() - startTime), 1000);
+        return () => clearInterval(id);
+    }, [startTime]);
+    return <span className="font-mono text-zinc-500 text-[10px] tabular-nums">{formatElapsed(elapsed)}</span>;
+}
+
+type ChatCliProvider = 'qwen' | 'codex';
+
+function getCliProviderType(provider: string): ChatCliProvider | null {
+    switch (provider) {
+        case 'QwenCli':
+            return 'qwen';
+        case 'CodexCli':
+            return 'codex';
+        default:
+            return null;
+    }
+}
+
+function DiffSummaryBanner({ content, onApply, onReject, disabled }: { content: string, onApply?: () => void, onReject?: () => void, disabled?: boolean }) {
+    const isLargeDiff = isLargeDiffContent(content);
+    const blocks = useMemo(() => isLargeDiff ? [] : parseDiffBlocks(content), [content, isLargeDiff]);
+    const stats = useMemo(() => {
+        if (isLargeDiff) {
+            return null;
+        }
+
+        let added = 0;
+        let removed = 0;
+        let modified = 0;
+        blocks.forEach(b => {
+            if (b.stats) {
+                added += b.stats.added;
+                removed += b.stats.removed;
+                modified += b.stats.modified;
+            }
+        });
+        return { added, removed, modified };
+    }, [blocks, isLargeDiff]);
+
+    return (
+        <div className="flex items-center gap-3 bg-zinc-900/40 border border-zinc-800/80 rounded-lg px-2 py-1 mt-2 w-fit ml-auto shadow-sm">
+            <div className="flex items-center gap-2 text-[10px] font-mono leading-none">
+                {stats ? (
+                    <>
+                        <span className="text-emerald-500">+{stats.added}</span>
+                        <span className="text-red-500">-{stats.removed}</span>
+                        {stats.modified > 0 && <span className="text-blue-400">~{stats.modified}</span>}
+                    </>
+                ) : (
+                    <span className="text-blue-400">large diff</span>
+                )}
+            </div>
+            <div className="w-[1px] h-3 bg-zinc-800" />
+            <div className="flex items-center gap-2">
+                {onApply && (
+                    <button
+                        onClick={disabled ? undefined : onApply}
+                        disabled={disabled}
+                        className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all ${disabled ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed' : 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600 hover:text-white active:scale-95'}`}
+                    >
+                        Принять
+                    </button>
+                )}
+                {onReject && (
+                    <button
+                        onClick={disabled ? undefined : onReject}
+                        disabled={disabled}
+                        className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all border ${disabled ? 'text-zinc-600 border-transparent cursor-not-allowed' : 'text-zinc-500 hover:text-zinc-300 active:scale-95 border-transparent hover:border-zinc-800'}`}
+                    >
+                        Отменить
+                    </button>
+                )}
+            </div>
+            <FileDiff className="w-3.5 h-3.5 text-zinc-700" />
+        </div>
+    );
+}
+
+function CompressionDivider({ label, isLightTheme }: { label: string; isLightTheme: boolean }) {
+    return (
+        <div className="w-full py-1" data-testid="compression-divider">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4">
+                <div className={`h-px ${isLightTheme ? 'bg-zinc-300/90' : 'bg-zinc-800/90'}`} />
+                <div
+                    className={`inline-flex items-center justify-center rounded-full px-4 py-1.5 text-[10px] font-semibold uppercase leading-none tracking-[0.16em] ${
+                        isLightTheme
+                            ? 'border border-sky-200/80 bg-white text-sky-700 shadow-[0_4px_14px_rgba(56,189,248,0.10)]'
+                            : 'border border-zinc-800 bg-zinc-950/95 text-zinc-100 shadow-[0_10px_30px_rgba(0,0,0,0.32)]'
+                    }`}
+                    title="Предыдущий диалог свёрнут в служебный конспект для продолжения чата"
+                >
+                    <span>{label}</span>
+                </div>
+                <div className={`h-px ${isLightTheme ? 'bg-zinc-300/90' : 'bg-zinc-800/90'}`} />
+            </div>
+        </div>
+    );
+}
+
+function isCompressionSystemMessage(msg: ChatMessage): boolean {
+    return msg.role === 'system' && (
+        msg.variant === 'compression' ||
+        (msg.variant === 'info' && msg.content.startsWith('📋 Конспект предыдущего диалога:'))
+    );
+}
+
+export const ChatArea = memo(function ChatArea({
+    originalCode,
+    modifiedCode,
+    loadedContextCode,
+    isContextSelection: isContextSelectionProp = false,
+    onClearContext,
+    onPrepareDiffBase,
+    onApplyCode,
+    onValidateAppliedCode,
+    onCommitCode,
+    onCodeLoaded,
+    diagnostics,
+    selectedDiagnostics,
+    onOpenSettings,
+    onActiveDiffChange,
+    activeDiffContent,
+    getLatestWorkingCode,
+}: ChatAreaProps) {
+    const { messages, compressionIndicator, isLoading, streamStartTime, chatStatus, currentIteration, messageQueue, activeSessionId, sendMessage, stopChat, editAndRerun, addSystemMessage, injectMessage, removeQueuedMessage, updateQueuedMessage, clearQueue, clearChat } = useChat();
+    const { profiles, activeProfileId, activeProfile, setActiveProfile } = useProfiles();
+    const isNaparnikActive = activeProfile?.provider === 'OneCNaparnik';
+    const { settings, updateSettings } = useSettings();
+    const isLight = settings?.theme === 'light';
+    const {
+        detectedWindows,
+        selectedHwnd,
+        bindingStatus,
+        bindingMessage,
+        refreshWindows,
+        selectWindow,
+        activeConfigTitle,
+        getCode,
+        parsedTitleContext,
+    } = useConfigurator();
+
+    const [appliedDiffMessages, setAppliedDiffMessages] = useState<Set<string>>(new Set());
+    const [dismissedDiffMessages, setDismissedDiffMessages] = useState<Set<string>>(new Set());
+    const [diffActions, setDiffActions] = useState<Map<string, 'accepted' | 'rejected'>>(new Map());
+    const [validatingDiffMessageKey, setValidatingDiffMessageKey] = useState<string | null>(null);
+    const [input, setInput] = useState('');
+    const [showModelDropdown, setShowModelDropdown] = useState(false);
+    const [showConfigDropdown, setShowConfigDropdown] = useState(false);
+    const [authModalProvider, setAuthModalProvider] = useState<ChatCliProvider | null>(null);
+    const [cliStatuses, setCliStatuses] = useState<Record<string, CliStatus>>({});
+    const [showGetCodeDropdown, setShowGetCodeDropdown] = useState(false);
+    const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
+    const [configuratorTitleCtx, setConfiguratorTitleCtx] = useState<ConfiguratorTitleContext | null>(null);
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
+    const [editText, setEditText] = useState('');
+    const contextCode = loadedContextCode;
+    const isContextSelection = isContextSelectionProp;
+    const currentDiffBaseCode = modifiedCode || contextCode || originalCode || '';
+    const diffRenderCacheRef = useRef(createDiffRenderSummaryCache<CachedDiffRenderSummary>(160));
+    const textFingerprintCacheRef = useRef(createTextFingerprintCache(360));
+    const currentDiffBaseKey = useMemo(
+        () => textFingerprintCacheRef.current.get(currentDiffBaseCode),
+        [currentDiffBaseCode],
+    );
+    const getLatestCodeForActions = useCallback(() => {
+        return getLatestWorkingCode?.() ?? modifiedCode ?? '';
+    }, [getLatestWorkingCode, modifiedCode]);
+    const getDiffRenderSummary = useCallback((content: string, contentScopeKey: string): CachedDiffRenderSummary => {
+        const contentKey = `${contentScopeKey}:${textFingerprintCacheRef.current.get(content)}`;
+        return diffRenderCacheRef.current.get(currentDiffBaseKey, contentKey, () => {
+            const cleanedContent = cleanDiffArtifacts(content, currentDiffBaseCode);
+            const applicableDiffContent = getApplicableDiffContent(currentDiffBaseCode, content);
+            const hasBlockingIncompleteDiff = hasBlockingIncompleteDiffBlocks(content);
+
+            return {
+                cleanedContent,
+                hasVisibleContent: cleanedContent.trim().length > 0,
+                applicableDiffContent,
+                hasApplicableDiff: applicableDiffContent !== null,
+                hasBlockingIncompleteDiff,
+            };
+        });
+    }, [currentDiffBaseCode, currentDiffBaseKey]);
+
+    // Slash Commands state
+    const [showCommands, setShowCommands] = useState(false);
+    const [commandFilter, setCommandFilter] = useState('');
+    const resolvedSlashCommands = useMemo(() => {
+        return resolveSlashCommandsForRuntime(settings?.slash_commands, DEFAULT_SLASH_COMMANDS);
+    }, [settings?.slash_commands]);
+
+    const availableCommands = useMemo(() => {
+        return resolvedSlashCommands.filter(c => c.is_enabled);
+    }, [resolvedSlashCommands]);
+
+    const filteredCommands = useMemo(() => {
+        if (!commandFilter) return availableCommands;
+        const filter = commandFilter.toLowerCase();
+        return availableCommands.filter(c =>
+            c.command.toLowerCase().includes(filter) ||
+            c.name.toLowerCase().includes(filter)
+        );
+    }, [availableCommands, commandFilter]);
+
+    const resolveSlashCommand = useCallback((commandName: string): SlashCommand | undefined => {
+        const normalized = commandName.toLowerCase();
+        return (
+            availableCommands.find(c => c.command.toLowerCase() === normalized) ||
+            resolvedSlashCommands.find(c => c.command.toLowerCase() === normalized) ||
+            DEFAULT_SLASH_COMMANDS.find(c => c.command.toLowerCase() === normalized)
+        );
+    }, [availableCommands, resolvedSlashCommands]);
+
+    const resolveSlashCommandById = useCallback((commandId: string): SlashCommand | undefined => {
+        return (
+            findSlashCommandById(resolvedSlashCommands, commandId) ||
+            findSlashCommandById(DEFAULT_SLASH_COMMANDS, commandId)
+        );
+    }, [resolvedSlashCommands]);
+
+    const buildSlashCommandTextById = useCallback((commandId: string, query?: string | null): string => {
+        const command = resolveSlashCommandById(commandId);
+        if (!command) {
+            return '';
+        }
+
+        const trimmedQuery = query?.trim();
+        return trimmedQuery ? `/${command.command} ${trimmedQuery}` : `/${command.command}`;
+    }, [resolveSlashCommandById]);
+
+    const expandSlashCommand = useCallback(async (
+        rawInput: string,
+        options?: {
+            codeOverride?: string;
+            queryOverride?: string;
+            diagnosticsOverride?: Array<BslDiagnostic | string> | null;
+        },
+    ): Promise<{
+        content: string;
+        displayContent?: string;
+        isSlashCommand: boolean;
+        commandId?: string;
+    }> => {
+        let textToSend = rawInput;
+        let displayContent: string | undefined;
+        let isSlashCommand = false;
+
+        if (!textToSend.startsWith('/')) {
+            return { content: textToSend, displayContent, isSlashCommand };
+        }
+
+        const firstSpace = textToSend.indexOf(' ');
+        const cmdPart = firstSpace === -1 ? textToSend.substring(1) : textToSend.substring(1, firstSpace);
+        const queryPart = options?.queryOverride ?? (firstSpace === -1 ? '' : textToSend.substring(firstSpace + 1).trim());
+        const foundCmd = resolveSlashCommand(cmdPart);
+
+        if (!foundCmd) {
+            return { content: textToSend, displayContent, isSlashCommand };
+        }
+
+        isSlashCommand = true;
+        displayContent = firstSpace === -1 ? `/${foundCmd.command}` : textToSend;
+
+        if (foundCmd.id === 'its' && !isNaparnikActive) {
+            const naparnik = settings?.mcp_servers.find(s => s.id === 'builtin-1c-naparnik');
+            if (!naparnik || !naparnik.enabled) {
+                throw new Error('Для использования команды /итс необходимо включить MCP сервер "Напарник" в настройках, либо выбрать профиль "1С:Напарник".');
+            }
+        }
+
+        if (['search-1c', 'refs-1c', 'struct-1c'].includes(foundCmd.id)) {
+            const searchServer = settings?.mcp_servers.find(s => s.id === 'builtin-1c-search');
+            if (!searchServer || !searchServer.enabled) {
+                throw new Error('Для использования этой команды необходимо включить MCP сервер "1С:Поиск по конфигурации" в настройках и указать путь к выгрузке конфигурации.');
+            }
+        }
+
+        let expanded = foundCmd.template;
+        let activeCode = options?.codeOverride ?? (getLatestCodeForActions() || contextCode || '');
+        if (expanded.includes('{code}') && !options?.codeOverride && !activeCode && selectedHwnd) {
+            try {
+                const fetchedCode = await getCode(true);
+                if (fetchedCode && fetchedCode.trim().length > 0) {
+                    activeCode = fetchedCode;
+                } else {
+                    const fullCode = await getCode(false);
+                    if (fullCode && fullCode.trim().length > 0) {
+                        activeCode = fullCode;
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to auto-fetch code context for slash command:', err);
+            }
+        }
+
+        const currentDiagnostics = options?.diagnosticsOverride ?? (diagnostics || []);
+        const selection = resolveDiagnosticsForChat(currentDiagnostics, selectedDiagnostics);
+        const effectiveDiagnostics = selection.effectiveDiagnostics;
+        const diagStringsText = formatDiagnosticsLines(options?.diagnosticsOverride ?? effectiveDiagnostics).join('\n');
+        expanded = expanded.replace('{diagnostics}', diagStringsText || 'Ошибок не обнаружено');
+        expanded = expanded.replace('{code}', activeCode);
+        expanded = expanded.replace('{query}', queryPart);
+        expanded = applySelectiveFixScopeInstructions(expanded, {
+            commandId: foundCmd.id,
+            totalDiagnosticsCount: currentDiagnostics.length,
+            selectedDiagnosticsCount: selection.selectionWasExplicit ? effectiveDiagnostics.length : null,
+            diagnosticsText: diagStringsText || 'Ошибок не обнаружено',
+            code: activeCode,
+            queryPart,
+        });
+
+        return {
+            content: expanded,
+            displayContent,
+            isSlashCommand,
+            commandId: foundCmd.id,
+        };
+    }, [
+        contextCode,
+        diagnostics,
+        selectedDiagnostics,
+        getCode,
+        isNaparnikActive,
+        getLatestCodeForActions,
+        resolveSlashCommand,
+        selectedHwnd,
+        settings?.mcp_servers,
+    ]);
+
+    const appendVoiceText = useCallback((text: string) => {
+        setInput(prev => prev + (prev ? ' ' : '') + text);
+    }, []);
+
+    const fetchCliStatusForProfile = useCallback(async (profileId: string, provider: ChatCliProvider) => {
+        try {
+            const status = await cliProvidersApi.getStatus(profileId, provider);
+            setCliStatuses(prev => ({ ...prev, [profileId]: status }));
+        } catch (err) {
+            console.error(`Failed to fetch CLI status for profile ${profileId} (${provider}):`, err);
+        }
+    }, []);
+
+    const fetchCliStatuses = useCallback(async () => {
+        const cliProfiles = profiles
+            .map(profile => {
+                const cliProvider = getCliProviderType(profile.provider);
+                return cliProvider ? { profileId: profile.id, cliProvider } : null;
+            })
+            .filter((profile): profile is { profileId: string; cliProvider: ChatCliProvider } => profile !== null);
+
+        await Promise.all(cliProfiles.map(profile => fetchCliStatusForProfile(profile.profileId, profile.cliProvider)));
+    }, [fetchCliStatusForProfile, profiles]);
+
+    useEffect(() => {
+        fetchCliStatuses();
+    }, [fetchCliStatuses]);
+
+    const handleCliAuthSuccess = useCallback(async (
+        provider: ChatCliProvider,
+        accessToken: string,
+        refreshToken: string | null,
+        expiresAt: number,
+        resourceUrl: string | null,
+    ) => {
+        const currentProfile = profiles.find(p => p.id === activeProfileId);
+        if (!currentProfile) return;
+
+        try {
+            await cliProvidersApi.saveToken(currentProfile.id, provider, accessToken, refreshToken, expiresAt, resourceUrl);
+            await fetchCliStatuses();
+        } catch {
+            console.error(`[ChatArea] Failed to save ${provider} token`);
+        }
+    }, [activeProfileId, fetchCliStatuses, profiles]);
+
+    useEffect(() => {
+        const unlisten = listen<OverlayExplainPayload>('open-explain-from-overlay', async (event) => {
+            const explainCode = (event.payload.code || event.payload.originalCode || '').trim();
+            if (!explainCode) {
+                return;
+            }
+
+            try {
+                setConfiguratorTitleCtx(parsedTitleContext);
+                onActiveDiffChange?.('');
+
+                const commandId = getQuickActionCommandId('explain');
+                const commandText = commandId ? buildSlashCommandTextById(commandId) : '';
+                if (!commandText) {
+                    throw new Error('Не найдена system-команда для действия "Объяснить".');
+                }
+
+                const prepared = await expandSlashCommand(commandText, {
+                    codeOverride: explainCode,
+                });
+
+                await sendMessage(
+                    prepared.content,
+                    prepared.isSlashCommand ? undefined : explainCode,
+                    [],
+                    prepared.displayContent,
+                    parsedTitleContext,
+                );
+            } catch (err) {
+                console.error('[ChatArea] overlay explain handoff failed:', err);
+                addSystemMessage(`Не удалось отправить команду /объясни: ${String(err)}`, 'warning');
+            }
+        });
+
+        return () => {
+            unlisten.then(fn => fn());
+        };
+    }, [addSystemMessage, buildSlashCommandTextById, expandSlashCommand, onActiveDiffChange, parsedTitleContext, sendMessage]);
+
+    useEffect(() => {
+        const unlisten = listen<OverlayQuickActionSessionPayload>('open-quick-action-session-from-overlay', async (event) => {
+            const sessionCode = (event.payload.code || event.payload.originalCode || '').trim();
+            if (!sessionCode) {
+                return;
+            }
+
+            const commandId = getQuickActionCommandId(event.payload.action);
+            const commandText = commandId
+                ? buildSlashCommandTextById(
+                    commandId,
+                    event.payload.action === 'elaborate' ? event.payload.task : null,
+                )
+                : '';
+
+            if (!commandText) {
+                return;
+            }
+
+            try {
+                setConfiguratorTitleCtx(parsedTitleContext);
+                onActiveDiffChange?.('');
+
+                const diagnosticsOverride = event.payload.diagnostics?.length
+                    ? event.payload.diagnostics
+                    : event.payload.diagnosticsError
+                        ? [event.payload.diagnosticsError]
+                        : [];
+
+                const prepared = await expandSlashCommand(commandText, {
+                    codeOverride: sessionCode,
+                    diagnosticsOverride,
+                });
+
+                await sendMessage(
+                    prepared.content,
+                    prepared.isSlashCommand ? undefined : sessionCode,
+                    [],
+                    prepared.displayContent,
+                    parsedTitleContext,
+                );
+            } catch (err) {
+                console.error('[ChatArea] quick action handoff failed:', err);
+                addSystemMessage(`Не удалось отправить quick action в чат: ${String(err)}`, 'warning');
+            }
+        });
+
+        return () => {
+            unlisten.then(fn => fn());
+        };
+    }, [addSystemMessage, buildSlashCommandTextById, expandSlashCommand, onActiveDiffChange, parsedTitleContext, sendMessage]);
+
+    // Update status when generation completed
+    const prevIsLoadingRef = useRef(false);
+    useEffect(() => {
+        if (prevIsLoadingRef.current && !isLoading) {
+            fetchCliStatuses();
+        }
+        prevIsLoadingRef.current = isLoading;
+    }, [fetchCliStatuses, isLoading]);
+
+    // Periodic check for the active CLI provider
+    const cliStatusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    useEffect(() => {
+        if (cliStatusIntervalRef.current !== null) {
+            clearInterval(cliStatusIntervalRef.current);
+            cliStatusIntervalRef.current = null;
+        }
+        const activeProfile = profiles.find(p => p.id === activeProfileId);
+        if (!activeProfile) return;
+
+        const cliProvider = getCliProviderType(activeProfile.provider);
+        if (!cliProvider) return;
+
+        cliStatusIntervalRef.current = setInterval(() => {
+            fetchCliStatusForProfile(activeProfile.id, cliProvider);
+        }, 60_000);
+        return () => {
+            if (cliStatusIntervalRef.current !== null) {
+                clearInterval(cliStatusIntervalRef.current);
+                cliStatusIntervalRef.current = null;
+            }
+        };
+    }, [activeProfileId, fetchCliStatusForProfile, profiles]);
+
+
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
+    const [showToolsPopover, setShowToolsPopover] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setShowModelDropdown(false);
+                setShowConfigDropdown(false);
+                setShowGetCodeDropdown(false);
+            }
+            // Закрываем меню команд при клике вне
+            if (showCommands) {
+                setShowCommands(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [showCommands]);
+
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const wasAtBottom = useRef(true);
+    const autoScrollRaf = useRef<number | null>(null);
+    const isLoadingRef = useRef(isLoading);
+
+    // Синхронизируем ref с состоянием isLoading
+    useEffect(() => {
+        isLoadingRef.current = isLoading;
+    }, [isLoading]);
+
+    // Функция tick в ref — доступна из handleScroll без замыкания
+    const tickFnRef = useRef<(() => void) | null>(null);
+
+    // Обработчик скролла — отслеживаем ручную прокрутку вверх
+    const handleScroll = () => {
+        if (scrollRef.current) {
+            const isAtBottom = isChatNearBottom(scrollRef.current);
+            wasAtBottom.current = isAtBottom;
+            // Пользователь прокрутил вверх — останавливаем автоскролл
+            if (!isAtBottom && autoScrollRaf.current) {
+                cancelAnimationFrame(autoScrollRaf.current);
+                autoScrollRaf.current = null;
+            }
+            // Пользователь вернулся вниз — возобновляем RAF если идёт стриминг
+            if (isAtBottom && isLoadingRef.current && !autoScrollRaf.current && tickFnRef.current) {
+                autoScrollRaf.current = requestAnimationFrame(tickFnRef.current);
+            }
+        }
+    };
+
+    // RAF-цикл плавной прокрутки во время стриминга
+    useEffect(() => {
+        if (!isLoading) {
+            if (autoScrollRaf.current) {
+                cancelAnimationFrame(autoScrollRaf.current);
+                autoScrollRaf.current = null;
+            }
+            tickFnRef.current = null;
+            // Финальная плавная прокрутка после завершения генерации
+            if (wasAtBottom.current && scrollRef.current) {
+                scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+            }
+            return;
+        }
+
+        // При старте генерации всегда следуем за контентом
+        wasAtBottom.current = true;
+
+        const tick = () => {
+            const el = scrollRef.current;
+            if (!el || !wasAtBottom.current) {
+                autoScrollRaf.current = null;
+                return;
+            }
+            const nextScrollTop = getStreamingAutoScrollTop(el);
+            if (nextScrollTop !== null && Math.abs(nextScrollTop - el.scrollTop) > 1) {
+                el.scrollTop = nextScrollTop;
+            }
+            autoScrollRaf.current = requestAnimationFrame(tick);
+        };
+
+        // Сохраняем tick в ref чтобы handleScroll мог его перезапустить
+        tickFnRef.current = tick;
+
+        if (!autoScrollRaf.current) {
+            autoScrollRaf.current = requestAnimationFrame(tick);
+        }
+
+        return () => {
+            if (autoScrollRaf.current) {
+                cancelAnimationFrame(autoScrollRaf.current);
+                autoScrollRaf.current = null;
+            }
+        };
+    }, [isLoading]);
+
+    // Блок ДУМАЮ по умолчанию свёрнут — пользователь разворачивает вручную.
+    // (Авторасширение во время стриминга отключено)
+
+    // Прокрутка вниз при отправке нового сообщения пользователем (всегда плавно)
+    useEffect(() => {
+        if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
+            wasAtBottom.current = true;
+            scrollRef.current?.scrollTo({
+                top: scrollRef.current.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+        if (messages.length === 0) {
+            diffRenderCacheRef.current.clear();
+            textFingerprintCacheRef.current.clear();
+            setConfiguratorTitleCtx(null);
+            setAppliedDiffMessages(new Set());
+            setDismissedDiffMessages(new Set());
+            setDiffActions(new Map());
+            setEditingIndex(null);
+            setEditText('');
+            setInput('');
+            setShowCommands(false);
+            setCommandFilter('');
+            setShowGetCodeDropdown(false);
+            setExpandedThinking({});
+        }
+    }, [messages.length]);
+
+    useEffect(() => {
+        // Показываем предпросмотр диффов в боковой панели — НЕ применяем автоматически.
+        // Срабатывает сразу (в том числе во время стриминга), чтобы DiffEditor обновлялся в реальном времени.
+        if (messages.length === 0) return;
+        const lastMsg = messages[messages.length - 1];
+        const applicableDiffContent = lastMsg.role === 'assistant'
+            ? getDiffRenderSummary(lastMsg.content, `message:${lastMsg.id || messages.length - 1}`).applicableDiffContent
+            : null;
+        if (!applicableDiffContent) return;
+
+        const msgKey = lastMsg.id || String(messages.length - 1);
+
+        // Если пользователь уже принял/отклонил изменения через баннер — не перебиваем его выбор
+        if (diffActions.has(msgKey)) return;
+
+        // Показываем diff-превью только ПОСЛЕ завершения стриминга
+        if (!isLoading) {
+            // Открываем боковую панель только если есть базовый код для сравнения.
+            // Если код не был загружен из Конфигуратора — панель не открываем.
+            const hasBaseCode = !!currentDiffBaseCode;
+            if (hasBaseCode && onActiveDiffChange && !isLargeDiffContent(applicableDiffContent)) {
+                onActiveDiffChange(applicableDiffContent);
+            }
+            // Фиксируем как "показанное"
+            if (!appliedDiffMessages.has(msgKey)) {
+                setAppliedDiffMessages(prev => new Set(prev).add(msgKey));
+            }
+        }
+    }, [messages, isLoading, onActiveDiffChange, appliedDiffMessages, diffActions, activeDiffContent, currentDiffBaseCode, getDiffRenderSummary]);
+
+    const handleSendMessage = async (textOverride?: string) => {
+        const rawInput = textOverride || input;
+        let textToSend = rawInput;
+        let displayContent: string | undefined = undefined;
+        let isSlashCommand = false;
+
+        let commandId: string | undefined;
+        try {
+            const prepared = await expandSlashCommand(rawInput);
+            textToSend = prepared.content;
+            displayContent = prepared.displayContent;
+            isSlashCommand = prepared.isSlashCommand;
+            commandId = prepared.commandId;
+        } catch (err) {
+            alert(String(err));
+            return;
+        }
+
+        if (!textToSend.trim()) return;
+
+        const requestBaseCode = getLatestCodeForActions() || contextCode || originalCode || '';
+        if (requestBaseCode.trim()) {
+            onPrepareDiffBase?.(requestBaseCode);
+        }
+
+        const diagnosticsSelection = resolveDiagnosticsForChat(diagnostics || [], selectedDiagnostics);
+        const diagSource = diagnosticsSelection.effectiveDiagnostics;
+        // Блокируем только команду /исправить (id: 'fix') когда явно не выбрана ни одна диагностика.
+        // Свободные сообщения и другие команды не требуют выбранных диагностик.
+        if (
+            commandId === 'fix'
+            && diagnosticsSelection.selectionWasExplicit
+            && diagSource.length === 0
+            && (diagnostics || []).length > 0
+        ) {
+            injectMessage({
+                role: 'assistant',
+                content: 'Выберите хотя бы одну проблему в панели **Problems**.',
+                parts: [{ type: 'text', content: 'Выберите хотя бы одну проблему в панели **Problems**.' }],
+                timestamp: Date.now(),
+            });
+            setTimeout(() => {
+                scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+            }, 50);
+            return;
+        }
+        const diagStrings = diagSource.map((d: any) => `- Line ${d.line + 1}: ${d.message} (${d.severity})`);
+
+        // Если это расширенная слеш-команда, мы НЕ передаем contextCode повторно, 
+        // так как он уже вставлен в expanded-шаблон через {code}
+        const finalContext = isSlashCommand ? undefined : (getLatestCodeForActions() || contextCode || undefined);
+
+        sendMessage(textToSend, finalContext, diagStrings, displayContent, configuratorTitleCtx);
+        setInput('');
+        onClearContext?.();
+    };
+
+    const handleSelectCommand = (cmd: SlashCommand) => {
+        // Находим позицию слеша, чтобы заменить его на саму команду или шаблон
+        const lastSlashIndex = input.lastIndexOf('/');
+        if (lastSlashIndex === -1) return;
+
+        const beforeSlash = input.substring(0, lastSlashIndex);
+        const afterSlash = input.substring(lastSlashIndex + 1);
+
+        // Извлекаем query (все что после первого пробела в 'afterSlash', если он есть)
+        const firstSpaceInAfter = afterSlash.indexOf(' ');
+        const queryPart = firstSpaceInAfter === -1 ? '' : afterSlash.substring(firstSpaceInAfter + 1).trim();
+
+        // Вместо немедленной отправки, подставляем команду в поле ввода
+        // Если команда системная и сложная (как /исправить), оставляем как есть,
+        // но для удобства пользователя мы просто вставляем "/команда "
+        const newValue = `${beforeSlash}/${cmd.command} ${queryPart}`.trim() + ' ';
+        setInput(newValue);
+
+        setShowCommands(false);
+        setCommandFilter('');
+
+        // Устанавливаем фокус обратно в textarea (через ref, если он есть)
+        // Но так как input привязан к состоянию, пользователь просто продолжит ввод
+    };
+
+    // Expose testing hooks
+    useEffect(() => {
+        (window as any).__MINI_AI_TEST__ = {
+            setBaselineCode: (code: string) => {
+                if (onCodeLoaded) {
+                    onCodeLoaded(code, true);
+                }
+                console.log("[TEST] Baseline code set and propagated, length:", code.length);
+            },
+            setWorkingCode: (code: string) => {
+                onApplyCode?.(code);
+                console.log("[TEST] Working code replaced, length:", code.length);
+            },
+            syncDiffBase: (code: string) => {
+                onPrepareDiffBase?.(code);
+                console.log("[TEST] Diff base synced, length:", code.length);
+            },
+            sendMessage: (text: string) => {
+                setInput(text);
+                console.log("[TEST] Triggering sendMessage with:", text);
+                handleSendMessage(text);
+            },
+            expandSlashCommand: async (text: string) => {
+                console.log("[TEST] Expanding slash command:", text);
+                return await expandSlashCommand(text);
+            },
+            injectAssistantMessage: (content: string) => {
+                console.log("[TEST] injectAssistantMessage called, length:", content.length);
+                injectMessage({
+                    role: 'assistant',
+                    content,
+                    parts: [{ type: 'text', content }],
+                    timestamp: Date.now(),
+                });
+            },
+            getCodeState: () => ({
+                originalCode,
+                modifiedCode: getLatestCodeForActions() || modifiedCode,
+                loadedContextCode: contextCode,
+                activeDiffContent: activeDiffContent || '',
+            }),
+        };
+        return () => { delete (window as any).__MINI_AI_TEST__; };
+    }, [
+        activeDiffContent,
+        contextCode,
+        expandSlashCommand,
+        handleSendMessage,
+        injectMessage,
+        getLatestCodeForActions,
+        modifiedCode,
+        onApplyCode,
+        onCodeLoaded,
+        onPrepareDiffBase,
+        originalCode,
+    ]);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        markInputLatency('chat-input');
+        const value = e.target.value;
+        const cursorPosition = e.target.selectionStart;
+        setInput(value);
+
+        // Логика открытия меню команд
+        if (value && cursorPosition > 0) {
+            const textBeforeCursor = value.substring(0, cursorPosition);
+            const lastSlashIndex = textBeforeCursor.lastIndexOf('/');
+
+            if (lastSlashIndex !== -1) {
+                // Проверяем, что перед слешем либо начало строки, либо пробел
+                const charBeforeSlash = lastSlashIndex > 0 ? textBeforeCursor[lastSlashIndex - 1] : '';
+                if (charBeforeSlash === '' || charBeforeSlash === ' ' || charBeforeSlash === '\n') {
+                    const filterText = textBeforeCursor.substring(lastSlashIndex + 1);
+                    // Фильтр не должен содержать пробелов (команда заканчивается пробелом)
+                    if (!filterText.includes(' ')) {
+                        setShowCommands(true);
+                        setCommandFilter(filterText);
+                        return;
+                    }
+                }
+            }
+        }
+
+        if (showCommands) {
+            setShowCommands(false);
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (showCommands) {
+            // В меню команд перехватываем стрелки и Enter
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter' || e.key === 'Escape') {
+                return;
+            }
+        }
+
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSendMessage();
+        }
+    };
+
+    const toggleThinking = (key: string) => {
+        setExpandedThinking(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    const handleLoadCode = async (isSelection: boolean) => {
+        let code = await getCode(isSelection);
+
+        // Safeguard: Filter out any internal markers that might have leaked
+        if (code.includes('___1C_AI_MARKER_')) {
+            console.warn("[ChatArea] Clipboard marker detected in loaded code. Filtering.");
+            code = code.replace(/___1C_AI_MARKER_.*?___/g, '').trim();
+        }
+
+        // Захватываем контекст заголовка конфигуратора в момент загрузки кода
+        setConfiguratorTitleCtx(parsedTitleContext);
+        if (onCodeLoaded) {
+            onCodeLoaded(code, isSelection);
+        }
+        if (onActiveDiffChange) {
+            onActiveDiffChange('');
+        }
+        setShowGetCodeDropdown(false);
+    };
+
+    const handleRemoveCodeContext = () => {
+        onClearContext?.();
+        setConfiguratorTitleCtx(null);
+    };
+
+    const handleStartEdit = (index: number, content: string) => {
+        setEditingIndex(index);
+        setEditText(content);
+    };
+
+    const handleCancelEdit = () => {
+        setEditingIndex(null);
+        setEditText('');
+    };
+
+    const handleSaveEdit = (index: number) => {
+        if (editText.trim()) {
+            const editDiagSource = resolveDiagnosticsForChat(diagnostics || [], selectedDiagnostics).effectiveDiagnostics;
+            const diagStrings = editDiagSource.map((d: any) => `- Line ${d.line + 1}: ${d.message} (${d.severity})`);
+            const rerunBaseCode = getLatestCodeForActions() || contextCode || originalCode || '';
+            if (rerunBaseCode.trim()) {
+                onPrepareDiffBase?.(rerunBaseCode);
+            }
+            editAndRerun(index, editText, rerunBaseCode || undefined, diagStrings, undefined, configuratorTitleCtx);
+            setEditingIndex(null);
+            setEditText('');
+        }
+    };
+
+    const handleEditKeyDown = (e: React.KeyboardEvent, index: number) => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            handleSaveEdit(index);
+        } else if (e.key === 'Escape') {
+            handleCancelEdit();
+        }
+    };
+    // Индекс последнего assistant-сообщения с diff-блоками.
+    // Баннер "Принять/Отменить" показываем ТОЛЬКО там — иначе при chat-new-iteration
+    // два сообщения показывают кнопки одновременно.
+    const lastDiffMsgIndex = useMemo(() => {
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === 'assistant' && getDiffRenderSummary(messages[i].content, `message:${messages[i].id || i}`).hasApplicableDiff) {
+                return i;
+            }
+        }
+        return -1;
+    }, [messages, getDiffRenderSummary]);
+
+    return (
+        <div id="chat-area" className="flex flex-col flex-1 min-w-[300px] transition-all duration-300">
+            {/* Messages List */}
+            <div
+                ref={scrollRef}
+                onScroll={handleScroll}
+                className={`flex-1 ${messages.length === 0 ? 'overflow-hidden' : 'overflow-y-auto scrollbar-thin scrollbar-thumb-white/10'} bg-[#09090b]`}
+            >
+                {messages.length === 0 && (
+                    <div className="flex-1 flex flex-col items-center justify-center p-4 max-w-3xl mx-auto w-full h-full">
+                        <div className="relative mb-10 group">
+                            <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full group-hover:bg-blue-500/30 transition-all duration-700 animate-pulse"></div>
+                            <div className="relative bg-zinc-900 p-6 rounded-3xl border border-zinc-800 shadow-2xl transform group-hover:scale-105 transition-transform duration-500">
+                                <img src={logo} alt="Mini AI 1C" className="w-16 h-16 grayscale opacity-80" />
+                            </div>
+                        </div>
+
+                        <div className="text-center space-y-3 mb-12">
+                            <h2 className="text-3xl font-bold text-white tracking-tight">Mini AI 1C Assistant</h2>
+                            <p className="text-zinc-500 text-lg max-w-md mx-auto">Интеллектуальный помощник для разработчиков 1С:Предприятие</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                            {[
+                                {
+                                    title: "Анализ кода",
+                                    desc: "Получить код модуля или выделенный фрагмент из Конфигуратора для разбора.",
+                                    icon: <FileText className="w-5 h-5 text-blue-400" />,
+                                    onClick: () => handleLoadCode(true)
+                                },
+                                {
+                                    title: "Генерация кода",
+                                    desc: "Опишите задачу, и AI предложит решение в формате BSL с возможностью вставки.",
+                                    icon: <RefreshCw className="w-5 h-5 text-purple-400" />,
+                                    onClick: () => {
+                                        setInput("Напиши процедуру для...");
+                                        inputRef.current?.focus();
+                                    }
+                                },
+                                {
+                                    title: "Проверка BSL LS",
+                                    desc: "Интеграция с BSL Language Server для поиска ошибок и предупреждений.",
+                                    icon: <Monitor className="w-5 h-5 text-green-400" />,
+                                    onClick: () => { if (onOpenSettings) onOpenSettings('bsl'); }
+                                },
+                                {
+                                    title: "Серверы MCP",
+                                    desc: "Предустановленные инструменты: 1C:Метаданные, 1C:Напарник.",
+                                    icon: <Settings className="w-5 h-5 text-orange-400" />,
+                                    onClick: () => { if (onOpenSettings) onOpenSettings('mcp'); }
+                                }
+                            ].map((step, i) => (
+                                <div
+                                    key={i}
+                                    onClick={step.onClick}
+                                    className="p-5 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 hover:border-blue-500/30 transition-all hover:bg-zinc-800/80 group cursor-pointer active:scale-[0.98]"
+                                >
+                                    <div className="flex items-start gap-4">
+                                        <div className="p-2.5 rounded-xl bg-zinc-800/50 group-hover:bg-blue-500/10 transition-colors">{step.icon}</div>
+                                        <div className="space-y-1">
+                                            <h3 className="text-sm font-semibold text-zinc-200 group-hover:text-blue-400 transition-colors">{step.title}</h3>
+                                            <p className="text-xs text-zinc-500 leading-relaxed group-hover:text-zinc-400 transition-colors">{step.desc}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="mt-12 flex flex-col items-center gap-6 pb-2">
+                            <a href="https://t.me/hawkxtreme" target="_blank" rel="noopener noreferrer" className="group flex items-center gap-3 px-4 py-2 rounded-2xl bg-zinc-900/10 border border-zinc-800/30 hover:bg-zinc-800/30 hover:border-zinc-700/50 transition-all duration-300">
+                                <div className="p-1.5 rounded-lg bg-blue-500/10 group-hover:bg-blue-500/20 transition-colors">
+                                    <Send className="w-3.5 h-3.5 text-blue-400" />
+                                </div>
+                                <div className="flex flex-col items-center leading-tight">
+                                    <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold">Feedback & Support</span>
+                                    <span className="text-xs text-zinc-400 group-hover:text-blue-400 transition-colors">@hawkxtreme</span>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                )}
+
+                <div className={`flex flex-col pb-4 gap-4 px-4 w-full pt-4`}>
+                    {messages.map((msg, i) => (
+                        <Fragment key={msg.id || i}>
+                        {compressionIndicator?.anchorMessageId === msg.id && (
+                            <CompressionDivider label={compressionIndicator.label} isLightTheme={isLight} />
+                        )}
+                        <div className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            {/* Системное сообщение */}
+                            {(msg.role as string) === 'system' ? (
+                                isCompressionSystemMessage(msg) ? (
+                                    <CompressionDivider label="Контекст сжат" isLightTheme={isLight} />
+                                ) : msg.variant === 'info' ? (
+                                <div className={`w-full max-w-full rounded-xl border border-l-4 px-4 py-3 text-[13px] shadow-sm transition-all ${isLight
+                                    ? 'border-orange-200 border-l-orange-400 bg-orange-50 hover:bg-orange-100'
+                                    : 'border-orange-800/40 border-l-orange-500 bg-orange-950/30 hover:bg-orange-950/50'}`}>
+                                    <div className="flex items-start gap-3">
+                                        <div className={`mt-0.5 p-1 rounded-lg ${isLight ? 'bg-orange-100' : 'bg-orange-900/40'}`}>
+                                            <Info className={`w-4 h-4 flex-shrink-0 ${isLight ? 'text-orange-500' : 'text-orange-400'}`} />
+                                        </div>
+                                        <div className="flex-1 leading-relaxed">
+                                            {msg.content.split('\n').map((line, idx) => {
+                                                if (idx === 0) return (
+                                                    <div key={idx} className={`font-bold mb-1.5 ${isLight ? 'text-orange-800' : 'text-orange-200'}`}>{line}</div>
+                                                );
+                                                if (line.startsWith('Доступно:')) return (
+                                                    <div key={idx} className={`flex items-center gap-1.5 text-[12px] mb-0.5 ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
+                                                        <span className="font-bold">✓</span>
+                                                        <span>{line}</span>
+                                                    </div>
+                                                );
+                                                if (line.startsWith('Недоступно:')) return (
+                                                    <div key={idx} className={`flex items-center gap-1.5 text-[12px] ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                        <span className="font-bold">✗</span>
+                                                        <span>{line}</span>
+                                                    </div>
+                                                );
+                                                return <div key={idx} className={`text-[12px] ${isLight ? 'text-orange-700' : 'text-orange-300'}`}>{line}</div>;
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                                ) : (
+                                    <div className={`w-full max-w-full rounded-xl border px-4 py-3 text-[13px] shadow-sm ${isLight
+                                        ? 'border-amber-300 bg-amber-50 text-amber-900'
+                                        : 'border-amber-700/40 bg-amber-950/30 text-amber-300/90'}`}>
+                                        <div className="flex items-start gap-2">
+                                            <svg className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isLight ? 'text-amber-600' : 'text-amber-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                            </svg>
+                                            <div className="flex-1 whitespace-pre-wrap leading-relaxed">
+                                                {msg.content}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            ) : (
+                                <div className={`p-4 rounded-xl border text-[13px] leading-relaxed group ${msg.role === 'user' ? 'bg-[#1b1b1f] border-zinc-800/80 text-zinc-300 max-w-[90%]' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-300 shadow-sm w-full max-w-full'}`}>
+                                    <div className="min-w-0 flex flex-col gap-3">
+                                        {/* Message Header with Actions */}
+                                        <div className="flex items-start justify-end gap-2 mb-2">
+                                            {/* Actions */}
+                                            <MessageActions
+                                                content={buildCopyContent(msg)}
+                                                timestamp={msg.timestamp}
+                                                isUser={msg.role === 'user'}
+                                                onEdit={msg.role === 'user' ? () => handleStartEdit(i, msg.content) : undefined}
+                                            />
+                                        </div>
+
+                                        <div className="min-w-0 flex flex-col gap-3">
+                                            {msg.role === 'assistant' && msg.parts ? (
+                                                <>
+                                                    {/* Объединяем соседние text-части чтобы tool call не разбивал слова */}
+                                                    {msg.parts.reduce<{ type: string; content?: string; toolCallId?: string; origIdx: number }[]>((acc, part, idx) => {
+                                                        if (part.type === 'text' && acc.length > 0 && acc[acc.length - 1].type === 'text') {
+                                                            acc[acc.length - 1] = { ...acc[acc.length - 1], content: (acc[acc.length - 1].content || '') + (part.content || '') };
+                                                        } else {
+                                                            acc.push({ ...part, origIdx: idx });
+                                                        }
+                                                        return acc;
+                                                    }, []).map((part, partIdx) => {
+                                                        const msgKey = msg.id || String(i);
+                                                        if (part.type === 'thinking') {
+                                                            const thinkingKey = `${i}-${partIdx}`;
+                                                            const isThinkingStreaming = isLoading && i === messages.length - 1;
+                                                            const isExpanded = expandedThinking[thinkingKey] ?? false;
+                                                            return (
+                                                                <div key={partIdx} className="my-1 mb-2">
+                                                                    <button
+                                                                        onClick={() => toggleThinking(thinkingKey)}
+                                                                        className="flex items-center gap-2 text-[11px] text-white/40 hover:text-white/60 uppercase tracking-widest font-semibold transition-colors group mb-1.5"
+                                                                    >
+                                                                        <BrainCircuit className="w-3.5 h-3.5" />
+                                                                        <span>{isThinkingStreaming && chatStatus ? chatStatus : 'Размышления'}</span>
+                                                                        <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                                                    </button>
+                                                                    {isExpanded && (
+                                                                        <div className="text-[12px] italic text-white/40 leading-relaxed border-l-2 border-white/10 pl-3 py-1 my-2 animate-in fade-in slide-in-from-top-1 whitespace-pre-wrap">
+                                                                            {part.content}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        } else if (part.type === 'tool') {
+                                                            const tc = msg.toolCalls?.find(t => t.id === part.toolCallId);
+                                                            if (!tc) return null;
+                                                            return (
+                                                                <div key={partIdx} className="flex flex-col gap-0.5 mb-2 mt-1 -ml-1">
+                                                                    <ToolCallBlock toolCall={tc} />
+                                                                </div>
+                                                            );
+                                                        } else {
+                                                            // text
+                                                            const currentOriginalCode = currentDiffBaseCode;
+                                                        const diffSummary = getDiffRenderSummary(part.content || '', `part:${msgKey}:${partIdx}`);
+                                                            if (!diffSummary.hasVisibleContent) {
+                                                                if (!diffSummary.hasApplicableDiff) {
+                                                                    if (!diffSummary.hasBlockingIncompleteDiff) return null;
+                                                                    return (
+                                                                        <div key={partIdx} className="flex items-center gap-1.5 text-amber-400/80 text-xs italic py-0.5">
+                                                                            <FileDiff className="w-3 h-3 flex-shrink-0" />
+                                                                            <span>Неполный diff-ответ: применение заблокировано</span>
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                return (
+                                                                    <div key={partIdx} className="flex items-center gap-1.5 text-zinc-500 text-xs italic py-0.5">
+                                                                        <FileDiff className="w-3 h-3 flex-shrink-0" />
+                                                                        <span>Изменения кода</span>
+                                                                    </div>
+                                                                );
+                                                            }
+
+                                                            return (
+                                                                <div key={partIdx} className="min-w-0">
+                                                                    <MarkdownRenderer
+                                                                        content={part.content || ''}
+                                                                        isStreaming={isLoading && i === messages.length - 1 && (part as any).origIdx === msg.parts!.length - 1}
+                                                                        onApplyCode={onApplyCode}
+                                                                        originalCode={currentOriginalCode}
+                                                                    />
+                                                                </div>
+                                                            );
+                                                        }
+                                                    })}
+                                                    {/* Статус выполнения — внутри пузыря, после всех parts */}
+                                                    {isLoading && i === messages.length - 1 && (
+                                                        <div className="flex items-center gap-2 mt-1 pt-2 border-t border-zinc-800/40">
+                                                            <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 flex-shrink-0" />
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-zinc-400 text-xs">{chatStatus || 'Выполнение...'}</span>
+                                                                    {currentIteration > 1 && (
+                                                                        <span className="text-[10px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded-full border border-zinc-700 font-mono ml-1">
+                                                                            Шаг {currentIteration}
+                                                                        </span>
+                                                                    )}
+                                                                    {streamStartTime && <ElapsedTimer startTime={streamStartTime} />}
+                                                                </div>
+                                                                <WaitingStatusNotice chatStatus={chatStatus} />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {/* Время ответа — заметный бейдж после завершения */}
+                                                    {!isLoading && msg.responseTime && (
+                                                        <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-zinc-800/30">
+                                                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md border border-zinc-700/50 bg-zinc-800/40 text-[10px] font-mono tabular-nums text-zinc-500">
+                                                                <svg className="w-3 h-3 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                                                Ответ за {formatElapsed(msg.responseTime)}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                // Fallback for older messages or user messages
+                                                <>
+                                                    {/* Thinking Section */}
+                                                    {msg.thinking && (
+                                                        <div className="my-1 mb-3">
+                                                            <button
+                                                                onClick={() => toggleThinking(String(i))}
+                                                                className="flex items-center gap-2 text-[11px] text-white/40 hover:text-white/60 uppercase tracking-widest font-semibold transition-colors group mb-1.5"
+                                                            >
+                                                                <BrainCircuit className="w-3.5 h-3.5" />
+                                                                <span>{msg.thinking && isLoading && i === messages.length - 1 && chatStatus ? chatStatus : 'Размышления'}</span>
+                                                                <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expandedThinking[String(i)] ? 'rotate-90' : ''}`} />
+                                                            </button>
+                                                            {expandedThinking[String(i)] && (
+                                                                <div className="text-[12px] italic text-white/40 leading-relaxed border-l-2 border-white/10 pl-3 py-1 my-2 animate-in fade-in slide-in-from-top-1 whitespace-pre-wrap">
+                                                                    {msg.thinking}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Tool Calls */}
+                                                    {msg.toolCalls && msg.toolCalls.length > 0 && (
+                                                        <div className="flex flex-col gap-0.5 mb-2 mt-1 -ml-1">
+                                                            {msg.toolCalls.map((tc, idx) => (
+                                                                <ToolCallBlock key={idx} toolCall={tc} />
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Content */}
+                                                    {(() => {
+                                                        const currentOriginalCode = currentDiffBaseCode;
+                                                        const msgKey = msg.id || String(i);
+                                                        const diffSummary = getDiffRenderSummary(msg.content || '', `message:${msgKey}`);
+
+                                                        if (msg.role !== 'assistant') return null;
+                                                        if (!diffSummary.hasVisibleContent) {
+                                                            if (!diffSummary.hasApplicableDiff) {
+                                                                if (!diffSummary.hasBlockingIncompleteDiff) return null;
+                                                                return (
+                                                                    <div className="flex items-center gap-1.5 text-amber-400/80 text-xs italic py-0.5">
+                                                                        <FileDiff className="w-3 h-3 flex-shrink-0" />
+                                                                        <span>Неполный diff-ответ: применение заблокировано</span>
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return (
+                                                                <div className="flex items-center gap-1.5 text-zinc-500 text-xs italic py-0.5">
+                                                                    <FileDiff className="w-3 h-3 flex-shrink-0" />
+                                                                    <span>Изменения кода</span>
+                                                                </div>
+                                                            );
+                                                        }
+
+                                                        return (
+                                                            <div className="min-w-0">
+                                                                <MarkdownRenderer
+                                                                    content={msg.content}
+                                                                    isStreaming={isLoading && i === messages.length - 1}
+                                                                    onApplyCode={onApplyCode}
+                                                                    originalCode={currentOriginalCode}
+                                                                />
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </>
+                                            )}
+
+                                            {msg.role === 'assistant' ? (
+                                                <>
+
+                                                    {(() => {
+                                                        const msgKey = msg.id || String(i);
+                                                        const action = diffActions.get(msgKey);
+
+                                                        // Если действие уже совершено — показываем badge
+                                                        if (action) {
+                                                            return (
+                                                                <div className={`flex items-center gap-1.5 mt-2 w-fit ml-auto px-2.5 py-1 rounded-full text-[11px] font-medium ${action === 'accepted'
+                                                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                                                    : 'bg-zinc-800/60 text-zinc-500 border border-zinc-700/40'
+                                                                    }`}>
+                                                                    {action === 'accepted' ? (
+                                                                        <>
+                                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                                                                            Изменения приняты
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                                            Изменения отклонены
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        }
+
+                                                        const currentOriginalCode = currentDiffBaseCode;
+                                                        const applicableDiffContent = getDiffRenderSummary(msg.content, `message:${msgKey}`).applicableDiffContent;
+                                                        const hasContext = currentOriginalCode.trim().length > 0;
+                                                        const shouldShowBanner = hasContext &&
+                                                            i === lastDiffMsgIndex &&
+                                                            !isLoading &&
+                                                            !!applicableDiffContent &&
+                                                            !dismissedDiffMessages.has(msgKey);
+
+                                                        if (!shouldShowBanner) return null;
+
+                                                        return (
+                                                            <DiffSummaryBanner
+                                                                content={applicableDiffContent}
+                                                                disabled={validatingDiffMessageKey === msgKey}
+                                                                onApply={async () => {
+                                                                    // Применяем дифф только сейчас — по явному подтверждению пользователя
+                                                                    if (hasBlockingIncompleteDiffBlocks(applicableDiffContent)) {
+                                                                        addSystemMessage(INCOMPLETE_DIFF_MESSAGE);
+                                                                        return;
+                                                                    }
+                                                                    const diffResult = applyDiffWithDiagnostics(currentOriginalCode, applicableDiffContent);
+                                                                    const diffWarningMessage = formatDiffErrorMessage(diffResult);
+                                                                    const appliedBlockCount = diffResult.blocks.filter(block =>
+                                                                        block.applyStatus?.startsWith('applied_'),
+                                                                    ).length;
+                                                                    if (diffResult.failedCount > 0 && appliedBlockCount === 0) {
+                                                                        if (diffWarningMessage) addSystemMessage(diffWarningMessage, 'warning');
+                                                                        return;
+                                                                    }
+                                                                    setValidatingDiffMessageKey(msgKey);
+                                                                    try {
+                                                                        if (onValidateAppliedCode) {
+                                                                            let validationError: string | null = null;
+                                                                            try {
+                                                                                validationError = await onValidateAppliedCode(
+                                                                                    currentOriginalCode,
+                                                                                    diffResult.code,
+                                                                                );
+                                                                            } catch (error) {
+                                                                                const details = error instanceof Error ? error.message : String(error);
+                                                                                validationError = details
+                                                                                    ? `${BSL_VALIDATION_FAILURE_MESSAGE} ${details}`
+                                                                                    : BSL_VALIDATION_FAILURE_MESSAGE;
+                                                                            }
+
+                                                                            if (validationError) {
+                                                                                if (isRecoverableSyntaxValidationMessage(validationError)) {
+                                                                                    const fallbackResult = await salvageSyntaxSafeDiffBlocks(
+                                                                                        currentOriginalCode,
+                                                                                        diffResult.blocks,
+                                                                                        onValidateAppliedCode,
+                                                                                    );
+                                                                                    const fallbackMessage = formatSyntaxSafeFallbackMessage(fallbackResult);
+
+                                                                                    if (fallbackResult.appliedBlockCount > 0) {
+                                                                                        if (onApplyCode) {
+                                                                                            onApplyCode(fallbackResult.code);
+                                                                                        }
+                                                                                        if (onActiveDiffChange) onActiveDiffChange('');
+                                                                                        setDiffActions(prev => new Map(prev).set(msgKey, 'accepted'));
+                                                                                        if (fallbackMessage) {
+                                                                                            addSystemMessage(fallbackMessage, 'warning');
+                                                                                        }
+                                                                                        return;
+                                                                                    }
+
+                                                                                    addSystemMessage(fallbackMessage ?? validationError, 'warning');
+                                                                                    return;
+                                                                                }
+
+                                                                                addSystemMessage(validationError);
+                                                                                return;
+                                                                            }
+                                                                        }
+
+                                                                        if (onApplyCode) {
+                                                                            onApplyCode(diffResult.code);
+                                                                        }
+                                                                        if (onActiveDiffChange) onActiveDiffChange('');
+                                                                        setDiffActions(prev => new Map(prev).set(msgKey, 'accepted'));
+                                                                        if (diffWarningMessage) {
+                                                                            addSystemMessage(diffWarningMessage, 'warning');
+                                                                        }
+                                                                    } finally {
+                                                                        setValidatingDiffMessageKey(current =>
+                                                                            current === msgKey ? null : current,
+                                                                        );
+                                                                    }
+                                                                }}
+                                                                onReject={() => {
+                                                                    // Просто сбрасываем превью — код в редакторе не тронут
+                                                                    if (onActiveDiffChange) onActiveDiffChange('');
+                                                                    setDiffActions(prev => new Map(prev).set(msgKey, 'rejected'));
+                                                                }}
+                                                            />
+                                                        );
+                                                    })()}
+                                                </>
+                                            ) : editingIndex === i ? (
+
+                                                <div className="w-full">
+                                                    <textarea
+                                                        value={editText}
+                                                        onChange={(e) => setEditText(e.target.value)}
+                                                        onKeyDown={(e) => handleEditKeyDown(e, i)}
+                                                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-zinc-300 text-[13px] font-sans resize-none focus:outline-none focus:border-blue-500/50 transition-colors"
+                                                        rows={Math.min(10, Math.max(3, editText.split('\n').length))}
+                                                        autoFocus
+                                                    />
+                                                    <div className="flex justify-end gap-2 mt-2">
+                                                        <button
+                                                            onClick={handleCancelEdit}
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-all"
+                                                        >
+                                                            <X size={14} />
+                                                            Отмена
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleSaveEdit(i)}
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium bg-blue-600 text-white hover:bg-blue-500 transition-all"
+                                                        >
+                                                            <Play size={14} />
+                                                            Сохранить и перезапустить
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <pre className="whitespace-pre-wrap font-sans break-words break-all overflow-hidden" style={{ fontFamily: 'Inter, sans-serif', overflowWrap: 'anywhere' }}>{msg.displayContent || msg.content}</pre>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        </Fragment>
+                    ))}
+                    {/* Индикатор ожидания первого ответа (пока нет assistant-сообщения) */}
+                    {isLoading && (messages.length === 0 || messages[messages.length - 1].role === 'user') && (
+                        <div className="w-full px-0">
+                            <div className="p-4 rounded-xl border border-zinc-800/50 bg-zinc-900/40 flex items-start gap-3">
+                                <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-zinc-400 text-xs">{chatStatus || 'Выполнение...'}</span>
+                                        {currentIteration > 1 && (
+                                            <span className="text-[10px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded-full border border-zinc-700 font-mono">
+                                                Шаг {currentIteration}
+                                            </span>
+                                        )}
+                                        {streamStartTime && <ElapsedTimer startTime={streamStartTime} />}
+                                    </div>
+                                    <WaitingStatusNotice chatStatus={chatStatus} />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input Area */}
+            <div className="px-6 pb-6 pt-4 bg-[#09090b] border-t border-[#27272a] shadow-2xl z-10">
+                {/* Context Stats Overlay */}
+                <div className="max-w-4xl mx-auto mb-3 flex items-center justify-between px-1">
+                    {messages.length === 0 ? (
+                        <div className="flex items-center gap-2 text-[11px] text-zinc-600 italic transition-all duration-500">
+                            <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
+                            <span>
+                                {bindingStatus === 'resolved' || bindingStatus === 'rebound'
+                                    ? 'Окно выбрано'
+                                    : bindingStatus === 'missing'
+                                        ? 'Ждём возвращения выбранного Конфигуратора'
+                                        : bindingStatus === 'ambiguous'
+                                            ? 'Нужно заново выбрать окно Конфигуратора'
+                                            : 'Выберите окно Конфигуратора снизу'}
+                            </span>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-3">
+                            {/* Actions removed */}
+                        </div>
+                    )}
+
+                    <ContextChips
+                        codeContext={contextCode || modifiedCode}
+                        isSelection={isContextSelection}
+                        diagnostics={diagnostics}
+                        configuratorCtx={configuratorTitleCtx}
+                        onRemoveCode={handleRemoveCodeContext}
+                    />
+                </div>
+                <QueuedMessages
+                    queue={messageQueue}
+                    onRemove={removeQueuedMessage}
+                    onUpdate={updateQueuedMessage}
+                    onClearAll={clearQueue}
+                />
+                <ContextUsageBar
+                    onNewChat={clearChat}
+                    profileId={activeProfileId ?? undefined}
+                    chatId={activeSessionId}
+                    configuredContextWindow={activeProfile?.max_tokens}
+                    isLoading={isLoading}
+                />
+                <SearchProfileBar />
+                <div className="relative bg-[#18181b] border border-[#27272a] rounded-xl focus-within:ring-1 focus-within:ring-blue-500/50 transition-all min-h-[120px] flex flex-col max-w-4xl mx-auto">
+
+                    <textarea
+                        ref={inputRef}
+                        data-testid="chat-textarea"
+                        value={input}
+                        onChange={handleInputChange}
+                        onKeyDown={handleKeyDown}
+                        placeholder="Опишите задачу, вставьте код или введите / для команд..."
+                        className="w-full h-full bg-transparent text-zinc-300 px-4 py-3 resize-none focus:outline-none placeholder-zinc-600 text-[13px] font-sans leading-relaxed flex-1"
+                        style={{ fontFamily: 'Inter, sans-serif' }}
+                    />
+
+                    {showCommands && filteredCommands.length > 0 && (
+                        <CommandMenu
+                            commands={filteredCommands}
+                            onSelect={handleSelectCommand}
+                            onClose={() => setShowCommands(false)}
+                            anchorRect={inputRef.current?.getBoundingClientRect() || null}
+                        />
+                    )}
+
+                    <div ref={dropdownRef} className="px-3 pb-2 pt-0 flex items-end gap-2 pointer-events-auto flex-nowrap w-full">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            {/* Кнопка [+] (Опции) */}
+                            <div className="relative">
+                                <button
+                                    data-testid="profile-selector-trigger"
+                                    onClick={() => setShowModelDropdown(!showModelDropdown)}
+                                    className="h-8 w-12 flex items-center justify-center gap-1 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 transition-all active:scale-95 flex-shrink-0"
+                                    title="Настройки профиля и генерации"
+                                >
+                                    {(() => {
+                                        const behavior = settings?.code_generation?.behavior_preset;
+                                        if (behavior === 'maintenance') return <HardHat className="w-4 h-4 text-orange-400" />;
+                                        if (behavior === 'project') return <User className="w-4 h-4 text-blue-400" />;
+                                        return <Brain className="w-4 h-4 text-blue-400" />;
+                                    })()}
+                                    <MoreHorizontal className="w-3.5 h-3.5 text-zinc-500" />
+                                </button>
+
+                                {showModelDropdown && (
+                                    <div className="absolute bottom-full left-0 mb-2 w-64 bg-[#09090b] border border-[#27272a] rounded-xl shadow-2xl z-50 overflow-hidden py-1 animate-in slide-in-from-bottom-2 duration-200">
+                                        {/* Behavior Preset Toggle (Перенесено в меню) */}
+                                        {settings?.code_generation && (
+                                            <>
+                                                <div className="px-3 py-1.5 border-b border-[#27272a] mb-1">
+                                                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Режим генерации</span>
+                                                </div>
+                                                <div className="px-3 py-1 flex gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            updateSettings({
+                                                                ...settings,
+                                                                code_generation: {
+                                                                    ...settings.code_generation,
+                                                                    behavior_preset: 'project'
+                                                                }
+                                                            });
+                                                        }}
+                                                        className={`flex-1 flex items-center justify-center gap-1.5 p-2 rounded-md text-[11px] font-bold transition-all ${settings.code_generation.behavior_preset === 'project'
+                                                            ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30 shadow-sm'
+                                                            : 'bg-zinc-800/50 text-zinc-500 hover:bg-zinc-800'
+                                                            }`}
+                                                    >
+                                                        <User className="w-3.5 h-3.5" /> СВОЙ
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            updateSettings({
+                                                                ...settings,
+                                                                code_generation: {
+                                                                    ...settings.code_generation,
+                                                                    behavior_preset: 'maintenance'
+                                                                }
+                                                            });
+                                                        }}
+                                                        className={`flex-1 flex items-center justify-center gap-1.5 p-2 rounded-md text-[11px] font-bold transition-all ${settings.code_generation.behavior_preset === 'maintenance'
+                                                            ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30 shadow-sm'
+                                                            : 'bg-zinc-800/50 text-zinc-500 hover:bg-zinc-800'
+                                                            }`}
+                                                    >
+                                                        <HardHat className="w-3.5 h-3.5" /> ЧУЖОЙ
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+
+                                        <div className="px-3 py-1.5 border-b border-[#27272a] mb-1 mt-1">
+                                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Ваши профили</span>
+                                        </div>
+                                        <div className="max-h-[250px] overflow-y-auto custom-scrollbar">
+                                            {profiles.filter(p => getCliProviderType(p.provider) === null && p.provider !== 'OneCNaparnik' && !isOllamaCloudProfile(p)).length > 0 && (
+                                                <>
+                                                    <div className="px-3 py-1.5 border-b border-[#27272a] mb-1 sticky top-0 bg-[#09090b] z-10">
+                                                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Стандартные ассистенты</span>
+                                                    </div>
+                                                    {profiles.filter(p => getCliProviderType(p.provider) === null && p.provider !== 'OneCNaparnik' && !isOllamaCloudProfile(p)).map(p => (
+                                                        <div
+                                                            key={p.id}
+                                                            data-testid={`profile-item-${p.id}`}
+                                                            data-profile-active={activeProfileId === p.id ? 'true' : 'false'}
+                                                            className={`group px-3 py-2 flex items-center justify-between cursor-pointer transition-colors ${activeProfileId === p.id ? 'bg-blue-500/10' : 'hover:bg-zinc-800/50'}`}
+                                                            onClick={() => {
+                                                                setActiveProfile(p.id);
+                                                                setShowModelDropdown(false);
+                                                            }}
+                                                        >
+                                                            <div className="flex flex-col gap-0.5 min-w-0">
+                                                                <span className={`text-[12px] font-semibold truncate ${activeProfileId === p.id ? 'text-blue-400' : 'text-zinc-200'}`}>{p.name}</span>
+                                                                <span className="text-[10px] text-zinc-500 truncate">{formatProfileSummary(p)}</span>
+                                                            </div>
+                                                            {activeProfileId === p.id && <Check className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />}
+                                                        </div>
+                                                    ))}
+                                                </>
+                                            )}
+                                            {profiles.filter(p => getCliProviderType(p.provider) !== null).length > 0 && (
+                                                <>
+                                                    <div className="px-3 py-1.5 border-b border-[#27272a] mt-1 mb-1 sticky top-0 bg-[#09090b] z-10">
+                                                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">CLI Провайдеры</span>
+                                                    </div>
+                                                    {profiles.filter(p => getCliProviderType(p.provider) !== null).map(p => {
+                                                        const cliProvider = getCliProviderType(p.provider);
+                                                        if (!cliProvider) return null;
+                                                        const status = cliStatuses[p.id];
+                                                        const isAuthenticated = status?.is_authenticated ?? false;
+                                                        const isCodex = cliProvider === 'codex';
+                                                        const activeRowClass = isCodex ? 'bg-blue-500/10' : 'bg-amber-500/10';
+                                                        const activeTextClass = isCodex ? 'text-blue-400' : 'text-amber-400';
+                                                        const activeCheckClass = isCodex ? 'text-blue-500' : 'text-amber-500';
+                                                        return (
+                                                            <div
+                                                                key={p.id}
+                                                                data-testid={`profile-item-${p.id}`}
+                                                                data-profile-active={activeProfileId === p.id ? 'true' : 'false'}
+                                                                className={`group px-3 py-2 flex items-center justify-between cursor-pointer transition-colors ${activeProfileId === p.id ? activeRowClass : 'hover:bg-zinc-800/50'}`}
+                                                                onClick={() => {
+                                                                    if (!isAuthenticated) {
+                                                                        setActiveProfile(p.id);
+                                                                        setAuthModalProvider(cliProvider);
+                                                                    } else {
+                                                                        setActiveProfile(p.id);
+                                                                        setShowModelDropdown(false);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <div className="flex flex-col gap-0.5 min-w-0">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className={`text-[12px] font-semibold truncate ${activeProfileId === p.id ? activeTextClass : 'text-zinc-200'}`}>{p.name}</span>
+                                                                        {!isAuthenticated && <span className="text-[9px] bg-red-500/20 text-red-500 px-1 rounded border border-red-500/20">Login required</span>}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-[10px] text-zinc-500 truncate">{isCodex ? formatProfileSummary(p) : p.model}</span>
+                                                                        {isAuthenticated && formatCliUsageSummary(status, isCodex) && (
+                                                                            <span className="text-[9px] text-zinc-600 font-mono">
+                                                                                {formatCliUsageSummary(status, isCodex)}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    {activeProfileId === p.id && <Check className={`w-3.5 h-3.5 ${activeCheckClass} flex-shrink-0`} />}
+                                                                    <Terminal className="w-3 h-3 text-zinc-700" />
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </>
+                                            )}
+                                            {profiles.filter(p => p.provider === 'OneCNaparnik').length > 0 && (
+                                                <>
+                                                    <div className="px-3 py-1.5 border-b border-[#27272a] mt-1 mb-1 sticky top-0 bg-[#09090b] z-10">
+                                                        <span className="text-[10px] font-bold text-orange-500/70 uppercase tracking-wider">1С:Напарник</span>
+                                                    </div>
+                                                    {profiles.filter(p => p.provider === 'OneCNaparnik').map(p => (
+                                                        <div
+                                                            key={p.id}
+                                                            data-testid={`profile-item-${p.id}`}
+                                                            data-profile-active={activeProfileId === p.id ? 'true' : 'false'}
+                                                            className={`group px-3 py-2 flex items-center justify-between cursor-pointer transition-colors ${activeProfileId === p.id ? 'bg-orange-500/10' : 'hover:bg-zinc-800/50'}`}
+                                                            onClick={() => {
+                                                                setActiveProfile(p.id);
+                                                                setShowModelDropdown(false);
+                                                            }}
+                                                        >
+                                                            <div className="flex flex-col gap-0.5 min-w-0">
+                                                                <span className={`text-[12px] font-semibold truncate ${activeProfileId === p.id ? 'text-orange-400' : 'text-zinc-200'}`}>{p.name}</span>
+                                                                <span className="text-[10px] text-zinc-500 truncate">code.1c.ai</span>
+                                                            </div>
+                                                            {activeProfileId === p.id && <Check className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />}
+                                                        </div>
+                                                    ))}
+                                                </>
+                                            )}
+                                            {profiles.filter(isOllamaCloudProfile).length > 0 && (
+                                                <>
+                                                    <div className="px-3 py-1.5 border-b border-[#27272a] mt-1 mb-1 sticky top-0 bg-[#09090b] z-10">
+                                                        <span className="text-[10px] font-bold text-cyan-500/70 uppercase tracking-wider">Ollama Cloud</span>
+                                                    </div>
+                                                    {profiles.filter(isOllamaCloudProfile).map(p => (
+                                                        <div
+                                                            key={p.id}
+                                                            data-testid={`profile-item-${p.id}`}
+                                                            data-profile-active={activeProfileId === p.id ? 'true' : 'false'}
+                                                            className={`group px-3 py-2 flex items-center justify-between cursor-pointer transition-colors ${activeProfileId === p.id ? 'bg-cyan-500/10' : 'hover:bg-zinc-800/50'}`}
+                                                            onClick={() => {
+                                                                setActiveProfile(p.id);
+                                                                setShowModelDropdown(false);
+                                                            }}
+                                                        >
+                                                            <div className="flex flex-col gap-0.5 min-w-0">
+                                                                <span className={`text-[12px] font-semibold truncate ${activeProfileId === p.id ? 'text-cyan-400' : 'text-zinc-200'}`}>{p.name}</span>
+                                                                <span className="text-[10px] text-zinc-500 truncate">{p.model || 'ollama.com'}</span>
+                                                            </div>
+                                                            {activeProfileId === p.id && <Check className="w-3.5 h-3.5 text-cyan-500 flex-shrink-0" />}
+                                                        </div>
+                                                    ))}
+                                                </>
+                                            )}
+                                        </div>
+                                        <div className="p-2 border-t border-[#27272a] mt-1">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onOpenSettings?.('llm');
+                                                    setShowModelDropdown(false);
+                                                }}
+                                                className="w-full py-1.5 px-3 flex items-center justify-center gap-2 text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50 rounded-lg transition-all"
+                                            >
+                                                <Settings className="w-3.5 h-3.5" /> Настроить профили
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+
+                            {/* Объединенный Конфигуратор & Код */}
+                            <div className="relative flex-shrink-0" id="tour-get-code">
+                                <button onClick={() => {
+                                    const next = !showConfigDropdown;
+                                    setShowConfigDropdown(next);
+                                    if (next) {
+                                        setShowModelDropdown(false);
+                                        refreshWindows();
+                                    }
+                                }}
+                                    className={`flex-shrink-0 flex items-center gap-1.5 text-[12px] font-medium px-2.5 h-8 rounded-xl transition-all border border-transparent ${showConfigDropdown ? 'bg-zinc-800 text-zinc-200 border-zinc-700' : 'bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
+                                    title="Выбор Конфигуратора и работа с кодом"
+                                >
+                                    <Monitor className="w-4 h-4 text-emerald-400" />
+                                    <span className="hidden sm:inline max-w-[150px] truncate block">{activeConfigTitle || 'Конфигуратор'}</span>
+                                    <ChevronDown className={`w-3 h-3 transition-transform duration-200 ml-1 ${showConfigDropdown ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                {showConfigDropdown && (
+                                    <div className="absolute bottom-full left-0 mb-2 w-72 bg-[#1f1f23] border border-[#27272a] rounded-xl shadow-2xl z-30 ring-1 ring-black/20 flex flex-col overflow-hidden animate-in slide-in-from-bottom-2 duration-200">
+
+                                        {/* Секция выбора окон */}
+                                        <div className="px-3 py-2 border-b border-[#27272a] bg-[#09090b]">
+                                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5"><Monitor className="w-3 h-3" /> Окна конфигуратора</span>
+                                        </div>
+                                        {bindingMessage && (
+                                            <div className={`px-3 py-2 text-[11px] border-b border-[#27272a] ${bindingStatus === 'missing' || bindingStatus === 'ambiguous' ? 'text-amber-300 bg-amber-500/10' : 'text-zinc-400 bg-[#18181b]'}`}>
+                                                {bindingMessage}
+                                            </div>
+                                        )}
+                                        <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-1">
+                                            {detectedWindows.length > 0 ? detectedWindows.map(w => (
+                                                <button key={w.hwnd} onClick={() => { selectWindow(w); }}
+                                                    className={`w-full text-left px-3 py-2 rounded-md text-[13px] truncate transition-colors ${selectedHwnd === w.hwnd ? 'bg-emerald-500/10 text-emerald-400 font-medium' : 'text-zinc-400 hover:bg-[#27272a] hover:text-zinc-200'}`}
+                                                    title={w.title}
+                                                >
+                                                    {parseConfiguratorTitle(w.title)}
+                                                </button>
+                                            )) : (
+                                                <div className="px-3 py-4 text-center text-[12px] text-zinc-500">
+                                                    Окна не найдены
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Секция действий с кодом */}
+                                        <div className="border-t border-[#27272a] bg-[#18181b] p-1 flex flex-col gap-0.5">
+                                            <button onClick={() => { handleLoadCode(true); setShowConfigDropdown(false); }} disabled={!selectedHwnd} className="flex items-center gap-2 px-3 py-2.5 text-[12px] font-medium text-zinc-300 hover:text-white hover:bg-emerald-500/20 hover:border-emerald-500/20 border border-transparent transition-all rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
+                                                <FileText className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                                                <span>Получить модуль целиком</span>
+                                            </button>
+                                            <button onClick={() => { handleLoadCode(false); setShowConfigDropdown(false); }} disabled={!selectedHwnd} className="flex items-center gap-2 px-3 py-2.5 text-[12px] font-medium text-zinc-300 hover:text-white hover:bg-emerald-500/20 hover:border-emerald-500/20 border border-transparent transition-all rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
+                                                <MousePointerClick className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                                                <span>Получить выделенный фрагмент</span>
+                                            </button>
+                                        </div>
+
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Правый блок кнопок (зафиксирован) */}
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <VoiceInputControl
+                                onText={appendVoiceText}
+                                selectedHwnd={selectedHwnd}
+                                disabled={isLoading}
+                                variant="chat"
+                            />
+                            {false && (
+                                <div className="relative">
+                                    {false && (
+                                        <div className="absolute bottom-full right-0 mb-4 w-64 p-3 bg-blue-600 text-white text-xs rounded-xl shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300 z-50">
+                                            <div className="font-bold mb-1 flex items-center gap-2">
+                                                <Mic className="w-3 h-3" />
+                                                Нужно разрешение
+                                            </div>
+                                            Нажмите "Разрешить" в появившемся окне браузера в верхнем левом углу для доступа к микрофону.
+                                            <div className="absolute top-full right-4 w-3 h-3 bg-blue-600 rotate-45 -translate-y-1.5" />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* MCP Tools popover button — always visible */}
+                            <div className="relative">
+                                <button
+                                    onClick={() => {
+                                        setShowToolsPopover(prev => !prev);
+                                        setShowModelDropdown(false);
+                                    }}
+                                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-all"
+                                    title="MCP Tools"
+                                >
+                                    <Wrench className="w-4 h-4" />
+                                </button>
+                                {showToolsPopover && (
+                                    <McpToolsPopover
+                                        onToolSelect={(toolName: string) => {
+                                            const textarea = inputRef.current;
+                                            if (!textarea) {
+                                                setInput(prev => (prev ? prev + ` @${toolName} ` : `@${toolName} `));
+                                            } else {
+                                                const start = textarea.selectionStart ?? textarea.value.length;
+                                                const end = textarea.selectionEnd ?? textarea.value.length;
+                                                const before = input.slice(0, start);
+                                                const after = input.slice(end);
+                                                const insertion = `@${toolName} `;
+                                                const next = before + insertion + after;
+                                                setInput(next);
+                                                setTimeout(() => {
+                                                    textarea.focus();
+                                                    const pos = start + insertion.length;
+                                                    textarea.setSelectionRange(pos, pos);
+                                                }, 0);
+                                            }
+                                            setShowToolsPopover(false);
+                                        }}
+                                        onClose={() => setShowToolsPopover(false)}
+                                    />
+                                )}
+                            </div>
+
+                            <button
+                                data-testid="send-stop-button"
+                                onClick={isLoading ? stopChat : () => handleSendMessage()}
+                                disabled={!isLoading && !input.trim()}
+                                className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors flex-shrink-0 ${isLoading ? 'bg-red-500/10 text-red-400' : input.trim() ? 'bg-blue-600 text-white' : 'bg-[#27272a] text-zinc-600'}`}
+                            >
+                                {isLoading ? <Square className="w-4 h-4 fill-current" /> : <ArrowUp className="w-4 h-4" strokeWidth={2.5} />}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {authModalProvider === 'qwen' && (
+                <QwenAuthModal
+                    isOpen={true}
+                    onClose={() => {
+                        setAuthModalProvider(null);
+                        fetchCliStatuses();
+                    }}
+                    onSuccess={(access_token, refresh_token, expires_at, resource_url) =>
+                        handleCliAuthSuccess('qwen', access_token, refresh_token, expires_at, resource_url)
+                    }
+                />
+            )}
+
+            {authModalProvider === 'codex' && (
+                <CodexAuthModal
+                    isOpen={true}
+                    onClose={() => {
+                        setAuthModalProvider(null);
+                        fetchCliStatuses();
+                    }}
+                    onSuccess={(access_token, refresh_token, expires_at, resource_url) =>
+                        handleCliAuthSuccess('codex', access_token, refresh_token, expires_at, resource_url)
+                    }
+                />
+            )}
+        </div >
+    );
+});

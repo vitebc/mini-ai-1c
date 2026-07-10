@@ -1,0 +1,1850 @@
+import { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
+import { Database, Link2, Key, ShieldCheck, Activity, CheckCircle2, AlertCircle, Plus, Trash2, Globe, Settings2, Terminal, Cpu, FileText, X, Sparkles, FolderOpen, ChevronDown, Code, Wrench } from 'lucide-react';
+import McpToolsView from '../CodeSidePanel/McpToolsView';
+import { isBuiltinNodeLauncher, normalizeNodePath } from '../../utils/mcpNodePath';
+import {
+    BUILTIN_1C_SEARCH_ID,
+    SEARCH_PROFILES_ENV,
+    SEARCH_ACTIVE_PROFILE_ENV,
+    normalizeSearchProfiles,
+    buildSearchEnv,
+    type SearchConfigProfile,
+    type SearchExtensionProfile,
+} from '../../utils/searchProfiles';
+
+// ── Benchmark Panel ───────────────────────────────────────────────────────────
+
+interface BenchmarkRow {
+    tool: string;
+    description: string;
+    min_ms: number;
+    avg_ms: number;
+    p95_ms: number;
+    max_ms: number;
+    n: number;
+}
+
+function ratingDot(ms: number) {
+    if (ms <= 5)   return <span className="text-green-400" title="Отлично">●</span>;
+    if (ms <= 50)  return <span className="text-yellow-400" title="Хорошо">●</span>;
+    if (ms <= 500) return <span className="text-orange-400" title="Приемлемо">●</span>;
+    return <span className="text-red-400" title="Медленно">●</span>;
+}
+
+function BenchmarkPanel({ result, loading, onClose }: { result: Record<string, any> | null; loading: boolean; onClose: () => void }) {
+    const rows: BenchmarkRow[] = result?.results ?? [];
+    const [copied, setCopied] = useState(false);
+
+    const toMarkdown = () => {
+        if (!result) return '';
+        const header = [
+            `## mcp-1c-search Benchmark`,
+            ``,
+            `**Символов в индексе**: ${result.symbol_count?.toLocaleString('ru-RU') ?? '—'}`,
+            `**Размер БД**: ${result.db_size_mb} МБ`,
+            `**Итераций**: ${result.iterations}`,
+            `**Пример символа**: \`${result.sample_symbol}\``,
+            ``,
+            `| Инструмент | Мин | Среднее | P95 | Макс | N |`,
+            `|---|---:|---:|---:|---:|---:|`,
+        ].join('\n');
+        const body = rows.map(r =>
+            `| ${r.tool} | ${r.min_ms} мс | ${r.avg_ms} мс | ${r.p95_ms} мс | ${r.max_ms} мс | ${r.n} |`
+        ).join('\n');
+        return header + '\n' + body;
+    };
+
+    const handleCopyMd = () => {
+        const md = toMarkdown();
+        if (!md) return;
+        const doFallback = () => {
+            const ta = document.createElement('textarea');
+            ta.value = md;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        };
+        if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(md)
+                .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })
+                .catch(doFallback);
+        } else {
+            doFallback();
+        }
+    };
+
+    if (loading) return (
+        <div className="mt-2 rounded-lg border border-zinc-700/50 bg-zinc-900/50 p-4 text-center text-[11px] text-zinc-500">
+            <Activity className="w-4 h-4 animate-spin inline mr-2" />
+            Замер производительности ({20} итераций × {8} инструментов)...
+        </div>
+    );
+
+    if (!result) return null;
+
+    if (result.error) return (
+        <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/5 p-3 flex items-start gap-2">
+            <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+                <p className="text-[10px] text-red-300 font-medium">Ошибка бенчмарка</p>
+                <p className="text-[10px] text-red-400/70 font-mono mt-0.5 break-all">{result.error}</p>
+            </div>
+            <button onClick={onClose} className="ml-auto p-0.5 text-zinc-500 hover:text-zinc-300 shrink-0"><X className="w-3 h-3" /></button>
+        </div>
+    );
+
+    return (
+        <div className="mt-2 rounded-lg border border-zinc-700/50 bg-zinc-900/60 overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-700/50">
+                <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-wide">
+                    Benchmark · {result.symbol_count?.toLocaleString('ru-RU')} символов · {result.db_size_mb} МБ
+                </span>
+                <div className="flex items-center gap-1">
+                    <button
+                        onClick={handleCopyMd}
+                        className={`px-2 py-0.5 text-[9px] font-mono rounded transition ${copied ? 'bg-green-700 text-green-200' : 'bg-zinc-700 hover:bg-zinc-600 text-zinc-300'}`}
+                        title="Скопировать как Markdown"
+                    >{copied ? '✓ Скопировано' : 'MD'}</button>
+                    <button onClick={onClose} className="p-0.5 text-zinc-500 hover:text-zinc-300 transition">
+                        <X className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+            </div>
+            <table className="w-full text-[10px]">
+                <thead>
+                    <tr className="text-zinc-500 border-b border-zinc-800">
+                        <th className="text-left px-3 py-1.5 font-medium">Инструмент</th>
+                        <th className="text-right px-2 py-1.5 font-medium">Мин</th>
+                        <th className="text-right px-2 py-1.5 font-medium">Среднее</th>
+                        <th className="text-right px-2 py-1.5 font-medium">P95</th>
+                        <th className="text-right px-2 py-1.5 font-medium">Макс</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((r, i) => (
+                        <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                            <td className="px-3 py-1.5 text-zinc-300 font-mono" title={r.description}>
+                                {ratingDot(r.avg_ms)} {r.tool}
+                            </td>
+                            <td className="px-2 py-1.5 text-right text-zinc-400 font-mono">{r.min_ms} мс</td>
+                            <td className="px-2 py-1.5 text-right font-mono font-bold text-zinc-200">{r.avg_ms} мс</td>
+                            <td className="px-2 py-1.5 text-right text-zinc-400 font-mono">{r.p95_ms} мс</td>
+                            <td className="px-2 py-1.5 text-right text-zinc-500 font-mono">{r.max_ms} мс</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+            <div className="px-3 py-1.5 text-[9px] text-zinc-600">
+                ● ≤5мс отлично · ≤50мс хорошо · ≤500мс приемлемо · &gt;500мс медленно · итераций: {result.iterations}
+            </div>
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type McpTransport = 'http' | 'stdio' | 'internal';
+
+export interface McpServerConfig {
+    id: string;
+    name: string;
+    enabled: boolean;
+    transport: McpTransport;
+    // HTTP specific
+    url?: string | null;
+    login?: string | null;
+    password?: string | null;
+    // Stdio specific
+    command?: string | null;
+    args?: string[] | null;
+    env?: Record<string, string> | null;
+    headers?: Record<string, string> | null;
+}
+
+export interface McpServerStatus {
+    id: string;
+    name: string;
+    status: string;
+    transport: string;
+    // 1С:Справка — поля прогресса индексации
+    index_progress?: number;     // 0-100 (%)
+    index_message?: string;      // Сообщение прогресса
+    help_status?: string;        // 'unavailable' | 'indexing' | 'ready' | ''
+    last_checked?: number;       // unix timestamp of last health check, 0 = never
+}
+
+interface MCPSettingsProps {
+    servers: McpServerConfig[];
+    nodePath: string;
+    searchIndexDir: string;
+    bslEnabled?: boolean;
+    onUpdate: (servers: McpServerConfig[]) => void;
+    onSearchIndexDirChange: (path: string) => void;
+}
+
+const BUILTIN_1C_SERVER_ID = 'builtin-1c-naparnik';
+const BUILTIN_1C_METADATA_ID = 'builtin-1c-metadata';
+const BUILTIN_BSL_LS_ID = 'bsl-ls';
+const BUILTIN_1C_HELP_ID = 'builtin-1c-help';
+
+const makeProfileId = (prefix: string) =>
+    `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+
+export function MCPSettings({
+    servers,
+    nodePath,
+    searchIndexDir,
+    bslEnabled,
+    onUpdate,
+    onSearchIndexDirChange,
+}: MCPSettingsProps) {
+    const [testingId, setTestingId] = useState<string | null>(null);
+    const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string }>>({});
+    const [statuses, setStatuses] = useState<Record<string, McpServerStatus>>({});
+    const [viewingLogsId, setViewingLogsId] = useState<string | null>(null);
+    const [viewingToolsId, setViewingToolsId] = useState<string | null>(null);
+    const [logs, setLogs] = useState<string[]>([]);
+    const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+    const [smartImportId, setSmartImportId] = useState<string | null>(null);
+    const [smartImportUrl, setSmartImportUrl] = useState('');
+    const [searchPathHistory, setSearchPathHistory] = useState<string[]>(() => {
+        try {
+            return JSON.parse(localStorage.getItem('mcp_search_path_history') || '[]');
+        } catch { return []; }
+    });
+    const [showSearchHistory, setShowSearchHistory] = useState(false);
+    const [showJsonImport, setShowJsonImport] = useState(false);
+    const [jsonImportText, setJsonImportText] = useState('');
+    const [jsonImportError, setJsonImportError] = useState<string | null>(null);
+    const [benchmarkResult, setBenchmarkResult] = useState<Record<string, any> | null>(null);
+    const [isBenchmarking, setIsBenchmarking] = useState(false);
+    const effectiveNodePath = normalizeNodePath(nodePath);
+
+    const addToSearchHistory = (path: string) => {
+        if (!path.trim()) return;
+        setSearchPathHistory(prev => {
+            const updated = [path, ...prev.filter(p => p !== path)].slice(0, 10);
+            localStorage.setItem('mcp_search_path_history', JSON.stringify(updated));
+            return updated;
+        });
+    };
+    const removeFromSearchHistory = (path: string) => {
+        setSearchPathHistory(prev => {
+            const updated = prev.filter(p => p !== path);
+            localStorage.setItem('mcp_search_path_history', JSON.stringify(updated));
+            return updated;
+        });
+    };
+
+    // Ensure pre-installed servers exist
+    useEffect(() => {
+        const naparnikArgs = ['mcp-servers/1c-naparnik.cjs'];
+        const metadataArgs = ['mcp-servers/1c-metadata.cjs'];
+        const helpArgs = ['mcp-servers/1c-help.cjs'];
+
+        let updatedServers = [...servers];
+        let needsUpdate = false;
+
+        // Check Naparnik
+        const naparnikIndex = updatedServers.findIndex(s => s.id === BUILTIN_1C_SERVER_ID);
+        if (naparnikIndex === -1) {
+            updatedServers.push({
+                id: BUILTIN_1C_SERVER_ID,
+                name: '1C:Напарник',
+                enabled: false,
+                transport: 'stdio',
+                command: effectiveNodePath,
+                args: naparnikArgs,
+                env: { 'ONEC_AI_TOKEN': '' }
+            });
+            needsUpdate = true;
+        } else {
+            const srv = updatedServers[naparnikIndex];
+            const isSupportedCmd = isBuiltinNodeLauncher(srv.command, effectiveNodePath);
+            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(naparnikArgs)) {
+                updatedServers[naparnikIndex] = { ...srv, command: effectiveNodePath, args: naparnikArgs };
+                needsUpdate = true;
+            }
+        }
+
+        // Check Metadata
+        const metadataIndex = updatedServers.findIndex(s => s.id === BUILTIN_1C_METADATA_ID);
+        if (metadataIndex === -1) {
+            updatedServers.push({
+                id: BUILTIN_1C_METADATA_ID,
+                name: '1C:Метаданные',
+                enabled: false,
+                transport: 'stdio',
+                command: effectiveNodePath,
+                args: metadataArgs,
+                env: { 'ONEC_METADATA_URL': 'http://localhost/base/hs/mcp', 'ONEC_USERNAME': '', 'ONEC_PASSWORD': '' }
+            });
+            needsUpdate = true;
+        } else {
+            const srv = updatedServers[metadataIndex];
+            const isSupportedCmd = isBuiltinNodeLauncher(srv.command, effectiveNodePath);
+            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(metadataArgs)) {
+                updatedServers[metadataIndex] = { ...srv, command: effectiveNodePath, args: metadataArgs };
+                needsUpdate = true;
+            }
+        }
+
+        // Check BSL LS
+        const bslIndex = updatedServers.findIndex(s => s.id === BUILTIN_BSL_LS_ID);
+        if (bslIndex === -1) {
+            updatedServers.push({
+                id: BUILTIN_BSL_LS_ID,
+                name: 'BSL Language Server',
+                enabled: false,
+                transport: 'internal',
+            });
+            needsUpdate = true;
+        }
+
+        // Check 1С:Справка
+        const helpIndex = updatedServers.findIndex(s => s.id === BUILTIN_1C_HELP_ID);
+        if (helpIndex === -1) {
+            updatedServers.push({
+                id: BUILTIN_1C_HELP_ID,
+                name: '1С:Справка',
+                enabled: false,
+                transport: 'stdio',
+                command: effectiveNodePath,
+                args: helpArgs,
+                env: { 'ONEC_HELP_PATH': '' },
+            });
+            needsUpdate = true;
+        } else {
+            const srv = updatedServers[helpIndex];
+            const isSupportedCmd = isBuiltinNodeLauncher(srv.command, effectiveNodePath);
+            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(helpArgs)) {
+                updatedServers[helpIndex] = { ...srv, command: effectiveNodePath, args: helpArgs };
+                needsUpdate = true;
+            }
+        }
+
+        // Check 1С:Поиск по конфигурации
+        const searchIdx = updatedServers.findIndex(s => s.id === BUILTIN_1C_SEARCH_ID);
+        if (searchIdx === -1) {
+            updatedServers.push({
+                id: BUILTIN_1C_SEARCH_ID,
+                name: '1С:Поиск по конфигурации',
+                enabled: false,
+                transport: 'stdio',
+                command: 'mcp-1c-search.exe',
+                args: null,
+                env: {
+                    'ONEC_CONFIG_PATH': '',
+                    [SEARCH_ACTIVE_PROFILE_ENV]: 'default',
+                    [SEARCH_PROFILES_ENV]: JSON.stringify([{
+                        id: 'default',
+                        name: 'Основная конфигурация',
+                        main_path: '',
+                        extensions: [],
+                    }]),
+                },
+            });
+            needsUpdate = true;
+        } else {
+            const srv = updatedServers[searchIdx];
+            const isExe = srv.command === 'mcp-1c-search.exe' || (srv.command || '').endsWith('mcp-1c-search.exe');
+            if (!isExe) {
+                updatedServers[searchIdx] = { ...srv, command: 'mcp-1c-search.exe', args: null };
+                needsUpdate = true;
+            }
+        }
+
+        // Сортируем серверы по нужному порядку карточек
+        const ORDER: Record<string, number> = {
+            [BUILTIN_BSL_LS_ID]: 0,
+            [BUILTIN_1C_HELP_ID]: 1,
+            [BUILTIN_1C_SEARCH_ID]: 2,
+            [BUILTIN_1C_SERVER_ID]: 3,
+            [BUILTIN_1C_METADATA_ID]: 4,
+        };
+
+        const originalIds = servers.map(s => s.id).join(',');
+        updatedServers.sort((a, b) => {
+            const oa = ORDER[a.id] ?? 99;
+            const ob = ORDER[b.id] ?? 99;
+            return oa - ob;
+        });
+        const sortedIds = updatedServers.map(s => s.id).join(',');
+
+        if (originalIds !== sortedIds) {
+            needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+            onUpdate(updatedServers);
+        }
+    }, [servers, onUpdate, effectiveNodePath]);
+
+    const fetchStatuses = async () => {
+        try {
+            const result = await invoke<McpServerStatus[]>('get_mcp_server_statuses');
+            const statusMap = result.reduce((acc, s) => ({ ...acc, [s.id]: s }), {} as Record<string, McpServerStatus>);
+            setStatuses(statusMap);
+        } catch (e) {
+            console.error("Failed to fetch statuses", e);
+        }
+    };
+
+    useEffect(() => {
+        fetchStatuses();
+        const interval = setInterval(fetchStatuses, 5000);
+        return () => clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        if (viewingLogsId) {
+            const fetchLogs = async () => {
+                setIsLoadingLogs(true);
+                try {
+                    const result = await invoke<string[]>('get_mcp_server_logs', { serverId: viewingLogsId });
+                    setLogs(result);
+                } catch (e) {
+                    console.error("Failed to fetch logs", e);
+                    setLogs(["Failed to fetch logs"]);
+                } finally {
+                    setIsLoadingLogs(false);
+                }
+            };
+            fetchLogs();
+            const interval = setInterval(fetchLogs, 2000);
+            return () => clearInterval(interval);
+        }
+    }, [viewingLogsId]);
+
+    const handleAddServer = () => {
+        const newServer: McpServerConfig = {
+            id: Math.random().toString(36).substring(2, 9),
+            name: 'New MCP Server',
+            enabled: false,
+            transport: 'http',
+            url: 'http://',
+        };
+        onUpdate([...servers, newServer]);
+    };
+
+    const handleRemoveServer = (id: string) => {
+        onUpdate(servers.filter(s => s.id !== id));
+    };
+
+    const handleUpdateServer = (id: string, updates: Partial<McpServerConfig>) => {
+        onUpdate(servers.map(s => s.id === id ? { ...s, ...updates } : s));
+    };
+
+    const handleTestConnection = async (config: McpServerConfig) => {
+        setTestingId(config.id);
+        try {
+            const result = await invoke<string>('test_mcp_connection', { config });
+            setTestResults(prev => ({ ...prev, [config.id]: { success: true, message: result } }));
+        } catch (e: any) {
+            setTestResults(prev => ({ ...prev, [config.id]: { success: false, message: e.toString() } }));
+        } finally {
+            setTestingId(null);
+            try { await fetchStatuses(); } catch { /* ignore */ }
+        }
+    };
+
+    const handleSmartImport = (id: string, urlStr: string) => {
+        const val = urlStr.trim();
+        if (!val) return;
+
+        try {
+            const url = new URL(val.startsWith('http') ? val : `http://${val}`);
+            const proto = url.protocol.replace(':', '');
+            const host = url.host;
+            const pathParts = url.pathname.split('/').filter(p => p && p !== 'hs' && p !== 'mcp');
+            const base = pathParts[0] || 'base';
+
+            const newUrl = `${proto}://${host}/${base}/hs/mcp`;
+            const server = servers.find(s => s.id === id);
+            if (server) {
+                const newEnv = {
+                    ...(server.env || {}),
+                    'ONEC_METADATA_URL': newUrl
+                };
+                handleUpdateServer(id, { env: newEnv });
+            }
+            setSmartImportId(null);
+            setSmartImportUrl('');
+        } catch (err) {
+            console.error("Invalid URL for smart import", err);
+        }
+    };
+
+    const handleJsonImport = () => {
+        setJsonImportError(null);
+        const text = jsonImportText.trim();
+        if (!text) return;
+
+        try {
+            const parsed = JSON.parse(text);
+            const toAdd: McpServerConfig[] = [];
+
+            // Detect format: { mcpServers: {...} } or { serverName: {...} } or single { command, args }
+            const serversMap: Record<string, any> = parsed.mcpServers ?? parsed;
+
+            if (typeof serversMap !== 'object' || Array.isArray(serversMap)) {
+                throw new Error('Ожидается объект с серверами');
+            }
+
+            // Single server config (has command or url directly, without a name key)
+            if ('command' in serversMap || 'url' in serversMap) {
+                toAdd.push({
+                    id: Math.random().toString(36).substring(2, 9),
+                    name: 'Imported MCP Server',
+                    enabled: false,
+                    transport: serversMap.url ? 'http' : 'stdio',
+                    command: serversMap.command ?? null,
+                    args: serversMap.args ?? null,
+                    env: serversMap.env ?? null,
+                    url: serversMap.url ?? null,
+                    headers: serversMap.headers ?? null,
+                });
+            } else {
+                // Map of servers: { "server-name": { command, args, env } }
+                for (const [name, config] of Object.entries(serversMap)) {
+                    if (typeof config !== 'object' || config === null) continue;
+                    const c = config as any;
+                    toAdd.push({
+                        id: Math.random().toString(36).substring(2, 9),
+                        name,
+                        enabled: false,
+                        transport: c.url ? 'http' : 'stdio',
+                        command: c.command ?? null,
+                        args: c.args ?? null,
+                        env: c.env ?? null,
+                        url: c.url ?? null,
+                        headers: c.headers ?? null,
+                    });
+                }
+            }
+
+            if (toAdd.length === 0) {
+                throw new Error('Не найдено ни одного сервера в JSON');
+            }
+
+            onUpdate([...servers, ...toAdd]);
+            setShowJsonImport(false);
+            setJsonImportText('');
+            setJsonImportError(null);
+        } catch (e: any) {
+            setJsonImportError(e.message || 'Ошибка парсинга JSON');
+        }
+    };
+
+    const sortedServers = [...servers].sort((a, b) => {
+        const builtinIds = [BUILTIN_BSL_LS_ID, BUILTIN_1C_HELP_ID, BUILTIN_1C_SEARCH_ID, BUILTIN_1C_SERVER_ID, BUILTIN_1C_METADATA_ID];
+        const aIdx = builtinIds.indexOf(a.id);
+        const bIdx = builtinIds.indexOf(b.id);
+
+        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+        if (aIdx !== -1) return -1;
+        if (bIdx !== -1) return 1;
+        return 0;
+    });
+
+    const isInternal = (transport: string) => transport.toLowerCase() === 'internal';
+
+    return (
+        <div className="space-y-6 relative">
+            <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium flex items-center gap-2">
+                    <Globe className="w-5 h-5 text-blue-500" />
+                    MCP Servers
+                </h3>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => { setShowJsonImport(true); setJsonImportText(''); setJsonImportError(null); }}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded-lg text-sm font-medium transition"
+                        title="Добавить сервер из JSON-конфига (формат Claude Desktop)"
+                    >
+                        <Code className="w-4 h-4" /> Импорт из JSON
+                    </button>
+                    <button
+                        onClick={handleAddServer}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition"
+                    >
+                        <Plus className="w-4 h-4" /> Добавить сервер
+                    </button>
+                </div>
+            </div>
+
+            {servers.length === 0 ? (
+                <div className="text-center py-12 bg-zinc-800/30 border border-zinc-700/50 border-dashed rounded-xl">
+                    <Database className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
+                    <p className="text-zinc-500 text-sm">Список серверов пуст. Добавьте первый сервер для начала работы.</p>
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    {sortedServers.map((server) => {
+                        const status = statuses[server.id];
+                        const isMetadata = server.id === BUILTIN_1C_METADATA_ID;
+                        const isBslLs = server.id === BUILTIN_BSL_LS_ID;
+                        const isHelp = server.id === BUILTIN_1C_HELP_ID;
+                        const isSearch = server.id === BUILTIN_1C_SEARCH_ID;
+                        const isBuiltin = server.id === BUILTIN_1C_SERVER_ID || isMetadata || isBslLs || isHelp || isSearch;
+                        const searchProfileState = isSearch ? normalizeSearchProfiles(server) : null;
+                        const searchActiveProfile = searchProfileState
+                            ? (searchProfileState.profiles.find(p => p.id === searchProfileState.activeId) || searchProfileState.profiles[0])
+                            : null;
+                        const searchConfigPath = isSearch ? (searchActiveProfile?.main_path?.trim() || server.env?.['ONEC_CONFIG_PATH']?.trim() || '') : '';
+                        const searchHelpStatus = isSearch ? (status?.help_status || '') : '';
+                        const isSearchUnavailable = isSearch && (!searchConfigPath || searchHelpStatus === 'unavailable');
+                        const effectiveStatus = isSearchUnavailable ? 'error' : status?.status;
+                        const isConnected = effectiveStatus === 'connected';
+                        const isUnknown = effectiveStatus === 'unknown';
+                        const isOffline = effectiveStatus === 'offline';
+                        const isError = effectiveStatus === 'error';
+                        const isStopped = effectiveStatus === 'stopped';
+                        const lastChecked = status?.last_checked || 0;
+                        const toolsDisabledReason = isSearchUnavailable
+                            ? (status?.index_message || 'Укажите корректный путь к выгрузке конфигурации 1С, затем повторите проверку.')
+                            : 'Показать инструменты MCP';
+
+                        return (
+                            <div
+                                key={server.id}
+                                className={`
+                                    rounded-xl overflow-hidden shadow-sm border transition-all duration-300
+                                    ${isBuiltin
+                                        ? `bg-gradient-to-br from-zinc-800/80 to-yellow-900/10 border-yellow-500/30 shadow-[0_0_15px_rgba(234,179,8,0.05)]`
+                                        : 'bg-zinc-800/50 border-zinc-700'
+                                    }
+                                `}
+                            >
+                                {/* Server Header */}
+                                <div className={`
+                                    px-4 py-3 border-b flex items-center justify-between gap-3 flex-wrap
+                                    ${isBuiltin
+                                        ? 'bg-yellow-500/5 border-yellow-500/20'
+                                        : 'bg-zinc-800/80 border-zinc-700'
+                                    }
+                                `}>
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div
+                                            className={`w-2 h-2 rounded-full shrink-0 transition-all duration-300 ${
+                                                !server.enabled
+                                                    ? 'bg-zinc-600'
+                                                    : isConnected
+                                                        ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'
+                                                        : isUnknown
+                                                            ? 'bg-amber-500'
+                                                            : 'bg-red-500 animate-pulse'
+                                            }`}
+                                            title={
+                                                !server.enabled
+                                                    ? "Disabled"
+                                                    : isConnected
+                                                        ? "Connected"
+                                                        : isUnknown
+                                                            ? "Not checked yet"
+                                                            : isOffline
+                                                                ? "Offline"
+                                                                : isError
+                                                                    ? "Error"
+                                                                    : "Stopped"
+                                            }
+                                        />
+
+                                        {isBuiltin ? (
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                {isMetadata ? <Database className="w-4 h-4 text-yellow-500 shrink-0" /> : isBslLs ? <Cpu className="w-4 h-4 text-yellow-500 shrink-0" /> : isHelp ? <FileText className="w-4 h-4 text-yellow-500 shrink-0" /> : isSearch ? <Terminal className="w-4 h-4 text-yellow-500 shrink-0" /> : <Sparkles className="w-4 h-4 text-yellow-500 shrink-0" />}
+                                                <span className="text-zinc-100 font-medium text-sm truncate">{server.name}</span>
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded border bg-yellow-500/10 text-yellow-400 border-yellow-500/20 whitespace-nowrap shrink-0">
+                                                    PRE-INSTALLED
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <input
+                                                type="text"
+                                                value={server.name}
+                                                onChange={(e) => handleUpdateServer(server.id, { name: e.target.value })}
+                                                className="bg-transparent border-none text-zinc-100 font-medium focus:ring-0 p-0 text-sm w-full min-w-[100px]"
+                                                placeholder="Название сервера"
+                                            />
+                                        )}
+
+                                        {server.enabled && (
+                                            <span
+                                                className={`text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap shrink-0 ${
+                                                    isConnected
+                                                        ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                                                        : isUnknown
+                                                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                            : 'bg-red-500/10 text-red-400 border-red-500/20'
+                                                }`}
+                                                title={lastChecked > 0 ? `Checked: ${new Date(lastChecked * 1000).toLocaleString()}` : 'Not checked yet'}
+                                            >
+                                                {isConnected
+                                                    ? 'LIVE'
+                                                    : isUnknown
+                                                        ? 'UNVERIFIED'
+                                                        : isOffline
+                                                            ? 'OFFLINE'
+                                                            : isError
+                                                                ? 'ERROR'
+                                                                : isStopped
+                                                                    ? 'STOPPED'
+                                                                    : 'OFFLINE'}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center gap-3 ml-auto">
+                                        {!isBuiltin && (
+                                            <div className="flex bg-zinc-900 rounded-lg p-0.5 border border-zinc-700">
+                                                <button
+                                                    onClick={() => handleUpdateServer(server.id, { transport: 'http' })}
+                                                    className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold transition ${server.transport === 'http' ? 'bg-zinc-700 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                                    title="HTTP Transport"
+                                                >
+                                                    HTTP
+                                                </button>
+                                                <button
+                                                    onClick={() => handleUpdateServer(server.id, { transport: 'stdio' })}
+                                                    className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold transition ${server.transport === 'stdio' ? 'bg-zinc-700 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                                    title="Stdio (Local command)"
+                                                >
+                                                    Stdio
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        <button
+                                            onClick={() => handleUpdateServer(server.id, { enabled: !server.enabled })}
+                                            className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors focus:outline-none ${server.enabled ? 'bg-blue-600' : 'bg-[#71717a]'}`}
+                                        >
+                                            <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform ${server.enabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                                        </button>
+
+                                        {!isBuiltin && (
+                                            <button
+                                                onClick={() => handleRemoveServer(server.id)}
+                                                className="p-1 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded transition"
+                                                title="Удалить"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Server Settings */}
+                                <div className={`p-4 space-y-4 transition-opacity ${!server.enabled ? 'opacity-60' : ''}`}>
+                                    {isBuiltin ? (
+                                        <div className="mt-0 space-y-4">
+                                            {server.id === BUILTIN_1C_SERVER_ID ? (
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <label className="text-[10px] text-zinc-500 uppercase font-bold flex items-center gap-1">
+                                                            <Key className="w-3 h-3" /> 1C.ai Token
+                                                        </label>
+                                                        <a
+                                                            href="https://code.1c.ai/tokens/"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                                                        >
+                                                            <Link2 className="w-2.5 h-2.5" /> Получить токен
+                                                        </a>
+                                                    </div>
+                                                    <input
+                                                        type="password"
+                                                        value={server.env?.['ONEC_AI_TOKEN'] || ''}
+                                                        onChange={(e) => {
+                                                            const newEnv = { ...(server.env || {}), 'ONEC_AI_TOKEN': e.target.value };
+                                                            handleUpdateServer(server.id, { env: newEnv });
+                                                        }}
+                                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                        placeholder="Вставьте ваш токен 1C.ai"
+                                                    />
+                                                </div>
+                                            ) : server.id === BUILTIN_BSL_LS_ID ? (
+                                                <div className="bg-zinc-900/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400 italic">
+                                                    Этот сервер интегрирован как внутренний инструмент анализа кода.
+                                                    Основные настройки (путь к Java, JAR и порт) находятся во вкладке <b>"BSL Server"</b> выше.
+                                                </div>
+                                            ) : isHelp ? (
+                                                (() => {
+                                                    const helpSt = status?.help_status || '';
+                                                    const prog = status?.index_progress || 0;
+                                                    const msg = status?.index_message || '';
+                                                    const helpPath = server.env?.['ONEC_HELP_PATH'] || '';
+                                                    // Парсим index_message: "Готово: 52064 тем (платформа 8.3.27.1989)"
+                                                    let helpVersion = ''; let helpCount = '';
+                                                    if (helpSt === 'ready') {
+                                                        const countMatch = msg.match(/Готово: ([\d\s]+) тем/);
+                                                        const versionMatch = msg.match(/платформа ([^\)]+)/);
+                                                        helpCount = countMatch?.[1]?.trim() || '';
+                                                        helpVersion = versionMatch?.[1]?.trim() || '';
+                                                    }
+                                                    const browseHelpDir = async () => {
+                                                        try {
+                                                            const dir = await open({ directory: true, multiple: false, title: 'Выберите папку установки 1С:Предприятие (содержит папки вида 8.x.x.x)' });
+                                                            if (dir && typeof dir === 'string') {
+                                                                const newEnv = { ...(server.env || {}), 'ONEC_HELP_PATH': dir };
+                                                                handleUpdateServer(server.id, { env: newEnv });
+                                                            }
+                                                        } catch (e) {
+                                                            console.error('Failed to open directory dialog:', e);
+                                                        }
+                                                    };
+                                                    const handleReindex = async () => {
+                                                        try {
+                                                            setStatuses(prev => ({
+                                                                ...prev,
+                                                                [server.id]: {
+                                                                    ...prev[server.id],
+                                                                    help_status: 'indexing',
+                                                                    index_progress: 0,
+                                                                    index_message: 'Запуск индексации...'
+                                                                }
+                                                            }));
+                                                            await invoke('call_mcp_tool', { serverId: server.id, name: 'reindex_1c_help', arguments: {} });
+                                                            // Принудительно запрашиваем обновленный статус сразу после вызова
+                                                            setTimeout(fetchStatuses, 500);
+                                                        } catch { /* UI обновится через статус */ }
+                                                    };
+                                                    const pathField = (
+                                                        <div className="space-y-1">
+                                                            <label className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">
+                                                                Путь к платформе 1С
+                                                            </label>
+                                                            <div className="flex gap-1.5">
+                                                                <input
+                                                                    type="text"
+                                                                    value={helpPath}
+                                                                    onChange={(e) => {
+                                                                        const newEnv = { ...(server.env || {}), 'ONEC_HELP_PATH': e.target.value };
+                                                                        handleUpdateServer(server.id, { env: newEnv });
+                                                                    }}
+                                                                    placeholder="Авто: C:\Program Files\1cv8"
+                                                                    className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 font-mono min-w-0"
+                                                                />
+                                                                <button
+                                                                    onClick={() => void browseHelpDir()}
+                                                                    className="px-2.5 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg text-xs transition shrink-0"
+                                                                    title="Выбрать папку"
+                                                                >
+                                                                    <FolderOpen className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                            <p className="text-[10px] text-zinc-600">
+                                                                Оставьте пустым для автоопределения. Укажите родительскую папку, содержащую подпапки вида <span className="font-mono">8.x.x.x\bin</span>
+                                                            </p>
+                                                        </div>
+                                                    );
+                                                    if (helpSt === 'unavailable') {
+                                                        return (
+                                                            <div className="space-y-3">
+                                                                {pathField}
+                                                                <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 flex items-start gap-3">
+                                                                    <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                                                                    <div>
+                                                                        <p className="text-xs text-amber-300 font-medium">Платформа 1С:Предприятие не найдена</p>
+                                                                        <p className="text-[10px] text-zinc-500 mt-1">
+                                                                            {helpPath
+                                                                                ? `Платформа не обнаружена по пути: ${helpPath}`
+                                                                                : 'Установите 1С:Предприятие 8.3 или укажите путь установки вручную выше.'}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    } else if (helpSt === 'indexing') {
+                                                        return (
+                                                            <div className="space-y-3">
+                                                                {pathField}
+                                                                <div className="space-y-2">
+                                                                    <div className="flex items-center justify-between text-[10px] text-zinc-400">
+                                                                        <span className="flex items-center gap-1">
+                                                                            <Activity className="w-3 h-3 animate-pulse text-blue-400" />
+                                                                            Подготовка базы данных справки...
+                                                                        </span>
+                                                                        <span className="font-mono text-blue-400">{prog}%</span>
+                                                                    </div>
+                                                                    <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                                                                        <div
+                                                                            className="bg-gradient-to-r from-blue-600 to-blue-400 h-1.5 rounded-full transition-all duration-500"
+                                                                            style={{ width: `${Math.max(2, prog)}%` }}
+                                                                        />
+                                                                    </div>
+                                                                    {msg && <p className="text-[10px] text-zinc-500 truncate">{msg}</p>}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    } else if (helpSt === 'ready') {
+                                                        return (
+                                                            <div className="space-y-3">
+                                                                {pathField}
+                                                                <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-3 flex items-center justify-between">
+                                                                    <div className="flex items-start gap-3">
+                                                                        <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
+                                                                        <div>
+                                                                            <p className="text-xs text-green-300 font-medium">Справка готова к использованию</p>
+                                                                            <p className="text-[10px] text-zinc-500 mt-0.5">
+                                                                                {helpCount ? `${Number(helpCount).toLocaleString('ru')} тем` : 'тем: —'}
+                                                                                {helpVersion ? ` · платформа ${helpVersion}` : ''}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={handleReindex}
+                                                                        className="flex items-center gap-1 px-2 py-1 bg-zinc-700/60 hover:bg-zinc-600/60 text-zinc-400 hover:text-zinc-200 rounded text-[10px] font-medium transition shrink-0"
+                                                                        title="Переиндексировать справку"
+                                                                    >
+                                                                        <Activity className="w-3 h-3" /> Обновить
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    } else {
+                                                        return (
+                                                            <div className="space-y-3">
+                                                                {pathField}
+                                                                <div className="bg-zinc-900/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400 italic">
+                                                                    Поиск по официальной справке платформы 1С:Предприятие 8.3.
+                                                                    При первом включении индексация займёт 1-3 минуты.
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+                                                })()
+                                            ) : isSearch ? (
+                                                (() => {
+                                                    const searchSt = status?.help_status || '';
+                                                    const { profiles, activeId } = normalizeSearchProfiles(server);
+                                                    const activeProfile = profiles.find(p => p.id === activeId) || profiles[0];
+                                                    const configPath = activeProfile?.main_path || server.env?.['ONEC_CONFIG_PATH'] || '';
+                                                    const extensionPaths = activeProfile?.extensions.map(e => e.path).filter(Boolean) || [];
+                                                    const allIndexPaths = [configPath, ...extensionPaths].filter(Boolean);
+                                                    const busySearchStates = new Set([
+                                                        'bootstrapping',
+                                                        'schema_init',
+                                                        'metadata_indexing',
+                                                        'building_index',
+                                                        'syncing_index',
+                                                        'indexing',
+                                                        'syncing',
+                                                    ]);
+                                                    const busySearchLabel = searchSt === 'syncing' || searchSt === 'syncing_index'
+                                                        ? 'Синхронизация индекса...'
+                                                        : searchSt === 'metadata_indexing'
+                                                            ? 'Индексация метаданных...'
+                                                            : searchSt === 'schema_init'
+                                                                ? 'Подготовка базы индекса...'
+                                                                : searchSt === 'bootstrapping'
+                                                                    ? 'Запуск поиска...'
+                                                                    : 'Построение символьного индекса...';
+                                                    const commitProfiles = (nextProfiles: SearchConfigProfile[], nextActiveId = activeId) => {
+                                                        handleUpdateServer(server.id, {
+                                                            env: buildSearchEnv(server, nextProfiles, nextActiveId),
+                                                        });
+                                                    };
+                                                    const updateActiveProfile = (updates: Partial<SearchConfigProfile>) => {
+                                                        const nextProfiles = profiles.map(profile =>
+                                                            profile.id === activeId ? { ...profile, ...updates } : profile
+                                                        );
+                                                        commitProfiles(nextProfiles);
+                                                    };
+                                                    const browseConfigDir = async () => {
+                                                        try {
+                                                            const dir = await open({ directory: true, multiple: false, title: 'Выберите директорию выгрузки конфигурации 1С' });
+                                                            if (dir && typeof dir === 'string') {
+                                                                updateActiveProfile({ main_path: dir });
+                                                                addToSearchHistory(dir);
+                                                            }
+                                                        } catch (e) {
+                                                            console.error('Failed to open directory dialog:', e);
+                                                        }
+                                                    };
+                                                    const browseSearchIndexDir = async () => {
+                                                        try {
+                                                            const dir = await open({ directory: true, multiple: false, title: 'Выберите папку для search-index' });
+                                                            if (dir && typeof dir === 'string') {
+                                                                onSearchIndexDirChange(dir);
+                                                            }
+                                                        } catch (e) {
+                                                            console.error('Failed to open search index directory dialog:', e);
+                                                        }
+                                                    };
+                                                    const selectFromHistory = (p: string) => {
+                                                        updateActiveProfile({ main_path: p });
+                                                        setShowSearchHistory(false);
+                                                    };
+                                                    const addProfile = () => {
+                                                        const profile: SearchConfigProfile = {
+                                                            id: makeProfileId('profile'),
+                                                            name: `Конфигурация ${profiles.length + 1}`,
+                                                            main_path: '',
+                                                            extensions: [],
+                                                        };
+                                                        commitProfiles([...profiles, profile], profile.id);
+                                                    };
+                                                    const removeActiveProfile = () => {
+                                                        if (profiles.length <= 1) return;
+                                                        const nextProfiles = profiles.filter(profile => profile.id !== activeId);
+                                                        commitProfiles(nextProfiles, nextProfiles[0].id);
+                                                    };
+                                                    const addExtension = () => {
+                                                        if (!activeProfile) return;
+                                                        updateActiveProfile({
+                                                            extensions: [
+                                                                ...activeProfile.extensions,
+                                                                {
+                                                                    id: makeProfileId('ext'),
+                                                                    name: `Расширение ${activeProfile.extensions.length + 1}`,
+                                                                    path: '',
+                                                                },
+                                                            ],
+                                                        });
+                                                    };
+                                                    const updateExtension = (id: string, updates: Partial<SearchExtensionProfile>) => {
+                                                        if (!activeProfile) return;
+                                                        updateActiveProfile({
+                                                            extensions: activeProfile.extensions.map(ext =>
+                                                                ext.id === id ? { ...ext, ...updates } : ext
+                                                            ),
+                                                        });
+                                                    };
+                                                    const removeExtension = (id: string) => {
+                                                        if (!activeProfile) return;
+                                                        updateActiveProfile({
+                                                            extensions: activeProfile.extensions.filter(ext => ext.id !== id),
+                                                        });
+                                                    };
+                                                    const browseExtensionDir = async (id: string) => {
+                                                        try {
+                                                            const dir = await open({ directory: true, multiple: false, title: 'Выберите директорию выгрузки расширения 1С' });
+                                                            if (dir && typeof dir === 'string') {
+                                                                updateExtension(id, { path: dir });
+                                                                addToSearchHistory(dir);
+                                                            }
+                                                        } catch (e) {
+                                                            console.error('Failed to open extension directory dialog:', e);
+                                                        }
+                                                    };
+                                                    return (
+                                                        <div className="space-y-3">
+                                                            <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-3">
+                                                                <label className="text-[10px] text-zinc-500 uppercase font-bold flex items-center gap-1 mb-1">
+                                                                    <Database className="w-3 h-3" /> Папка search-index
+                                                                </label>
+                                                                <div className="flex gap-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={searchIndexDir}
+                                                                        onChange={(e) => onSearchIndexDirChange(e.target.value)}
+                                                                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono min-w-0"
+                                                                        placeholder="По умолчанию: AppData\\com.mini-ai-1c\\search-index"
+                                                                    />
+                                                                    <button
+                                                                        onClick={browseSearchIndexDir}
+                                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-zinc-100 rounded-lg text-xs font-medium transition shrink-0"
+                                                                        title="Выбрать папку search-index"
+                                                                    >
+                                                                        <FolderOpen className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                </div>
+                                                                <p className="text-[10px] text-zinc-600 mt-1">
+                                                                    SQLite-файлы индекса будут храниться в этой папке. Если путь не указан, используется папка по умолчанию.
+                                                                </p>
+                                                            </div>
+                                                            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-2 items-end">
+                                                                <div>
+                                                                    <label className="text-[10px] text-zinc-500 uppercase font-bold flex items-center gap-1 mb-1">
+                                                                        <Database className="w-3 h-3" /> Активная конфигурация
+                                                                    </label>
+                                                                    <select
+                                                                        value={activeId}
+                                                                        onChange={(e) => commitProfiles(profiles, e.target.value)}
+                                                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                                    >
+                                                                        {profiles.map(profile => (
+                                                                            <option key={profile.id} value={profile.id}>{profile.name || 'Без названия'}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <button
+                                                                        onClick={addProfile}
+                                                                        className="flex items-center gap-1 px-2.5 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-zinc-100 rounded-lg text-xs transition"
+                                                                        title="Добавить профиль конфигурации"
+                                                                    >
+                                                                        <Plus className="w-3.5 h-3.5" /> Профиль
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={removeActiveProfile}
+                                                                        disabled={profiles.length <= 1}
+                                                                        className="p-1.5 bg-zinc-700/60 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                                                        title="Удалить активный профиль"
+                                                                    >
+                                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] text-zinc-500 uppercase font-bold flex items-center gap-1 mb-1">
+                                                                    <FileText className="w-3 h-3" /> Название профиля
+                                                                </label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={activeProfile?.name ?? ''}
+                                                                    onChange={(e) => updateActiveProfile({ name: e.target.value })}
+                                                                    className={`w-full bg-zinc-900 border rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:outline-none ${
+                                                                        !activeProfile?.name?.trim()
+                                                                            ? 'border-red-500/60 focus:ring-red-500'
+                                                                            : 'border-zinc-700 focus:ring-blue-500'
+                                                                    }`}
+                                                                    placeholder="Например: Бухгалтерия КОРП"
+                                                                />
+                                                                {!activeProfile?.name?.trim() && (
+                                                                    <p className="text-[10px] text-red-400 mt-1">Укажите название профиля</p>
+                                                                )}
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] text-zinc-500 uppercase font-bold flex items-center gap-1 mb-1">
+                                                                    <Terminal className="w-3 h-3" /> Основная выгрузка конфигурации 1С
+                                                                </label>
+                                                                <div className="flex gap-2 relative">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={configPath}
+                                                                        onChange={(e) => {
+                                                                            updateActiveProfile({ main_path: e.target.value });
+                                                                        }}
+                                                                        onBlur={() => { if (configPath) addToSearchHistory(configPath); }}
+                                                                        onKeyDown={(e) => { if (e.key === 'Enter' && configPath) addToSearchHistory(configPath); }}
+                                                                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono min-w-0"
+                                                                        placeholder="C:\1C\configs\MyConfig"
+                                                                    />
+                                                                    <button
+                                                                        onClick={browseConfigDir}
+                                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-zinc-100 rounded-lg text-xs font-medium transition shrink-0"
+                                                                        title="Выбрать папку"
+                                                                    >
+                                                                        <FolderOpen className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                    {searchPathHistory.length > 0 && (
+                                                                        <button
+                                                                            onClick={() => setShowSearchHistory(v => !v)}
+                                                                            className="flex items-center gap-1 px-2 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-zinc-100 rounded-lg text-xs transition shrink-0"
+                                                                            title="История путей"
+                                                                        >
+                                                                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showSearchHistory ? 'rotate-180' : ''}`} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                                {showSearchHistory && searchPathHistory.length > 0 && (
+                                                                    <div className="mt-1 rounded-lg overflow-hidden border border-zinc-700/50">
+                                                                        {searchPathHistory.map((p) => (
+                                                                            <div key={p} className="flex items-center gap-1 px-2 py-1.5 hover:bg-zinc-700/50">
+                                                                                <button
+                                                                                    onClick={() => selectFromHistory(p)}
+                                                                                    className="flex-1 flex items-center gap-1.5 text-left min-w-0"
+                                                                                >
+                                                                                    {p === configPath
+                                                                                        ? <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0" />
+                                                                                        : <div className="w-3 h-3 shrink-0" />
+                                                                                    }
+                                                                                    <span className="text-xs font-mono text-zinc-300 truncate">{p}</span>
+                                                                                </button>
+                                                                                <button
+                                                                                    onMouseDown={(e) => e.preventDefault()}
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        removeFromSearchHistory(p);
+                                                                                    }}
+                                                                                    className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition shrink-0"
+                                                                                    title="Удалить из истории"
+                                                                                >
+                                                                                    <Trash2 className="w-3 h-3" />
+                                                                                </button>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                                <p className="text-[10px] text-zinc-600 mt-1">Корневая директория основной выгрузки (содержит CommonModules, Documents и т.д.)</p>
+                                                            </div>
+                                                            <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-3 space-y-2">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <label className="text-[10px] text-zinc-500 uppercase font-bold flex items-center gap-1">
+                                                                        <Wrench className="w-3 h-3" /> Расширения конфигурации
+                                                                    </label>
+                                                                    <button
+                                                                        onClick={addExtension}
+                                                                        className="flex items-center gap-1 px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-zinc-100 rounded text-[10px] transition"
+                                                                        title="Добавить выгрузку расширения"
+                                                                    >
+                                                                        <Plus className="w-3 h-3" /> Добавить
+                                                                    </button>
+                                                                </div>
+                                                                {activeProfile?.extensions.length ? (
+                                                                    <div className="space-y-2">
+                                                                        {activeProfile.extensions.map((ext, idx) => {
+                                                                            const nameEmpty = !ext.name.trim();
+                                                                            return (
+                                                                            <div key={ext.id} className="space-y-1">
+                                                                                <div className="grid grid-cols-1 md:grid-cols-[minmax(120px,0.35fr)_minmax(0,1fr)_auto] gap-2 items-center">
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        value={ext.name}
+                                                                                        onChange={(e) => updateExtension(ext.id, { name: e.target.value })}
+                                                                                        className={`bg-zinc-950 border rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:outline-none ${
+                                                                                            nameEmpty
+                                                                                                ? 'border-red-500/60 focus:ring-red-500'
+                                                                                                : 'border-zinc-700 focus:ring-blue-500'
+                                                                                        }`}
+                                                                                        placeholder={`Расширение ${idx + 1}`}
+                                                                                    />
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        value={ext.path}
+                                                                                        onChange={(e) => updateExtension(ext.id, { path: e.target.value })}
+                                                                                        onBlur={() => { if (ext.path) addToSearchHistory(ext.path); }}
+                                                                                        className="bg-zinc-950 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none min-w-0"
+                                                                                        placeholder="C:\1C\extensions\MyExtension"
+                                                                                    />
+                                                                                    <div className="flex items-center gap-1">
+                                                                                        <button
+                                                                                            onClick={() => browseExtensionDir(ext.id)}
+                                                                                            className="p-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition"
+                                                                                            title="Выбрать папку расширения"
+                                                                                        >
+                                                                                            <FolderOpen className="w-3.5 h-3.5" />
+                                                                                        </button>
+                                                                                        <button
+                                                                                            onClick={() => removeExtension(ext.id)}
+                                                                                            className="p-1.5 bg-zinc-700/60 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded transition"
+                                                                                            title="Удалить расширение"
+                                                                                        >
+                                                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                                                        </button>
+                                                                                    </div>
+                                                                                </div>
+                                                                                {nameEmpty && (
+                                                                                    <p className="text-[10px] text-red-400">Укажите название расширения</p>
+                                                                                )}
+                                                                            </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                ) : (
+                                                                    <p className="text-[10px] text-zinc-600">Можно добавить выгрузки расширений, чтобы поиск видел доработанные объекты и реквизиты.</p>
+                                                                )}
+                                                                {allIndexPaths.length > 1 && (
+                                                                    <p className="text-[10px] text-zinc-500">
+                                                                        Будет индексироваться источников: {allIndexPaths.length}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                            {searchSt === 'unavailable' ? (
+                                                                <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 flex items-start gap-3">
+                                                                    <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                                                                    <div>
+                                                                        <p className="text-xs text-amber-300 font-medium">Путь к конфигурации не задан</p>
+                                                                        <p className="text-[10px] text-zinc-500 mt-1">Укажите путь к директории выгрузки конфигурации 1С выше.</p>
+                                                                    </div>
+                                                                </div>
+                                                            ) : busySearchStates.has(searchSt) ? (
+                                                                <div className="space-y-2">
+                                                                    <div className="flex items-center justify-between text-[10px] text-zinc-400">
+                                                                        <span className="flex items-center gap-1">
+                                                                            <Activity className="w-3 h-3 animate-pulse text-blue-400" />
+                                                                            {busySearchLabel}
+                                                                        </span>
+                                                                        <span className="font-mono text-blue-400">{status?.index_progress || 0}%</span>
+                                                                    </div>
+                                                                    <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                                                                        <div
+                                                                            className="bg-gradient-to-r from-blue-600 to-blue-400 h-1.5 rounded-full transition-all duration-500"
+                                                                            style={{ width: `${Math.max(2, status?.index_progress || 0)}%` }}
+                                                                        />
+                                                                    </div>
+                                                                    {status?.index_message && <p className="text-[10px] text-zinc-500 truncate" title={status.index_message}>{status.index_message}</p>}
+                                                                </div>
+                                                            ) : searchSt === 'degraded' ? (
+                                                                <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 flex items-start gap-3">
+                                                                    <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-xs text-amber-300 font-medium">Поиск работает частично</p>
+                                                                        <p className="text-[10px] text-zinc-500 mt-1 truncate" title={status?.index_message}>
+                                                                            {status?.index_message || 'Один или несколько источников не удалось проиндексировать.'}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            ) : searchSt === 'ready' ? (
+                                                                <>
+                                                                <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-3 flex items-center justify-between gap-3">
+                                                                    <div className="flex items-center gap-3 min-w-0">
+                                                                        <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                                                                        <div className="min-w-0">
+                                                                            <p className="text-xs text-green-300 font-medium">Поиск готов к работе</p>
+                                                                            <button
+                                                                                onClick={() => invoke('open_search_index_dir')}
+                                                                                className="text-[10px] text-zinc-500 hover:text-blue-400 mt-0.5 truncate block text-left underline-offset-2 hover:underline transition"
+                                                                                title="Открыть папку с базой индекса"
+                                                                            >{status?.index_message || configPath}</button>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1 shrink-0">
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                try {
+                                                                                    setStatuses(prev => ({
+                                                                                        ...prev,
+                                                                                        [server.id]: {
+                                                                                            ...prev[server.id],
+                                                                                            help_status: 'syncing',
+                                                                                            index_progress: 0,
+                                                                                            index_message: 'Анализ изменённых файлов...'
+                                                                                        }
+                                                                                    }));
+                                                                                    await invoke('call_mcp_tool', { serverId: server.id, name: 'sync_index', arguments: {} });
+                                                                                    setTimeout(fetchStatuses, 500);
+                                                                                } catch { /* UI обновится сам */ }
+                                                                            }}
+                                                                            className="flex items-center gap-1 px-2 py-1 bg-zinc-700/60 hover:bg-zinc-600/60 text-zinc-400 hover:text-zinc-200 rounded text-[10px] font-medium transition"
+                                                                            title="Обновить индекс (по дате изменения файлов)"
+                                                                        >
+                                                                            <Activity className="w-3 h-3" /> Обновить
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                if (allIndexPaths.length === 0) return;
+                                                                                try {
+                                                                                    for (const path of allIndexPaths) {
+                                                                                        await invoke('delete_search_index', { configPath: path });
+                                                                                    }
+                                                                                    setStatuses(prev => ({
+                                                                                        ...prev,
+                                                                                        [server.id]: {
+                                                                                            ...prev[server.id],
+                                                                                            help_status: 'indexing',
+                                                                                            index_progress: 0,
+                                                                                            index_message: 'Перестройка индекса...'
+                                                                                        }
+                                                                                    }));
+                                                                                    await invoke('call_mcp_tool', { serverId: server.id, name: 'sync_index', arguments: {} });
+                                                                                    setTimeout(fetchStatuses, 500);
+                                                                                } catch { /* UI обновится сам */ }
+                                                                            }}
+                                                                            className="p-1 bg-zinc-700/60 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded transition"
+                                                                            title="Удалить базу и перестроить индекс с нуля"
+                                                                        >
+                                                                            <Trash2 className="w-3 h-3" />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* ── Benchmark results ── */}
+                                                                {(benchmarkResult || isBenchmarking) && (
+                                                                    <BenchmarkPanel
+                                                                        result={benchmarkResult}
+                                                                        loading={isBenchmarking}
+                                                                        onClose={() => setBenchmarkResult(null)}
+                                                                    />
+                                                                )}
+
+                                                                {/* ── Benchmark button ── */}
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        setIsBenchmarking(true);
+                                                                        setBenchmarkResult(null);
+                                                                        try {
+                                                                            const res = await invoke<any>('call_mcp_tool', {
+                                                                                serverId: server.id,
+                                                                                name: 'benchmark',
+                                                                                arguments: { iterations: 20 }
+                                                                            });
+                                                                            // benchmark returns raw JSON (not content[0].text)
+                                                                            const text = res?.content?.[0]?.text;
+                                                                            const data = text ? JSON.parse(text) : res;
+                                                                            if (data?.results) {
+                                                                                setBenchmarkResult(data);
+                                                                            } else {
+                                                                                setBenchmarkResult({ error: JSON.stringify(res) });
+                                                                            }
+                                                                        } catch (e: any) {
+                                                                            setBenchmarkResult({ error: String(e) });
+                                                                        } finally {
+                                                                            setIsBenchmarking(false);
+                                                                        }
+                                                                    }}
+                                                                    disabled={isBenchmarking}
+                                                                    className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-zinc-800/60 hover:bg-zinc-700/60 text-zinc-400 hover:text-zinc-200 border border-zinc-700/50 hover:border-zinc-600 rounded-lg text-[10px] font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                >
+                                                                    {isBenchmarking
+                                                                        ? <><Activity className="w-3 h-3 animate-spin" /> Замер производительности...</>
+                                                                        : <><Activity className="w-3 h-3" /> Бенчмарк</>
+                                                                    }
+                                                                </button>
+                                                                </>
+                                                            ) : (
+                                                                <div className="bg-zinc-900/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400 italic">
+                                                                    Быстрый поиск и символьный индекс процедур/функций конфигурации 1С (BSL файлы).
+                                                                    Поддерживает поиск по коду и навигацию к определениям.
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()
+                                            ) : (
+                                                <>
+                                                    <div className="flex items-center justify-between mb-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                                            <span className="text-[10px] text-zinc-400 font-medium">Параметры соединения</span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => setSmartImportId(server.id)}
+                                                            className="flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-md text-[10px] font-bold transition border border-blue-500/20"
+                                                        >
+                                                            <Sparkles className="w-3 h-3" /> Импорт URL
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <div className="flex-1 min-w-[100px]">
+                                                            <label className="text-[10px] text-zinc-500 uppercase font-bold mb-1 block flex items-center gap-1">
+                                                                <Globe className="w-3 h-3" /> Protocol
+                                                            </label>
+                                                            <select
+                                                                value={(server.env?.['ONEC_METADATA_URL'] || '').startsWith('https') ? 'https' : 'http'}
+                                                                onChange={(e) => {
+                                                                    const currentUrl = server.env?.['ONEC_METADATA_URL'] || 'http://localhost/base/hs/mcp';
+                                                                    const urlWithoutProto = currentUrl.replace(/^https?:\/\//, '');
+                                                                    const newUrl = `${e.target.value}://${urlWithoutProto}`;
+                                                                    const newEnv = { ...(server.env || {}), 'ONEC_METADATA_URL': newUrl };
+                                                                    handleUpdateServer(server.id, { env: newEnv });
+                                                                }}
+                                                                className="w-full bg-zinc-900 border border-zinc-700 font-bold rounded-lg px-2 py-1.5 text-[11px] focus:ring-1 focus:ring-yellow-500 focus:outline-none text-yellow-500 bg-yellow-500/5"
+                                                            >
+                                                                <option value="http">HTTP</option>
+                                                                <option value="https">HTTPS</option>
+                                                            </select>
+                                                        </div>
+                                                        <div className="flex-[2] min-w-[150px]">
+                                                            <label className="text-[10px] text-zinc-500 uppercase font-bold mb-1 block flex items-center gap-1">
+                                                                <Terminal className="w-3 h-3" /> Host
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={(server.env?.['ONEC_METADATA_URL'] || '').replace(/^https?:\/\//, '').split('/')[0] || ''}
+                                                                onChange={(e) => {
+                                                                    const currentUrl = server.env?.['ONEC_METADATA_URL'] || 'http://localhost/base/hs/mcp';
+                                                                    const proto = currentUrl.startsWith('https') ? 'https' : 'http';
+                                                                    const pathParts = currentUrl.replace(/^https?:\/\//, '').split('/');
+                                                                    const base = pathParts[1] || 'base';
+                                                                    const newUrl = `${proto}://${e.target.value}/${base}/hs/mcp`;
+                                                                    const newEnv = { ...(server.env || {}), 'ONEC_METADATA_URL': newUrl };
+                                                                    handleUpdateServer(server.id, { env: newEnv });
+                                                                }}
+                                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-yellow-500 focus:outline-none"
+                                                                placeholder="localhost"
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 min-w-[120px]">
+                                                            <label className="text-[10px] text-zinc-500 uppercase font-bold mb-1 block flex items-center gap-1">
+                                                                <Database className="w-3 h-3" /> Base
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={(server.env?.['ONEC_METADATA_URL'] || '').replace(/^https?:\/\//, '').split('/')[1] || ''}
+                                                                onChange={(e) => {
+                                                                    const currentUrl = server.env?.['ONEC_METADATA_URL'] || 'http://localhost/base/hs/mcp';
+                                                                    const proto = currentUrl.startsWith('https') ? 'https' : 'http';
+                                                                    const host = currentUrl.replace(/^https?:\/\//, '').split('/')[0] || 'localhost';
+                                                                    const newUrl = `${proto}://${host}/${e.target.value}/hs/mcp`;
+                                                                    const newEnv = { ...(server.env || {}), 'ONEC_METADATA_URL': newUrl };
+                                                                    handleUpdateServer(server.id, { env: newEnv });
+                                                                }}
+                                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-yellow-500 focus:outline-none"
+                                                                placeholder="demo"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1 italic">
+                                                        <Link2 className="w-2.5 h-2.5" />
+                                                        Будет использован: {server.env?.['ONEC_METADATA_URL']}/...
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-4">
+                                                        <div className="flex-1 min-w-[140px]">
+                                                            <label className="text-[10px] text-zinc-500 uppercase font-bold mb-1 block flex items-center gap-1">
+                                                                <Key className="w-3 h-3" /> Login
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={server.env?.['ONEC_USERNAME'] || ''}
+                                                                onChange={(e) => {
+                                                                    const newEnv = { ...(server.env || {}), 'ONEC_USERNAME': e.target.value };
+                                                                    handleUpdateServer(server.id, { env: newEnv });
+                                                                }}
+                                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                                placeholder="Администратор"
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 min-w-[140px]">
+                                                            <label className="text-[10px] text-zinc-500 uppercase font-bold mb-1 block flex items-center gap-1">
+                                                                <ShieldCheck className="w-3 h-3" /> Password
+                                                            </label>
+                                                            <input
+                                                                type="password"
+                                                                value={server.env?.['ONEC_PASSWORD'] || ''}
+                                                                onChange={(e) => {
+                                                                    const newEnv = { ...(server.env || {}), 'ONEC_PASSWORD': e.target.value };
+                                                                    handleUpdateServer(server.id, { env: newEnv });
+                                                                }}
+                                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                                placeholder="••••••"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {server.transport === 'http' ? (
+                                                <>
+                                                    <div>
+                                                        <label className="text-[10px] text-zinc-500 uppercase font-bold mb-1 block flex items-center gap-1">
+                                                            <Link2 className="w-3 h-3" /> Service URL
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={server.url || ''}
+                                                            onChange={(e) => handleUpdateServer(server.id, { url: e.target.value })}
+                                                            placeholder="http://example.com/mcp"
+                                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                        />
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <label className="text-[10px] text-zinc-500 uppercase font-bold mb-1 block flex items-center gap-1">
+                                                                <Key className="w-3 h-3" /> Login (Optional)
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={server.login || ''}
+                                                                onChange={(e) => handleUpdateServer(server.id, { login: e.target.value || null })}
+                                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] text-zinc-500 uppercase font-bold mb-1 block flex items-center gap-1">
+                                                                <ShieldCheck className="w-3 h-3" /> Password
+                                                            </label>
+                                                            <input
+                                                                type="password"
+                                                                value={server.password || ''}
+                                                                onChange={(e) => handleUpdateServer(server.id, { password: e.target.value || null })}
+                                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div>
+                                                        <label className="text-[10px] text-zinc-500 uppercase font-bold mb-1 block flex items-center gap-1">
+                                                            <Terminal className="w-3 h-3" /> Command
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={server.command || ''}
+                                                            onChange={(e) => handleUpdateServer(server.id, { command: e.target.value })}
+                                                            placeholder="npx"
+                                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] text-zinc-500 uppercase font-bold mb-1 block flex items-center gap-1">
+                                                            <Cpu className="w-3 h-3" /> Arguments (Space or comma separated)
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={server.args?.join(' ') || ''}
+                                                            onChange={(e) => {
+                                                                // Split by spaces or commas, filter out empties
+                                                                const raw = e.target.value;
+                                                                const parsed = raw.split(/[,\s]+/).filter(a => a);
+                                                                handleUpdateServer(server.id, { args: parsed });
+                                                            }}
+                                                            placeholder="chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222 -y"
+                                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono"
+                                                        />
+                                                    </div>
+                                                </>
+                                            )}
+                                        </>
+                                    )}
+                                    <div className="flex flex-wrap items-center justify-between gap-y-3 pt-1">
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => handleTestConnection(server)}
+                                                disabled={!server.enabled || testingId === server.id || (server.transport === 'http' && !server.url) || (server.transport === 'stdio' && !server.command)}
+                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${testingId === server.id ? 'bg-zinc-700 text-zinc-500' : 'bg-zinc-700 hover:bg-zinc-600 text-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+                                            >
+                                                <Activity className={`w-3.5 h-3.5 ${testingId === server.id ? 'animate-pulse' : ''}`} />
+                                                {testingId === server.id ? 'Checking...' : 'Проверить'}
+                                            </button>
+                                            <button
+                                                onClick={() => setViewingToolsId(server.id)}
+                                                disabled={!server.enabled || isSearchUnavailable}
+                                                title={toolsDisabledReason}
+                                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <Wrench className="w-3.5 h-3.5" />
+                                                Tools
+                                            </button>
+                                            <button
+                                                onClick={() => setViewingLogsId(server.id)}
+                                                disabled={!server.enabled}
+                                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <FileText className="w-3.5 h-3.5" />
+                                                Logs
+                                            </button>
+                                        </div>
+
+                                        {testResults[server.id] && (
+                                            <div className={`flex items-center gap-2 text-xs font-medium ${testResults[server.id].success ? 'text-green-400' : 'text-red-400'} min-w-0 max-w-full`}>
+                                                {testResults[server.id].success ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                                                <span className="truncate">{testResults[server.id].message}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+            {/* Tools Modal */}
+            {viewingToolsId && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-zinc-800 border border-zinc-700 rounded-xl w-full max-w-3xl h-[600px] flex flex-col shadow-2xl">
+                        <div className="px-4 py-3 border-b border-zinc-700 flex items-center justify-between">
+                            <h3 className="font-medium text-zinc-100 flex items-center gap-2">
+                                <Wrench className="w-4 h-4 text-zinc-400" />
+                                MCP Tools: {servers.find(s => s.id === viewingToolsId)?.name}
+                            </h3>
+                            <button
+                                onClick={() => setViewingToolsId(null)}
+                                className="p-1 hover:bg-zinc-700 rounded text-zinc-400 hover:text-zinc-200 transition"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-auto">
+                            <McpToolsView
+                                serverName={servers.find(s => s.id === viewingToolsId)?.name ?? null}
+                                mcpServersOverride={servers}
+                                bslEnabledOverride={bslEnabled}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3 flex gap-3 mt-4">
+                <Settings2 className="w-5 h-5 text-blue-400 shrink-0" />
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                    Поддерживаются два вида транспорта: <b>HTTP</b> (для удаленных сервисов) и <b>Stdio</b> (для локальных CLI-инструментов). Для Stdio укажите команду (напр. <code>npx</code>) и аргументы.
+                </p>
+            </div>
+
+            {/* Logs Modal */}
+            {viewingLogsId && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-zinc-800 border border-zinc-700 rounded-xl w-full max-w-3xl h-[600px] flex flex-col shadow-2xl">
+                        <div className="px-4 py-3 border-b border-zinc-700 flex items-center justify-between">
+                            <h3 className="font-medium text-zinc-100 flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-zinc-400" />
+                                Server Logs: {servers.find(s => s.id === viewingLogsId)?.name}
+                            </h3>
+                            <button
+                                onClick={() => setViewingLogsId(null)}
+                                className="p-1 hover:bg-zinc-700 rounded text-zinc-400 hover:text-zinc-200 transition"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-auto p-4 bg-zinc-950 font-mono text-xs text-zinc-300">
+                            {isLoadingLogs && logs.length === 0 ? (
+                                <p className="text-zinc-500">Loading...</p>
+                            ) : logs.length === 0 ? (
+                                <p className="text-zinc-500">No logs available.</p>
+                            ) : (
+                                logs.map((line, i) => (
+                                    <div key={i} className="whitespace-pre-wrap mb-0.5 border-b border-zinc-900/50 pb-0.5">{line}</div>
+                                ))
+                            )}
+                            <div className="h-4" /> {/* Spacer */}
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Smart Import Modal */}
+            {smartImportId && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-200">
+                    <div className="bg-zinc-900 border border-zinc-700/50 rounded-2xl w-full max-w-lg shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
+                        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-500/10 rounded-xl">
+                                    <Sparkles className="w-5 h-5 text-blue-400" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-zinc-100 italic">Импорт публикации</h3>
+                                    <p className="text-[10px] text-zinc-500">Автозаполнение параметров из URL</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setSmartImportId(null);
+                                    setSmartImportUrl('');
+                                }}
+                                className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-zinc-200 transition"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Вставьте URL публикации</label>
+                                <div className="relative group">
+                                    <input
+                                        autoFocus
+                                        type="text"
+                                        value={smartImportUrl}
+                                        onChange={(e) => setSmartImportUrl(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') handleSmartImport(smartImportId, smartImportUrl);
+                                            if (e.key === 'Escape') setSmartImportId(null);
+                                        }}
+                                        className="w-full bg-zinc-950 border border-zinc-800 group-focus-within:border-blue-500/50 rounded-xl px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:ring-4 focus:ring-blue-500/5 transition-all placeholder:text-zinc-700"
+                                        placeholder="http://myserver/demo_base"
+                                    />
+                                    <Globe className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-800 group-focus-within:text-blue-500/30 transition-colors" />
+                                </div>
+                            </div>
+
+                            <div className="bg-blue-500/5 border border-blue-500/10 rounded-xl p-4 flex gap-3">
+                                <Activity className="w-5 h-5 text-blue-400/50 shrink-0" />
+                                <div className="space-y-1">
+                                    <p className="text-[11px] text-zinc-300 leading-relaxed font-medium">
+                                        Система автоматически извлечет протокол, хост и имя базы.
+                                    </p>
+                                    <p className="text-[10px] text-zinc-500">
+                                        Например: из <code>http://dev/base</code> получится <b>dev</b> и <b>base</b>.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-4 bg-zinc-900/80 border-t border-zinc-800 flex items-center justify-end gap-3">
+                            <button
+                                onClick={() => {
+                                    setSmartImportId(null);
+                                    setSmartImportUrl('');
+                                }}
+                                className="px-4 py-2 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-bold transition-colors"
+                            >
+                                Отмена
+                            </button>
+                            <button
+                                onClick={() => handleSmartImport(smartImportId, smartImportUrl)}
+                                disabled={!smartImportUrl.trim()}
+                                className="px-6 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-900/20 transition-all active:scale-95"
+                            >
+                                Импортировать
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* JSON Import Modal */}
+            {showJsonImport && (
+                <div className="absolute inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 rounded-xl">
+                    <div className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+                        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <Code className="w-5 h-5 text-blue-400" />
+                                <h3 className="text-sm font-bold text-zinc-100">Импорт MCP сервера из JSON</h3>
+                            </div>
+                            <button
+                                onClick={() => setShowJsonImport(false)}
+                                className="p-1 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 rounded-lg transition"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">
+                                    Вставьте JSON из документации MCP сервера
+                                </label>
+                                <textarea
+                                    autoFocus
+                                    value={jsonImportText}
+                                    onChange={(e) => { setJsonImportText(e.target.value); setJsonImportError(null); }}
+                                    onKeyDown={(e) => { if (e.key === 'Escape') setShowJsonImport(false); }}
+                                    rows={8}
+                                    spellCheck={false}
+                                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-blue-500/50 rounded-xl px-4 py-3 text-xs text-zinc-100 font-mono focus:outline-none focus:ring-4 focus:ring-blue-500/5 transition-all resize-none placeholder:text-zinc-700"
+                                    placeholder={`{\n  "mcpServers": {\n    "chrome-devtools": {\n      "command": "npx",\n      "args": ["-y", "chrome-devtools-mcp@latest"]\n    }\n  }\n}`}
+                                />
+                            </div>
+
+                            <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-4 flex gap-3">
+                                <Activity className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
+                                <p className="text-[10px] text-zinc-400 leading-relaxed">
+                                    Поддерживаются форматы: <code className="text-zinc-300">{"{ mcpServers: { name: {...} } }"}</code>,
+                                    карта серверов <code className="text-zinc-300">{"{ name: { command, args } }"}</code>
+                                    или конфиг одного сервера <code className="text-zinc-300">{"{ command, args }"}</code>.
+                                </p>
+                            </div>
+
+                            {jsonImportError && (
+                                <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 flex items-center gap-2">
+                                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                                    <p className="text-xs text-red-300">{jsonImportError}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="px-6 py-4 bg-zinc-900/80 border-t border-zinc-800 flex items-center justify-end gap-3">
+                            <button
+                                onClick={() => setShowJsonImport(false)}
+                                className="px-4 py-2 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-bold transition-colors"
+                            >
+                                Отмена
+                            </button>
+                            <button
+                                onClick={handleJsonImport}
+                                disabled={!jsonImportText.trim()}
+                                className="px-6 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-900/20 transition-all active:scale-95"
+                            >
+                                Добавить сервер
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}

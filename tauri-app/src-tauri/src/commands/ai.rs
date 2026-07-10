@@ -1,0 +1,1412 @@
+use crate::ai::{extract_bsl_code, stream_chat_completion, ApiMessage};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, sync::Arc};
+use tauri::{AppHandle, Emitter, Manager};
+
+/// Simplified tool call structure from frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrontendToolCall {
+    pub id: String,
+    pub r#type: String,
+    pub function: FrontendToolCallFunction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrontendToolCallFunction {
+    pub name: String,
+    pub arguments: String,
+}
+
+/// Chat message structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub role: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<FrontendToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+/// State for managing active chat task
+#[derive(Default)]
+pub struct ChatState {
+    pub abort_handle: tokio::sync::Mutex<Option<tokio::task::AbortHandle>>,
+    pub approval_tx: tokio::sync::Mutex<Option<tokio::sync::mpsc::Sender<bool>>>,
+    /// Channel for injecting user messages mid-loop (interrupt)
+    pub interrupt_tx: tokio::sync::Mutex<Option<tokio::sync::mpsc::UnboundedSender<String>>>,
+}
+
+use super::bsl::BSLDiagnostic;
+
+/// Maximum tool calls per iteration to prevent context explosion.
+/// Excess calls are SILENTLY DROPPED from history (no error messages that confuse the model).
+const MAX_PARALLEL_TOOL_CALLS: usize = 5;
+
+/// Context token threshold — when exceeded, old tool-result rounds are pruned.
+/// System prompt ≈ 5000t. Total input threshold = 7000 + 5000 = ~12000t,
+/// safely below the ~13000t hallucination threshold observed in testing.
+const CONTEXT_PRUNE_THRESHOLD: usize = 7000;
+
+/// Maximum chars per tool result to prevent a single large response from blowing up context.
+/// 8000 chars ≈ 2000 tokens per tool result.
+const MAX_TOOL_RESULT_CHARS: usize = 8000;
+const MAX_CODEX_TOOL_NAME_LEN: usize = 64;
+
+fn build_initial_chat_status() -> String {
+    "Подготавливаю запрос...".to_string()
+}
+
+fn is_tool_result_cacheable(server_id: &str) -> bool {
+    matches!(server_id, "builtin-1c-metadata")
+}
+
+fn canonicalize_json_value(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut keys = map.keys().cloned().collect::<Vec<_>>();
+            keys.sort_unstable();
+
+            let mut canonical = serde_json::Map::new();
+            for key in keys {
+                if let Some(child) = map.get(&key) {
+                    canonical.insert(key, canonicalize_json_value(child));
+                }
+            }
+
+            serde_json::Value::Object(canonical)
+        }
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.iter().map(canonicalize_json_value).collect())
+        }
+        _ => value.clone(),
+    }
+}
+
+fn normalize_tool_cache_arguments(
+    raw_arguments: &str,
+    parsed_arguments: Option<&serde_json::Value>,
+) -> String {
+    if let Some(arguments) = parsed_arguments {
+        serde_json::to_string(&canonicalize_json_value(arguments))
+            .unwrap_or_else(|_| raw_arguments.trim().to_string())
+    } else {
+        raw_arguments.trim().to_string()
+    }
+}
+
+fn build_tool_cache_key(
+    server_id: &str,
+    tool_name: &str,
+    raw_arguments: &str,
+    parsed_arguments: Option<&serde_json::Value>,
+) -> String {
+    let normalized_arguments = normalize_tool_cache_arguments(raw_arguments, parsed_arguments);
+    format!("{server_id}::{tool_name}::{normalized_arguments}")
+}
+
+fn sanitize_tool_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+        .collect()
+}
+
+fn sanitize_codex_tool_name(name: &str) -> String {
+    let sanitized = sanitize_tool_name(name);
+    if sanitized.len() > MAX_CODEX_TOOL_NAME_LEN {
+        sanitized[..MAX_CODEX_TOOL_NAME_LEN].to_string()
+    } else {
+        sanitized
+    }
+}
+
+/// Estimates token count for a slice of messages (chars / 4 approximation).
+fn estimate_tokens(messages: &[ApiMessage]) -> usize {
+    messages
+        .iter()
+        .map(|m| {
+            let content_len = m.content.as_deref().map(|c| c.len()).unwrap_or(0);
+            let tc_len = m
+                .tool_calls
+                .as_ref()
+                .map(|tc| {
+                    tc.iter()
+                        .map(|t| t.function.arguments.len() + t.function.name.len() + 10)
+                        .sum::<usize>()
+                })
+                .unwrap_or(0);
+            (content_len + tc_len) / 4
+        })
+        .sum()
+}
+
+/// Payload emitted as `context-usage` Tauri event to update the UI indicator.
+#[derive(Serialize, Clone)]
+struct ContextUsagePayload {
+    estimated_tokens: usize,
+    context_window: usize,
+    percent: f32,
+    warning_level: &'static str,
+}
+
+fn resolve_context_usage_window(profile: Option<&crate::llm_profiles::LLMProfile>) -> usize {
+    profile
+        .and_then(|p| {
+            if p.max_tokens > 0 {
+                Some(p.max_tokens as usize)
+            } else {
+                p.context_window_override.map(|value| value as usize)
+            }
+        })
+        .unwrap_or(128_000)
+}
+
+/// Emits `context-usage` event with current token estimate and fill percentage.
+fn emit_context_usage(app: &AppHandle, messages: &[ApiMessage], context_window: usize) {
+    let tokens = estimate_tokens(messages);
+    let percent = if context_window > 0 {
+        (tokens as f32 / context_window as f32 * 100.0).min(100.0)
+    } else {
+        0.0
+    };
+    let warning_level: &'static str = if percent >= 85.0 {
+        "critical"
+    } else if percent >= 70.0 {
+        "warning"
+    } else {
+        "ok"
+    };
+    let _ = app.emit(
+        "context-usage",
+        ContextUsagePayload {
+            estimated_tokens: tokens,
+            context_window,
+            percent,
+            warning_level,
+        },
+    );
+}
+
+/// Prunes old tool-call rounds from the context to keep it under `max_tokens`.
+///
+/// A "round" = one assistant message with tool_calls + all following tool messages.
+/// Rounds are removed oldest-first. The most recent round is always preserved.
+/// User messages and system messages are never removed.
+fn prune_tool_context(messages: &mut Vec<ApiMessage>, max_tokens: usize) {
+    if estimate_tokens(messages) <= max_tokens {
+        return;
+    }
+
+    // Find all tool rounds: (start_idx, end_idx) inclusive
+    // Each round starts with assistant+tool_calls, ends before next non-tool message
+    let mut rounds: Vec<(usize, usize)> = Vec::new();
+    let mut i = 0;
+    while i < messages.len() {
+        if messages[i].role == "assistant" && messages[i].tool_calls.is_some() {
+            let start = i;
+            let mut end = i;
+            let mut j = i + 1;
+            while j < messages.len() && messages[j].role == "tool" {
+                end = j;
+                j += 1;
+            }
+            if end > start {
+                rounds.push((start, end));
+            }
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+
+    // Always keep the most recent round; prune from oldest
+    if rounds.len() < 2 {
+        return;
+    }
+    let prunable_count = rounds.len() - 1;
+    let mut removed_total = 0usize;
+
+    for idx in 0..prunable_count {
+        let (start, end) = rounds[idx];
+        let actual_start = start.saturating_sub(removed_total);
+        let actual_end = end.saturating_sub(removed_total);
+        if actual_end >= messages.len() {
+            break;
+        }
+        let count = actual_end - actual_start + 1;
+        messages.drain(actual_start..=actual_end);
+        removed_total += count;
+        crate::app_log!(
+            "[AI][PRUNE] Removed tool round (was [{},{}]), {} msgs pruned total. Tokens now ~{}t",
+            start,
+            end,
+            removed_total,
+            estimate_tokens(messages)
+        );
+        if estimate_tokens(messages) <= max_tokens {
+            break;
+        }
+    }
+}
+
+/// Clear 1С:Напарник session (called on chat clear when provider == OneCNaparnik)
+fn assistant_message_has_meaningful_payload(message: &ApiMessage) -> bool {
+    message
+        .content
+        .as_deref()
+        .is_some_and(|content| !content.is_empty())
+        || message
+            .tool_calls
+            .as_ref()
+            .is_some_and(|tool_calls| !tool_calls.is_empty())
+}
+
+fn custom_prompt_text_requests_bsl_syntax_check(text: &str) -> bool {
+    let normalized = text.to_lowercase();
+    normalized.contains("check_bsl_syntax")
+        || normalized.contains("bsl-syntax")
+        || normalized.contains("контролировать синтаксис")
+        || normalized.contains("проверь bsl")
+        || normalized.contains("проверить bsl")
+        || (normalized.contains("синтаксис")
+            && (normalized.contains("1с")
+                || normalized.contains("1c")
+                || normalized.contains("bsl")))
+        || (normalized.contains("syntax") && normalized.contains("bsl"))
+}
+
+fn custom_prompts_require_bsl_syntax_check(
+    custom: &crate::settings::CustomPromptsSettings,
+) -> bool {
+    [&custom.system_prefix, &custom.on_code_change, &custom.on_code_generate]
+        .iter()
+        .any(|text| custom_prompt_text_requests_bsl_syntax_check(text))
+        || custom.templates.iter().any(|template| {
+            if !template.enabled {
+                return false;
+            }
+
+            let combined = format!(
+                "{}\n{}\n{}\n{}",
+                template.id, template.name, template.description, template.content
+            );
+            custom_prompt_text_requests_bsl_syntax_check(&combined)
+        })
+}
+
+fn extract_latest_user_bsl_blocks(messages: &[ApiMessage]) -> Vec<String> {
+    messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "user")
+        .and_then(|message| message.content.as_deref())
+        .map(extract_bsl_code)
+        .unwrap_or_default()
+}
+
+fn build_forced_bsl_syntax_tool_call(
+    idx: usize,
+    code: &str,
+) -> (
+    String,
+    serde_json::Value,
+    String,
+    crate::ai::models::ToolCall,
+) {
+    let tool_call_id = format!("auto_check_bsl_syntax_{}", idx + 1);
+    let arguments_value = serde_json::json!({ "code": code });
+    let arguments = arguments_value.to_string();
+    let tool_call = crate::ai::models::ToolCall {
+        id: tool_call_id.clone(),
+        r#type: "function".to_string(),
+        function: crate::ai::models::ToolCallFunction {
+            name: "check_bsl_syntax".to_string(),
+            arguments: arguments.clone(),
+        },
+    };
+
+    (tool_call_id, arguments_value, arguments, tool_call)
+}
+
+fn bsl_diagnostic_to_ui(diagnostic: &crate::bsl_client::Diagnostic) -> BSLDiagnostic {
+    BSLDiagnostic {
+        line: diagnostic.range.start.line,
+        character: diagnostic.range.start.character,
+        message: diagnostic.message.clone(),
+        severity: match diagnostic.severity {
+            Some(1) => "error".to_string(),
+            Some(2) => "warning".to_string(),
+            _ => "info".to_string(),
+        },
+    }
+}
+
+#[tauri::command]
+pub async fn clear_naparnik_session() -> Result<(), String> {
+    if let Some(profile) = crate::llm_profiles::get_active_profile() {
+        if matches!(
+            profile.provider,
+            crate::llm_profiles::LLMProvider::OneCNaparnik
+        ) {
+            crate::ai::naparnik_client::clear_naparnik_session(&profile.id);
+        }
+    }
+    Ok(())
+}
+
+/// Stop the current chat generation
+#[tauri::command]
+pub async fn stop_chat(
+    state: tauri::State<'_, ChatState>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    // Release the approval channel first to unblock approve_tool waiters
+    {
+        let mut tx_guard = state.approval_tx.lock().await;
+        if let Some(tx) = tx_guard.take() {
+            // Send reject to unblock any pending rx.recv() in the streaming loop
+            let _ = tx.send(false).await;
+        }
+    }
+    let mut handle_guard = state.abort_handle.lock().await;
+    if let Some(handle) = handle_guard.take() {
+        handle.abort();
+    }
+    // Always emit chat-done so the frontend isLoading state is reset
+    let _ = app_handle.emit("chat-status", "");
+    let _ = app_handle.emit("chat-done", ());
+    Ok(())
+}
+
+/// Approve the pending tool call
+#[tauri::command]
+pub async fn approve_tool(state: tauri::State<'_, ChatState>) -> Result<(), String> {
+    let guard = state.approval_tx.lock().await;
+    if let Some(tx) = &*guard {
+        let _ = tx.send(true).await;
+        Ok(())
+    } else {
+        Err("No pending tool call to approve".to_string())
+    }
+}
+
+/// Reject the pending tool call
+#[tauri::command]
+pub async fn reject_tool(state: tauri::State<'_, ChatState>) -> Result<(), String> {
+    let guard = state.approval_tx.lock().await;
+    if let Some(tx) = &*guard {
+        let _ = tx.send(false).await;
+        Ok(())
+    } else {
+        Err("No pending tool call to reject".to_string())
+    }
+}
+
+/// Inject a user message into the active agentic loop without aborting it.
+/// Returns true if the message was accepted (active loop exists), false otherwise.
+/// When false the frontend should fall back to the message queue.
+#[tauri::command]
+pub async fn interrupt_chat(
+    message: String,
+    state: tauri::State<'_, ChatState>,
+) -> Result<bool, String> {
+    let guard = state.interrupt_tx.lock().await;
+    if let Some(tx) = &*guard {
+        Ok(tx.send(message).is_ok())
+    } else {
+        Ok(false)
+    }
+}
+
+/// Stream chat response using AI client with automatic BSL correction
+#[tauri::command]
+pub async fn stream_chat(
+    messages: Vec<ChatMessage>,
+    app_handle: AppHandle,
+    _state: tauri::State<'_, Arc<tokio::sync::Mutex<crate::bsl_client::BSLClient>>>,
+    chat_state: tauri::State<'_, ChatState>,
+) -> Result<(), String> {
+    // Create channel for tool approval
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<bool>(1);
+    {
+        let mut guard = chat_state.approval_tx.lock().await;
+        *guard = Some(tx);
+    }
+
+    // Create channel for mid-loop interrupt messages
+    let (interrupt_tx, mut interrupt_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    {
+        let mut guard = chat_state.interrupt_tx.lock().await;
+        *guard = Some(interrupt_tx);
+    }
+
+    // Convert to API messages
+    let mut api_messages: Vec<ApiMessage> = messages
+        .into_iter()
+        .map(|m| {
+            // Convert frontend tool_calls to backend ToolCall format
+            let tool_calls = m.tool_calls.map(|tcs| {
+                tcs.into_iter()
+                    .map(|tc| crate::ai::models::ToolCall {
+                        id: tc.id,
+                        r#type: tc.r#type,
+                        function: crate::ai::models::ToolCallFunction {
+                            name: tc.function.name,
+                            arguments: tc.function.arguments,
+                        },
+                    })
+                    .collect::<Vec<_>>()
+            });
+
+            ApiMessage {
+                role: m.role,
+                content: if m.content.is_empty() && tool_calls.is_some() {
+                    // assistant message with tool_calls may have empty content (valid)
+                    None
+                } else {
+                    Some(m.content)
+                },
+                tool_calls,
+                tool_call_id: m.tool_call_id,
+                name: m.name,
+            }
+        })
+        .collect();
+
+    // Resolve user-visible context budget for the UI indicator.
+    let active_profile = crate::llm_profiles::get_active_profile();
+    let effective_context_window = resolve_context_usage_window(active_profile.as_ref());
+
+    // Spawn the work into a cancellable task
+    let task_app_handle = app_handle.clone();
+
+    let join_handle = tokio::spawn(async move {
+        // 1. Initial status
+        let _ = task_app_handle.emit("chat-status", build_initial_chat_status());
+
+        let bsl_state =
+            task_app_handle.state::<Arc<tokio::sync::Mutex<crate::bsl_client::BSLClient>>>();
+        let settings = crate::settings::load_settings();
+
+        let max_iterations = settings.max_agent_iterations.unwrap_or(u32::MAX);
+        let mut current_iteration = 0;
+        // Guard: ask AI to write text response only once (when it returns thinking-only with no text)
+        let mut asked_for_text_response = false;
+        let mut tool_result_cache: HashMap<String, String> = HashMap::new();
+
+        if custom_prompts_require_bsl_syntax_check(&settings.custom_prompts) {
+            let bsl_blocks = extract_latest_user_bsl_blocks(&api_messages);
+            if !bsl_blocks.is_empty() {
+                crate::app_log!(
+                    "[AI][TOOL][AUTO] Active custom prompt requires check_bsl_syntax; forcing {} tool call(s)",
+                    bsl_blocks.len()
+                );
+                let _ = task_app_handle.emit("chat-status", "Checking BSL syntax...");
+
+                let mut forced_ui_diagnostics: Vec<BSLDiagnostic> = Vec::new();
+
+                for (idx, code) in bsl_blocks.iter().enumerate() {
+                    let (tool_call_id, arguments_value, arguments, tool_call) =
+                        build_forced_bsl_syntax_tool_call(idx, code);
+                    let tool_name = "check_bsl_syntax";
+
+                    api_messages.push(ApiMessage {
+                        role: "assistant".to_string(),
+                        content: None,
+                        tool_calls: Some(vec![tool_call]),
+                        tool_call_id: None,
+                        name: None,
+                    });
+
+                    let _ = task_app_handle.emit(
+                        "tool-call-started",
+                        serde_json::json!({
+                            "index": idx,
+                            "id": tool_call_id,
+                            "name": tool_name
+                        }),
+                    );
+                    let _ = task_app_handle.emit(
+                        "tool-call-progress",
+                        serde_json::json!({
+                            "index": idx,
+                            "arguments": arguments
+                        }),
+                    );
+
+                    crate::app_log!(
+                        "[AI][TOOL][AUTO] Executing: {} with args: {}",
+                        tool_name,
+                        arguments_value
+                    );
+
+                    let handler = crate::bsl_client::BSLMcpHandler::new(bsl_state.inner().clone());
+                    let call_result =
+                        tokio::time::timeout(tokio::time::Duration::from_secs(30), async {
+                            crate::mcp_client::InternalMcpHandler::call_tool(
+                                &handler,
+                                tool_name,
+                                arguments_value,
+                            )
+                            .await
+                        })
+                        .await;
+
+                    let (status, tool_result) = match call_result {
+                        Ok(Ok(result)) => {
+                            if let Some(diagnostics_value) = result.get("diagnostics") {
+                                if let Ok(diagnostics) = serde_json::from_value::<
+                                    Vec<crate::bsl_client::Diagnostic>,
+                                >(diagnostics_value.clone())
+                                {
+                                    forced_ui_diagnostics.extend(
+                                        diagnostics.iter().map(bsl_diagnostic_to_ui),
+                                    );
+                                }
+                            }
+                            ("done", result.to_string())
+                        }
+                        Ok(Err(error)) => {
+                            crate::app_log!(
+                                "[AI][TOOL][AUTO] check_bsl_syntax failed: {}",
+                                error
+                            );
+                            ("error", format!("Error calling tool: {}", error))
+                        }
+                        Err(_) => {
+                            crate::app_log!(
+                                "[AI][TOOL][AUTO] check_bsl_syntax timed out after 30s"
+                            );
+                            ("error", "Error calling tool: Timeout 30s".to_string())
+                        }
+                    };
+
+                    let _ = task_app_handle.emit(
+                        "tool-call-completed",
+                        serde_json::json!({
+                            "id": tool_call_id,
+                            "status": status,
+                            "result": tool_result
+                        }),
+                    );
+
+                    api_messages.push(ApiMessage {
+                        role: "tool".to_string(),
+                        content: Some(tool_result),
+                        tool_call_id: Some(tool_call_id),
+                        tool_calls: None,
+                        name: Some(tool_name.to_string()),
+                    });
+                }
+
+                let _ = task_app_handle.emit("bsl-validation-result", &forced_ui_diagnostics);
+                emit_context_usage(&task_app_handle, &api_messages, effective_context_window);
+            }
+        }
+
+        loop {
+            current_iteration += 1;
+            let _ = task_app_handle.emit("chat-iteration", current_iteration);
+
+            if current_iteration > max_iterations {
+                let _ = task_app_handle.emit("chat-chunk", &format!("\n\n**[Система] Достигнут лимит итераций диалога ({}).** Пожалуйста, уточните запрос или продолжите в новом сообщении.", max_iterations));
+                break;
+            }
+
+            // Prune old tool rounds to keep context under threshold
+            prune_tool_context(&mut api_messages, CONTEXT_PRUNE_THRESHOLD);
+            emit_context_usage(&task_app_handle, &api_messages, effective_context_window);
+
+            // Stream chat completion
+            let response_msg =
+                stream_chat_completion(api_messages.clone(), task_app_handle.clone()).await;
+
+            let assistant_msg = match response_msg {
+                Ok(m) => m,
+                Err(e) => {
+                    return Err(e);
+                }
+            };
+
+            // Add assistant response to history, truncating excess tool calls.
+            // We modify the stored version so tool_call_ids match exactly what we'll execute.
+            // Excess tool calls are dropped silently (no error messages that confuse the model).
+            let assistant_msg_to_push = {
+                let mut m = assistant_msg.clone();
+                if let Some(tc) = &mut m.tool_calls {
+                    if tc.len() > MAX_PARALLEL_TOOL_CALLS {
+                        crate::app_log!(
+                            "[AI][LOOP] Truncating tool_calls in history: {} → {}",
+                            tc.len(),
+                            MAX_PARALLEL_TOOL_CALLS
+                        );
+                        tc.truncate(MAX_PARALLEL_TOOL_CALLS);
+                    }
+                }
+                m
+            };
+            if assistant_message_has_meaningful_payload(&assistant_msg_to_push) {
+                api_messages.push(assistant_msg_to_push);
+                emit_context_usage(&task_app_handle, &api_messages, effective_context_window);
+            } else {
+                crate::app_log!(
+                    "[AI][LOOP] Skipping empty assistant response in history before retry"
+                );
+            }
+
+            // 1. Check for tool calls (use original to get full count for UI)
+            if let Some(tool_calls) = &assistant_msg.tool_calls {
+                let tool_calls_limited: Vec<_> =
+                    tool_calls.iter().take(MAX_PARALLEL_TOOL_CALLS).collect();
+                let _ = task_app_handle.emit("chat-status", "Ожидаю подтверждения...");
+                let _ = task_app_handle.emit(
+                    "waiting-for-approval",
+                    serde_json::json!({
+                        "count": tool_calls_limited.len()
+                    }),
+                );
+
+                // Wait for approval signal
+                let approved = rx.recv().await.unwrap_or(false);
+
+                if !approved {
+                    let _ = task_app_handle.emit("chat-status", "Действие отклонено пользователем");
+                    crate::app_log!("[AI][LOOP] Tool calls rejected by user");
+                    for tool_call in &tool_calls_limited {
+                        api_messages.push(ApiMessage {
+                            role: "tool".to_string(),
+                            content: Some("Error: Action rejected by user".to_string()),
+                            tool_call_id: Some(tool_call.id.clone()),
+                            tool_calls: None,
+                            name: Some(tool_call.function.name.clone()),
+                        });
+                    }
+                    continue;
+                }
+
+                let _ = task_app_handle.emit("chat-status", "Вызов MCP...");
+                crate::app_log!(
+                    "[AI][LOOP] Processing {} tool calls (Approved)",
+                    tool_calls_limited.len()
+                );
+
+                for tool_call in &tool_calls_limited {
+                    let tool_name = &tool_call.function.name;
+                    let _ =
+                        task_app_handle.emit("chat-status", format!("Вызов MCP: {}...", tool_name));
+                    let raw_arguments = tool_call.function.arguments.clone();
+                    let parsed_arguments =
+                        serde_json::from_str::<serde_json::Value>(&raw_arguments);
+                    let arguments = parsed_arguments
+                        .as_ref()
+                        .ok()
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!({}));
+
+                    crate::app_log!(
+                        "[AI][TOOL] Executing: {} with args: {}",
+                        tool_name,
+                        arguments
+                    );
+
+                    let mut tool_result = "Error: Tool not found".to_string();
+                    let mut all_configs = settings.mcp_servers.clone();
+
+                    if !all_configs.iter().any(|c| c.id == "bsl-ls") {
+                        all_configs.push(crate::settings::McpServerConfig {
+                            id: "bsl-ls".to_string(),
+                            name: "BSL Language Server".to_string(),
+                            enabled: settings.bsl_server.enabled,
+                            transport: crate::settings::McpTransport::Internal,
+                            ..Default::default()
+                        });
+                    }
+
+                    for config in all_configs {
+                        if !config.enabled {
+                            continue;
+                        }
+
+                        if let Ok(client) = crate::mcp_client::McpClient::new(config.clone()).await
+                        {
+                            if let Ok(tools) = client.list_tools().await {
+                                let target_tool = tools.into_iter().find(|t| {
+                                    let sanitized = sanitize_tool_name(&t.name);
+                                    sanitized == *tool_name
+                                        || sanitize_codex_tool_name(&t.name) == *tool_name
+                                });
+
+                                if let Some(t) = target_tool {
+                                    let cache_key = build_tool_cache_key(
+                                        &config.id,
+                                        &t.name,
+                                        &raw_arguments,
+                                        parsed_arguments.as_ref().ok(),
+                                    );
+                                    if is_tool_result_cacheable(&config.id) {
+                                        if let Some(cached_result) =
+                                            tool_result_cache.get(&cache_key)
+                                        {
+                                            tool_result = cached_result.clone();
+                                            crate::app_log!(
+                                                "[AI][TOOL][CACHE] Reusing cached result for {} ({})",
+                                                t.name,
+                                                config.id
+                                            );
+                                            let _ = task_app_handle.emit(
+                                                "tool-call-completed",
+                                                serde_json::json!({
+                                                    "id": tool_call.id,
+                                                    "status": "done",
+                                                    "result": tool_result,
+                                                    "cached": true
+                                                }),
+                                            );
+                                            break;
+                                        }
+                                    }
+                                    match client.call_tool(&t.name, arguments.clone()).await {
+                                        Ok(res) => {
+                                            tool_result = res.to_string();
+                                            if is_tool_result_cacheable(&config.id) {
+                                                tool_result_cache
+                                                    .insert(cache_key, tool_result.clone());
+                                            }
+                                            let _ = task_app_handle.emit(
+                                                "tool-call-completed",
+                                                serde_json::json!({
+                                                    "id": tool_call.id,
+                                                    "status": "done",
+                                                    "result": tool_result
+                                                }),
+                                            );
+                                        }
+                                        Err(e) => {
+                                            tool_result = format!("Error calling tool: {}", e);
+                                            let _ = task_app_handle.emit(
+                                                "tool-call-completed",
+                                                serde_json::json!({
+                                                    "id": tool_call.id,
+                                                    "status": "error",
+                                                    "result": tool_result
+                                                }),
+                                            );
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Truncate large tool results to prevent context explosion
+                    if tool_result.len() > MAX_TOOL_RESULT_CHARS {
+                        // Find last valid UTF-8 char boundary at or before the byte limit
+                        let boundary = (0..=MAX_TOOL_RESULT_CHARS)
+                            .rev()
+                            .find(|&i| tool_result.is_char_boundary(i))
+                            .unwrap_or(0);
+                        tool_result.truncate(boundary);
+                        tool_result.push_str("\n... [результат усечён]");
+                        crate::app_log!(
+                            "[AI][TOOL] Result truncated to {}b for {}",
+                            boundary,
+                            tool_name
+                        );
+                    }
+                    api_messages.push(ApiMessage {
+                        role: "tool".to_string(),
+                        content: Some(tool_result),
+                        tool_call_id: Some(tool_call.id.clone()),
+                        tool_calls: None,
+                        name: Some(tool_name.clone()),
+                    });
+                }
+
+                // Check for interrupt message after all tool calls finish
+                if let Ok(interrupt_msg) = interrupt_rx.try_recv() {
+                    crate::app_log!("[AI][INTERRUPT] Injecting user message mid-loop");
+                    let _ = task_app_handle.emit("chat-interrupt-injected", &interrupt_msg);
+                    let wrapped = format!(
+                        "[СТОП. ПОЛЬЗОВАТЕЛЬ ПРЕРВАЛ ТЕКУЩУЮ ЗАДАЧУ]\n\n{}\n\n[Немедленно прекрати текущую задачу. Ответь пользователю на его сообщение выше.]",
+                        interrupt_msg
+                    );
+                    api_messages.push(ApiMessage {
+                        role: "user".to_string(),
+                        content: Some(wrapped),
+                        tool_calls: None,
+                        tool_call_id: None,
+                        name: None,
+                    });
+                }
+
+                continue;
+            }
+
+            // 2. If no tool calls — check for empty response (thinking-only, TTFT=0)
+            let full_text = assistant_msg.content.as_deref().unwrap_or("");
+
+            if full_text.is_empty() {
+                if !asked_for_text_response {
+                    asked_for_text_response = true;
+                    let _ = task_app_handle.emit("chat-status", "Запрашиваю текстовый ответ...");
+                    api_messages.push(ApiMessage {
+                        role: "user".to_string(),
+                        content: Some("Напиши свой ответ текстом.".to_string()),
+                        tool_calls: None,
+                        tool_call_id: None,
+                        name: None,
+                    });
+                    continue;
+                } else {
+                    // Model returned empty response twice — likely context too large
+                    crate::app_log!("[AI] Model returned empty response twice (context ~{}t). Emitting fallback.",
+                        api_messages.iter().map(|m| m.content.as_deref().unwrap_or("").len() / 4).sum::<usize>());
+                    let _ = task_app_handle.emit("chat-chunk",
+                        "\n\n> **[Система]** Модель не смогла сформировать ответ (вероятно, контекст диалога слишком велик). Попробуйте начать новый чат или сократить историю.");
+                    break;
+                }
+            }
+            // Check for BSL blocks
+            let bsl_blocks = extract_bsl_code(full_text);
+
+            if bsl_blocks.is_empty() {
+                if let Ok(interrupt_msg) = interrupt_rx.try_recv() {
+                    crate::app_log!("[AI][INTERRUPT] Injecting user message after text response");
+                    let _ = task_app_handle.emit("chat-interrupt-injected", &interrupt_msg);
+                    let wrapped = format!(
+                        "[СТОП. ПОЛЬЗОВАТЕЛЬ ПРЕРВАЛ ТЕКУЩУЮ ЗАДАЧУ]\n\n{}\n\n[Немедленно прекрати текущую задачу. Ответь пользователю на его сообщение выше.]",
+                        interrupt_msg
+                    );
+                    api_messages.push(ApiMessage {
+                        role: "user".to_string(),
+                        content: Some(wrapped),
+                        tool_calls: None,
+                        tool_call_id: None,
+                        name: None,
+                    });
+                    continue;
+                }
+                break;
+            }
+
+            let _ = task_app_handle.emit("chat-status", "Проверка BSL кода...");
+
+            let validation_result =
+                tokio::time::timeout(tokio::time::Duration::from_secs(30), async {
+                    // Проверяем подключение один раз до цикла
+                    {
+                        let mut client = bsl_state.lock().await;
+                        if !client.is_connected() {
+                            let _ = client.connect().await;
+                        }
+                    } // lock освобождён
+
+                    let mut all_errors: Vec<String> = Vec::new();
+                    let mut ui_diagnostics: Vec<BSLDiagnostic> = Vec::new();
+
+                    for (idx, code) in bsl_blocks.iter().enumerate() {
+                        let uri = format!("file:///iteration_{}_{}.bsl", current_iteration, idx);
+                        // Захватываем и освобождаем lock на каждой итерации
+                        let result = {
+                            let client = bsl_state.lock().await;
+                            client.analyze_code(code, &uri).await
+                        };
+                        match result {
+                            Ok(diagnostics) => {
+                                for d in &diagnostics {
+                                    let msg_lower = d.message.to_lowercase();
+                                    if msg_lower.contains("каноническ")
+                                        || msg_lower.contains("пробел")
+                                        || msg_lower.contains("canonical")
+                                        || msg_lower.contains("comments")
+                                    {
+                                        continue;
+                                    }
+
+                                    ui_diagnostics.push(BSLDiagnostic {
+                                        line: d.range.start.line,
+                                        character: d.range.start.character,
+                                        message: d.message.clone(),
+                                        severity: match d.severity {
+                                            Some(1) => "error".to_string(),
+                                            Some(2) => "warning".to_string(),
+                                            _ => "info".to_string(),
+                                        },
+                                    });
+                                }
+
+                                let errors: Vec<crate::bsl_client::Diagnostic> = diagnostics
+                                    .into_iter()
+                                    .filter(|d| d.severity == Some(1))
+                                    .collect();
+
+                                if !errors.is_empty() {
+                                    let error_str = errors
+                                        .iter()
+                                        .map(|e| {
+                                            format!(
+                                                "- Line {}: {}",
+                                                e.range.start.line + 1,
+                                                e.message
+                                            )
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n");
+                                    all_errors.push(format!("Block {}:\n{}", idx + 1, error_str));
+                                }
+                            }
+                            Err(_) => {}
+                        }
+                    }
+                    (all_errors, ui_diagnostics)
+                })
+                .await;
+
+            let (all_errors, ui_diagnostics) = match validation_result {
+                Ok(res) => res,
+                Err(_) => {
+                    let _ =
+                        task_app_handle.emit("chat-status", "Ошибка проверки кода: Таймаут (30с)");
+                    break;
+                }
+            };
+
+            let _ = task_app_handle.emit("bsl-validation-result", &ui_diagnostics);
+
+            if all_errors.is_empty() {
+                if let Ok(interrupt_msg) = interrupt_rx.try_recv() {
+                    crate::app_log!(
+                        "[AI][INTERRUPT] Injecting user message after BSL-clean response"
+                    );
+                    let _ = task_app_handle.emit("chat-interrupt-injected", &interrupt_msg);
+                    let wrapped = format!(
+                        "[СТОП. ПОЛЬЗОВАТЕЛЬ ПРЕРВАЛ ТЕКУЩУЮ ЗАДАЧУ]\n\n{}\n\n[Немедленно прекрати текущую задачу. Ответь пользователю на его сообщение выше.]",
+                        interrupt_msg
+                    );
+                    api_messages.push(ApiMessage {
+                        role: "user".to_string(),
+                        content: Some(wrapped),
+                        tool_calls: None,
+                        tool_call_id: None,
+                        name: None,
+                    });
+                    continue;
+                }
+                break;
+            }
+            // BSL errors present — check interrupt before retrying
+            if let Ok(interrupt_msg) = interrupt_rx.try_recv() {
+                crate::app_log!("[AI][INTERRUPT] Injecting user message (BSL errors path)");
+                let _ = task_app_handle.emit("chat-interrupt-injected", &interrupt_msg);
+                let wrapped = format!(
+                    "[СТОП. ПОЛЬЗОВАТЕЛЬ ПРЕРВАЛ ТЕКУЩУЮ ЗАДАЧУ]\n\n{}\n\n[Немедленно прекрати текущую задачу. Ответь пользователю на его сообщение выше.]",
+                    interrupt_msg
+                );
+                api_messages.push(ApiMessage {
+                    role: "user".to_string(),
+                    content: Some(wrapped),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+                continue;
+            }
+            break;
+        }
+
+        // Clear interrupt channel on loop exit
+        {
+            // interrupt_rx is dropped here (local), interrupt_tx in ChatState will
+            // return SendError on next interrupt_chat call — frontend falls back to queue.
+        }
+
+        let _ = task_app_handle.emit("chat-status", "");
+        let _ = task_app_handle.emit("chat-done", ());
+        Ok(())
+    });
+
+    // Store the abort handle
+    let abort_handle = join_handle.abort_handle();
+    {
+        let mut guard = chat_state.abort_handle.lock().await;
+        *guard = Some(abort_handle);
+    }
+
+    let result = match join_handle.await {
+        Ok(res) => res,
+        Err(e) => {
+            if e.is_cancelled() {
+                let _ = app_handle.emit("chat-status", "");
+                Err("Cancelled".to_string())
+            } else {
+                Err(format!("Task panic: {}", e))
+            }
+        }
+    };
+
+    // Clear interrupt channel — subsequent interrupt_chat calls will return false
+    {
+        let mut guard = chat_state.interrupt_tx.lock().await;
+        *guard = None;
+    }
+
+    result
+}
+
+/// Non-streaming context summarization.
+/// Takes the current chat history as JSON, calls the active LLM profile
+/// with a structured summarization prompt, returns the summary text.
+#[tauri::command]
+pub async fn compact_context(messages_json: String) -> Result<String, String> {
+    let profile = crate::llm_profiles::get_active_profile()
+        .ok_or_else(|| "Нет активного LLM профиля".to_string())?;
+
+    let history: Vec<ApiMessage> = serde_json::from_str(&messages_json)
+        .map_err(|e| format!("Ошибка парсинга истории: {}", e))?;
+
+    // Build conversation text for the summary prompt
+    let mut conv_text = String::new();
+    for msg in &history {
+        let role = &msg.role;
+        let content = msg.content.as_deref().unwrap_or("");
+        if content.is_empty() {
+            continue;
+        }
+        conv_text.push_str(&format!("[{}]: {}\n\n", role, content));
+    }
+
+    let system_prompt = "Ты — ассистент для сжатия контекста диалога. \
+Твоя задача — создать краткий и точный конспект переданного диалога. \
+Конспект должен сохранить всю важную техническую информацию: \
+задачи пользователя, принятые решения, написанный код, обнаруженные ошибки и их исправления, \
+текущий статус задач. Отвечай на русском языке. \
+Начни с фразы: «📋 Конспект предыдущего диалога:»";
+
+    let summarize_messages = vec![
+        ApiMessage {
+            role: "system".to_string(),
+            content: Some(system_prompt.to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        },
+        ApiMessage {
+            role: "user".to_string(),
+            content: Some(format!(
+                "Сожми следующий диалог в краткий конспект:\n\n{}",
+                conv_text
+            )),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        },
+    ];
+
+    // Only standard OpenAI-compatible HTTP providers support summarization.
+    // CodexCli / QwenCli use CLI tools, not HTTP; OneCNaparnik uses proprietary API.
+    if matches!(
+        profile.provider,
+        crate::llm_profiles::LLMProvider::CodexCli
+            | crate::llm_profiles::LLMProvider::QwenCli
+            | crate::llm_profiles::LLMProvider::OneCNaparnik
+    ) {
+        return Err(format!(
+            "Суммаризация не поддерживается для провайдера {:?}. Используйте стратегию 'sliding_window'.",
+            profile.provider
+        ));
+    }
+
+    let api_key = crate::ai::client::resolve_profile_api_key(&profile)?;
+    let raw_url = profile.get_base_url();
+    let client = crate::http_client::build_http_client()?;
+
+    if matches!(profile.provider, crate::llm_profiles::LLMProvider::Ollama) {
+        let trimmed = raw_url.trim_end_matches('/');
+        let root_url = trimmed.strip_suffix("/v1").unwrap_or(trimmed);
+        let base_url = format!("{}/api/chat", root_url);
+
+        let request_body = serde_json::json!({
+            "model": profile.model,
+            "messages": summarize_messages,
+            "stream": false,
+            "think": false,
+            "options": {
+                "temperature": 0.3,
+                "num_predict": 1024,
+            },
+        });
+
+        let mut request = client
+            .post(&base_url)
+            .header("Content-Type", "application/json");
+        if !api_key.trim().is_empty() {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
+        }
+
+        let response = request
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| format!("РћС€РёР±РєР° HTTP: {}", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!("API error {}: {}", status, body));
+        }
+
+        let json: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| format!("РћС€РёР±РєР° РїР°СЂСЃРёРЅРіР° РѕС‚РІРµС‚Р°: {}", e))?;
+
+        let summary = json["message"]["content"]
+            .as_str()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| "РџСѓСЃС‚РѕР№ РѕС‚ LLM".to_string())?
+            .to_string();
+
+        return Ok(summary);
+    }
+
+    let base_url = {
+        let trimmed = raw_url.trim_end_matches('/');
+        if matches!(
+            profile.provider,
+            crate::llm_profiles::LLMProvider::Ollama | crate::llm_profiles::LLMProvider::LMStudio
+        ) && !trimmed.ends_with("/v1")
+        {
+            format!("{}/v1/chat/completions", trimmed)
+        } else {
+            format!("{}/chat/completions", trimmed)
+        }
+    };
+
+    let request_body = serde_json::json!({
+        "model": profile.model,
+        "messages": summarize_messages,
+        "stream": false,
+        "temperature": 0.3,
+        "max_tokens": 1024,
+    });
+
+    let client = crate::http_client::build_http_client()?;
+    let response = client
+        .post(&base_url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|e| format!("Ошибка HTTP: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("API error {}: {}", status, body));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Ошибка парсинга ответа: {}", e))?;
+
+    let summary = json["choices"][0]["message"]["content"]
+        .as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "Пустой ответ от LLM".to_string())?
+        .to_string();
+
+    Ok(summary)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai::models::ToolCallFunction;
+
+    #[test]
+    fn cache_key_is_stable_for_equivalent_json_arguments() {
+        let left = serde_json::json!({
+            "object": "Заказ",
+            "filters": {
+                "includeTables": true,
+                "lang": "ru"
+            }
+        });
+        let right = serde_json::json!({
+            "filters": {
+                "lang": "ru",
+                "includeTables": true
+            },
+            "object": "Заказ"
+        });
+
+        let left_key = build_tool_cache_key(
+            "builtin-1c-metadata",
+            "get_metadata_structure",
+            r#"{"object":"Заказ","filters":{"includeTables":true,"lang":"ru"}}"#,
+            Some(&left),
+        );
+        let right_key = build_tool_cache_key(
+            "builtin-1c-metadata",
+            "get_metadata_structure",
+            r#"{"filters":{"lang":"ru","includeTables":true},"object":"Заказ"}"#,
+            Some(&right),
+        );
+
+        assert_eq!(left_key, right_key);
+    }
+
+    #[test]
+    fn cache_key_falls_back_to_trimmed_raw_arguments_when_json_is_invalid() {
+        let cache_key = build_tool_cache_key(
+            "builtin-1c-metadata",
+            "get_metadata_structure",
+            "  {invalid json}  ",
+            None,
+        );
+
+        assert_eq!(
+            cache_key,
+            "builtin-1c-metadata::get_metadata_structure::{invalid json}"
+        );
+    }
+
+    #[test]
+    fn empty_assistant_message_is_not_meaningful_for_history() {
+        let message = ApiMessage {
+            role: "assistant".to_string(),
+            content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        };
+
+        assert!(!assistant_message_has_meaningful_payload(&message));
+    }
+
+    #[test]
+    fn assistant_tool_call_message_is_meaningful_for_history_even_without_content() {
+        let message = ApiMessage {
+            role: "assistant".to_string(),
+            content: None,
+            tool_calls: Some(vec![crate::ai::models::ToolCall {
+                id: "call_1".to_string(),
+                r#type: "function".to_string(),
+                function: ToolCallFunction {
+                    name: "search_code".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+            tool_call_id: None,
+            name: None,
+        };
+
+        assert!(assistant_message_has_meaningful_payload(&message));
+    }
+
+    #[test]
+    fn context_usage_window_prefers_profile_max_tokens() {
+        let profile = crate::llm_profiles::LLMProfile {
+            id: "profile_1".to_string(),
+            name: "Local model".to_string(),
+            provider: crate::llm_profiles::LLMProvider::Custom,
+            model: "gemma".to_string(),
+            api_key_encrypted: String::new(),
+            base_url: None,
+            max_tokens: 8_000,
+            temperature: 0.7,
+            context_window_override: Some(128_000),
+            reasoning_effort: None,
+            enable_thinking: None,
+            disable_streaming: None,
+            stream_timeout_secs: None,
+            context_compress_strategy: String::new(),
+            max_context_messages: None,
+        };
+
+        assert_eq!(resolve_context_usage_window(Some(&profile)), 8_000);
+    }
+
+    #[test]
+    fn issue_186_detects_enabled_bsl_syntax_rule() {
+        let mut custom = crate::settings::CustomPromptsSettings::default();
+        custom.templates.push(crate::settings::PromptTemplate {
+            id: "bsl-syntax".to_string(),
+            name: "Синтаксис 1С".to_string(),
+            description: "Контролировать синтаксис 1С".to_string(),
+            content: "Перед ответом проверь BSL через check_bsl_syntax.".to_string(),
+            enabled: true,
+        });
+
+        assert!(custom_prompts_require_bsl_syntax_check(&custom));
+    }
+
+    #[test]
+    fn issue_186_ignores_disabled_bsl_syntax_rule() {
+        let custom = crate::settings::CustomPromptsSettings {
+            templates: vec![crate::settings::PromptTemplate {
+                id: "bsl-syntax".to_string(),
+                name: "Синтаксис 1С".to_string(),
+                description: "Контролировать синтаксис 1С".to_string(),
+                content: "Перед ответом проверь BSL через check_bsl_syntax.".to_string(),
+                enabled: false,
+            }],
+            ..Default::default()
+        };
+
+        assert!(!custom_prompts_require_bsl_syntax_check(&custom));
+    }
+
+    #[test]
+    fn issue_186_extracts_bsl_blocks_from_latest_user_message() {
+        let messages = vec![
+            ApiMessage {
+                role: "user".to_string(),
+                content: Some("```bsl\nПроцедура СтарыйКод()\nКонецПроцедуры\n```".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+            },
+            ApiMessage {
+                role: "assistant".to_string(),
+                content: Some("ответ".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+            },
+            ApiMessage {
+                role: "user".to_string(),
+                content: Some("```bsl\nПроцедура НовыйКод()\nКонецПроцедуры\n```".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+            },
+        ];
+
+        let blocks = extract_latest_user_bsl_blocks(&messages);
+
+        assert_eq!(blocks.len(), 1);
+        assert!(blocks[0].contains("НовыйКод"));
+        assert!(!blocks[0].contains("СтарыйКод"));
+    }
+
+    #[test]
+    fn issue_186_builds_forced_check_bsl_syntax_tool_call() {
+        let code = "????????? Hello()\n??????????????";
+        let (tool_call_id, arguments_value, arguments, tool_call) =
+            build_forced_bsl_syntax_tool_call(0, code);
+
+        assert_eq!(tool_call_id, "auto_check_bsl_syntax_1");
+        assert_eq!(tool_call.function.name, "check_bsl_syntax");
+        assert_eq!(tool_call.function.arguments, arguments);
+        assert_eq!(arguments_value["code"], code);
+        assert!(arguments.contains("????????? Hello"));
+    }
+}

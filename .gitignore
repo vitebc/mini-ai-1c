@@ -1,0 +1,70 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Tauri / Rust
+tauri-app/src-tauri/target/
+tauri-app/src-tauri/gen/
+tauri-app/src-tauri/Cargo.lock
+tauri-app/mcp-1c-search/target/
+tauri-app/mcp-1c-search/**/target/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.sln
+*.sw?
+.cursor/
+# Project specifics
+_archive/
+artifacts/
+specs/
+temp/
+*.tmp
+temp_*.bsl
+memory-bank/
+
+# Sensitive info
+.env
+settings.json
+llm_profiles.json
+
+backup/
+tests/
+scripts/
+
+# Antigravity Skills
+.agent/
+.claude/settings.local.json
+
+docs/
+
+.mcp.json
+memory/
+tauri-app/src-tauri/bin/mcp-1c-search-x86_64-pc-windows-msvc.exe
+tauri-app/mcp-1c-search/tree-sitter-bsl/
+tauri-app/mcp-1c-search/tree-sitter-bsl-local/
+tauri-app/src-tauri/editor-bridge/*.py
+
+
+tauri-app/src-tauri/editor-bridge/EditorBridge.exe
+tauri-app/src-tauri/editor-bridge/EditorBridge.dll
+tauri-app/src-tauri/editor-bridge/EditorBridge.deps.json
+tauri-app/src-tauri/editor-bridge/EditorBridge.runtimeconfig.json
+tauri-app/src-tauri/editor-bridge/Interop.UIAutomationClient.dll
+1c_mcp_ext/*.md
+tauri-app/src-tauri/tauri.vm202.v2.conf.json

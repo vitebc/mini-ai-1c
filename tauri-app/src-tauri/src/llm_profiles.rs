@@ -1,0 +1,291 @@
+//! LLM Profile management with encrypted API keys
+
+use serde::{Deserialize, Serialize};
+use std::fs;
+
+use crate::crypto::{decrypt_string, encrypt_string};
+use crate::settings::get_settings_dir;
+
+/// Supported LLM providers
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum LLMProvider {
+    OpenAI,
+    Anthropic,
+    OpenRouter,
+    Google,
+    DeepSeek,
+    Groq,
+    Mistral,
+    XAI,
+    Perplexity,
+    Ollama,
+    OllamaCloud,
+    LMStudio,
+    ZAI,
+    MiniMax,
+    Custom,
+    QwenCli,
+    CodexCli,
+    OneCNaparnik,
+}
+
+impl Default for LLMProvider {
+    fn default() -> Self {
+        LLMProvider::OpenAI
+    }
+}
+
+impl std::fmt::Display for LLMProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+pub const DEFAULT_CODEX_REASONING_EFFORT: &str = "medium";
+pub const DEFAULT_CODEX_STREAM_TIMEOUT_SECS: u32 = 120;
+
+pub fn normalize_codex_reasoning_effort(value: Option<&str>) -> Option<String> {
+    let normalized = value?.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "none" | "low" | "medium" | "high" | "xhigh" => Some(normalized),
+        _ => None,
+    }
+}
+
+/// LLM Profile
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LLMProfile {
+    pub id: String,
+    pub name: String,
+    pub provider: LLMProvider,
+    pub model: String,
+    pub api_key_encrypted: String,
+    pub base_url: Option<String>,
+    pub max_tokens: u32,
+    pub temperature: f32,
+    pub context_window_override: Option<u32>,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
+    #[serde(default)]
+    pub enable_thinking: Option<bool>,
+    #[serde(default)]
+    pub disable_streaming: Option<bool>,
+    #[serde(default)]
+    pub stream_timeout_secs: Option<u32>,
+    /// Context compression strategy: "disabled" | "sliding_window" | "summarize"
+    #[serde(default)]
+    pub context_compress_strategy: String,
+    /// Threshold: compress when dialog messages exceed this count (default 40)
+    #[serde(default)]
+    pub max_context_messages: Option<u32>,
+}
+
+impl LLMProfile {
+    /// Create a default OpenAI profile
+    pub fn default_profile() -> Self {
+        Self {
+            id: "default".to_string(),
+            name: "Default (OpenAI)".to_string(),
+            provider: LLMProvider::OpenAI,
+            model: "gpt-4o-mini".to_string(),
+            api_key_encrypted: String::new(),
+            base_url: None,
+            max_tokens: 4096,
+            temperature: 0.7,
+            context_window_override: None,
+            reasoning_effort: None,
+            enable_thinking: None,
+            disable_streaming: None,
+            stream_timeout_secs: None,
+            context_compress_strategy: String::new(),
+            max_context_messages: None,
+        }
+    }
+
+    /// Get decrypted API key
+    pub fn get_api_key(&self) -> String {
+        if self.api_key_encrypted.is_empty() {
+            return String::new();
+        }
+        decrypt_string(&self.api_key_encrypted).unwrap_or_default()
+    }
+
+    /// Get decrypted API key with an explicit error when the saved value can't be decrypted.
+    pub fn try_get_api_key(&self) -> Result<String, String> {
+        if self.api_key_encrypted.is_empty() {
+            return Ok(String::new());
+        }
+
+        decrypt_string(&self.api_key_encrypted).map_err(|_| {
+            format!(
+                "Не удалось расшифровать сохраненный API key для профиля '{}'. Сохраните ключ заново в настройках.",
+                self.name
+            )
+        })
+    }
+
+    /// Set and encrypt API key
+    pub fn set_api_key(&mut self, api_key: &str) {
+        self.api_key_encrypted = encrypt_string(api_key).unwrap_or_default();
+    }
+
+    /// Get base URL with default fallback
+    pub fn get_base_url(&self) -> String {
+        self.base_url
+            .clone()
+            .unwrap_or_else(|| match self.provider {
+                LLMProvider::OpenAI => "https://api.openai.com/v1".to_string(),
+                LLMProvider::Anthropic => "https://api.anthropic.com/v1".to_string(),
+                LLMProvider::OpenRouter => "https://openrouter.ai/api/v1".to_string(),
+                LLMProvider::Google => {
+                    "https://generativelanguage.googleapis.com/v1beta/openai".to_string()
+                }
+                LLMProvider::DeepSeek => "https://api.deepseek.com/v1".to_string(),
+                LLMProvider::Groq => "https://api.groq.com/openai/v1".to_string(),
+                LLMProvider::Mistral => "https://api.mistral.ai/v1".to_string(),
+                LLMProvider::XAI => "https://api.x.ai/v1".to_string(),
+                LLMProvider::Perplexity => "https://api.perplexity.ai".to_string(),
+                LLMProvider::ZAI => "https://api.z.ai/api/coding/paas/v4".to_string(),
+                LLMProvider::MiniMax => "https://api.minimax.io/v1".to_string(),
+                LLMProvider::Ollama => "http://localhost:11434/v1".to_string(),
+                LLMProvider::OllamaCloud => "https://ollama.com/v1".to_string(),
+                LLMProvider::LMStudio => "http://localhost:1234/v1".to_string(),
+                LLMProvider::Custom => String::new(),
+                LLMProvider::QwenCli => "https://chat.qwen.ai/api/v1".to_string(),
+                LLMProvider::CodexCli => "https://chatgpt.com/backend-api/codex".to_string(),
+                LLMProvider::OneCNaparnik => "https://code.1c.ai".to_string(),
+            })
+    }
+}
+
+/// Profile storage
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProfileStore {
+    pub profiles: Vec<LLMProfile>,
+    pub active_profile_id: String,
+}
+
+fn get_profiles_file() -> std::path::PathBuf {
+    get_settings_dir().join("llm_profiles.json")
+}
+
+/// Load profiles from file
+pub fn load_profiles() -> ProfileStore {
+    let path = get_profiles_file();
+    if path.exists() {
+        match fs::read_to_string(&path) {
+            Ok(content) => match serde_json::from_str::<ProfileStore>(&content) {
+                Ok(mut store) => {
+                    let mut changed = false;
+                    for profile in &mut store.profiles {
+                        if matches!(profile.provider, LLMProvider::QwenCli)
+                            && (profile.temperature - 0.7).abs() < f32::EPSILON
+                        {
+                            crate::app_log!(force: true, "[LLM Profiles] Migrating QwenCli profile '{}' temperature from 0.7 to 0.1", profile.name);
+                            profile.temperature = 0.1;
+                            changed = true;
+                        }
+
+                        if matches!(profile.provider, LLMProvider::OllamaCloud)
+                            && (profile.temperature - 0.7).abs() < f32::EPSILON
+                        {
+                            crate::app_log!(force: true, "[LLM Profiles] Migrating OllamaCloud profile '{}' temperature from 0.7 to 0.1", profile.name);
+                            profile.temperature = 0.1;
+                            changed = true;
+                        }
+
+                        if matches!(profile.provider, LLMProvider::CodexCli) {
+                            let normalized_effort = normalize_codex_reasoning_effort(
+                                profile.reasoning_effort.as_deref(),
+                            )
+                            .unwrap_or_else(|| DEFAULT_CODEX_REASONING_EFFORT.to_string());
+                            if profile.reasoning_effort.as_deref()
+                                != Some(normalized_effort.as_str())
+                            {
+                                crate::app_log!(
+                                    force: true,
+                                    "[LLM Profiles] Migrating CodexCli profile '{}' reasoning_effort to '{}'",
+                                    profile.name,
+                                    normalized_effort
+                                );
+                                profile.reasoning_effort = Some(normalized_effort);
+                                changed = true;
+                            }
+
+                            let expected_base_url = "https://chatgpt.com/backend-api/codex";
+                            if profile.base_url.as_deref() != Some(expected_base_url) {
+                                crate::app_log!(
+                                    force: true,
+                                    "[LLM Profiles] Migrating CodexCli profile '{}' base_url to '{}'",
+                                    profile.name,
+                                    expected_base_url
+                                );
+                                profile.base_url = Some(expected_base_url.to_string());
+                                changed = true;
+                            }
+
+                            if profile.stream_timeout_secs.is_none() {
+                                crate::app_log!(
+                                    force: true,
+                                    "[LLM Profiles] Migrating CodexCli profile '{}' stream_timeout_secs to {}",
+                                    profile.name,
+                                    DEFAULT_CODEX_STREAM_TIMEOUT_SECS
+                                );
+                                profile.stream_timeout_secs =
+                                    Some(DEFAULT_CODEX_STREAM_TIMEOUT_SECS);
+                                changed = true;
+                            }
+                        }
+                    }
+
+                    if changed {
+                        let _ = save_profiles(&store);
+                    }
+
+                    if store.profiles.is_empty() {
+                        store.profiles.push(LLMProfile::default_profile());
+                        store.active_profile_id = "default".to_string();
+                    }
+                    store
+                }
+                Err(e) => {
+                    crate::app_log!(force: true, "[LLM Profiles] Failed to parse profiles file: {}. Creating defaults.", e);
+                    create_default_store()
+                }
+            },
+            Err(e) => {
+                crate::app_log!(force: true, "[LLM Profiles] Failed to read profiles file: {}. Creating defaults.", e);
+                create_default_store()
+            }
+        }
+    } else {
+        create_default_store()
+    }
+}
+
+fn create_default_store() -> ProfileStore {
+    ProfileStore {
+        profiles: vec![LLMProfile::default_profile()],
+        active_profile_id: "default".to_string(),
+    }
+}
+
+/// Save profiles to file
+pub fn save_profiles(store: &ProfileStore) -> Result<(), String> {
+    let dir = get_settings_dir();
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let path = get_profiles_file();
+    let content = serde_json::to_string_pretty(store).map_err(|e| e.to_string())?;
+
+    fs::write(path, content).map_err(|e| e.to_string())
+}
+
+/// Get active profile
+pub fn get_active_profile() -> Option<LLMProfile> {
+    let store = load_profiles();
+    store
+        .profiles
+        .into_iter()
+        .find(|p| p.id == store.active_profile_id)
+}

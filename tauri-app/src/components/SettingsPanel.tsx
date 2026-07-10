@@ -1,0 +1,422 @@
+import { useState, useEffect, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { open } from '@tauri-apps/plugin-dialog';
+import { X, Save, Cpu, Monitor, FileCode, Database, Settings2, MessageSquare, Terminal, Sun, Moon, Check, RefreshCw, SlidersHorizontal } from 'lucide-react';
+
+import { LLMSettings } from './settings/LLMSettings';
+import { MCPSettings } from './settings/MCPSettings';
+import { ConfiguratorTab } from './settings/ConfiguratorTab';
+import { BslTab } from './settings/BslTab';
+import { DebugTab } from './settings/DebugTab';
+import { GeneralTab } from './settings/GeneralTab';
+import { PromptsTab } from './settings/PromptsTab';
+import { SlashCommandsTab } from './settings/SlashCommandsTab';
+
+import { useProfiles } from '../contexts/ProfileContext';
+import { useSettings } from '../contexts/SettingsContext';
+import { WindowInfo, BslStatus, AppSettings, BslDiagnosticItem } from '../types/settings';
+import { flushPerformanceDiagnosticsToLog } from '../utils/performanceDiagnostics';
+
+interface SettingsPanelProps {
+    isOpen: boolean;
+    onClose: () => void;
+    initialTab?: 'general' | 'configurator' | 'llm' | 'bsl' | 'mcp' | 'debug' | 'prompts' | 'slash_commands';
+}
+
+export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProps) {
+    const [tab, setTab] = useState<'general' | 'llm' | 'configurator' | 'bsl' | 'mcp' | 'debug' | 'prompts' | 'slash_commands'>('llm');
+
+    useEffect(() => {
+        if (isOpen && initialTab) {
+            setTab(initialTab);
+        }
+    }, [isOpen, initialTab]);
+
+    const { profiles, activeProfileId, activeProfile, loadProfiles } = useProfiles();
+    const { settings: globalSettings, updateSettings, loadSettings } = useSettings();
+    const [settings, setSettings] = useState<AppSettings | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [showSaved, setShowSaved] = useState(false);
+    const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [pressed, setPressed] = useState(false);
+
+    // Configurator state
+    const [detectedWindows, setDetectedWindows] = useState<WindowInfo[]>([]);
+    const [testCaptureResult, setTestCaptureResult] = useState<string | null>(null);
+
+    // BSL state
+    const [bslStatus, setBslStatus] = useState<BslStatus | null>(null);
+    const [downloading, setDownloading] = useState(false);
+    const [downloadProgress, setDownloadProgress] = useState<number>(0);
+    const [bslDownloadError, setBslDownloadError] = useState<string | null>(null);
+    const [bslDownloadSuccess, setBslDownloadSuccess] = useState(false);
+    const [diagnosing, setDiagnosing] = useState(false);
+    const [diagReport, setDiagReport] = useState<BslDiagnosticItem[] | null>(null);
+    const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            refreshAll();
+            setBslDownloadSuccess(false);
+            setBslDownloadError(null);
+            // Ensure we don't show a stale "Saved!" state when reopening
+            setShowSaved(false);
+            if (savedTimeoutRef.current) {
+                clearTimeout(savedTimeoutRef.current);
+                savedTimeoutRef.current = null;
+            }
+        }
+        return () => {
+            if (savedTimeoutRef.current) {
+                clearTimeout(savedTimeoutRef.current);
+                savedTimeoutRef.current = null;
+            }
+        };
+    }, [isOpen]);
+
+    const refreshAll = () => {
+        invoke<AppSettings>('get_settings').then(setSettings);
+        refreshBslStatus();
+    };
+
+    const refreshBslStatus = () => {
+        invoke<BslStatus>('check_bsl_status_cmd')
+            .then(setBslStatus)
+            .catch((err) => console.error('[Settings] BSL status error:', err));
+    };
+
+    const handleSaveSettings = async () => {
+        if (!settings || saving) return;
+        if (savedTimeoutRef.current) {
+            clearTimeout(savedTimeoutRef.current);
+            savedTimeoutRef.current = null;
+        }
+        setPressed(false);
+        setShowSaved(false);
+        setSaving(true);
+
+        try {
+            await invoke('save_settings', { newSettings: settings });
+            await loadSettings(); // Синхронизируем глобальный контекст
+
+            setShowSaved(true);
+            savedTimeoutRef.current = setTimeout(() => {
+                setShowSaved(false);
+                savedTimeoutRef.current = null;
+            }, 3000);
+        } catch (err) {
+            console.error('Failed to save settings:', err);
+            setShowSaved(false);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const refreshWindows = async () => {
+        if (!settings) return;
+        const base = settings.configurator.window_title_pattern || 'Конфигуратор|1C:Enterprise';
+        const extras = settings.configurator.extra_window_title_patterns ?? [];
+        const pattern = extras.length > 0 ? `${base}|${extras.join('|')}` : base;
+        const windows = await invoke<WindowInfo[]>('find_configurator_windows_cmd', { pattern });
+        setDetectedWindows(windows);
+    };
+
+    // Auto-refresh loops
+    useEffect(() => {
+        let interval: any;
+        if (tab === 'configurator' && isOpen) {
+            refreshWindows();
+            interval = setInterval(refreshWindows, 3000);
+        }
+        return () => interval && clearInterval(interval);
+    }, [tab, isOpen, settings?.configurator.window_title_pattern, settings?.configurator.extra_window_title_patterns]);
+
+    useEffect(() => {
+        let interval: any;
+        if (tab === 'bsl' && isOpen) {
+            refreshBslStatus();
+            interval = setInterval(refreshBslStatus, 5000);
+        }
+        return () => interval && clearInterval(interval);
+    }, [tab, isOpen]);
+
+    const testCapture = async (hwnd: number) => {
+        try {
+            const code = await invoke<string>('get_code_from_configurator', { hwnd });
+            setTestCaptureResult(code.substring(0, 200) + (code.length > 200 ? '...' : ''));
+        } catch (e) {
+            setTestCaptureResult(`Error: ${e}`);
+        }
+    };
+
+    const browseJar = async () => {
+        try {
+            const file = await open({
+                multiple: false,
+                filters: [{ name: 'JAR Files', extensions: ['jar'] }],
+                directory: false
+            });
+            if (file && typeof file === 'string' && settings) {
+                setSettings({
+                    ...settings,
+                    bsl_server: { ...settings.bsl_server, jar_path: file }
+                });
+            }
+        } catch (error) {
+            console.error('Failed to open file dialog:', error);
+        }
+    };
+
+    const handleDownloadBslLs = async () => {
+        setDownloading(true);
+        setBslDownloadError(null);
+        setBslDownloadSuccess(false);
+        const unlisten = await listen<{ percent: number }>('bsl-download-progress', (event) => {
+            setDownloadProgress(event.payload.percent);
+        });
+
+        try {
+            const path = await invoke<string>('install_bsl_ls_cmd');
+            if (settings) {
+                setSettings({
+                    ...settings,
+                    bsl_server: { ...settings.bsl_server, jar_path: path }
+                });
+            }
+            setBslDownloadSuccess(true);
+            invoke('reconnect_bsl_ls_cmd').catch(e => console.warn(e));
+            setTimeout(refreshBslStatus, 2000);
+        } catch (e) {
+            setBslDownloadError(String(e));
+        } finally {
+            unlisten();
+            setDownloading(false);
+            setDownloadProgress(0);
+        }
+    };
+
+    const runDiagnostics = async () => {
+        setDiagnosing(true);
+        setDiagReport(null);
+        try {
+            const report = await invoke<BslDiagnosticItem[]>('diagnose_bsl_ls_cmd');
+            setDiagReport(report);
+        } catch (e) {
+            setDiagReport([{ status: 'error', title: 'Системная ошибка', message: String(e) }]);
+        }
+        setDiagnosing(false);
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div
+            data-testid="settings-modal"
+            className="fixed inset-0 bg-black/60 flex items-start justify-center z-50 pt-12 pb-4 px-4 sm:pt-16 sm:pb-6 sm:px-6 animate-in fade-in duration-200 overflow-y-auto"
+        >
+            <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-4xl h-full sm:h-[85vh] overflow-hidden flex flex-col shadow-2xl">
+                {/* Header */}
+                <div data-tauri-drag-region className="flex items-center justify-between px-6 sm:px-8 py-3 sm:py-4 border-b border-zinc-800 bg-zinc-900 select-none">
+                    <h2 className="text-lg sm:text-xl font-bold text-zinc-100 pointer-events-none">Settings</h2>
+                    <div className="flex items-center gap-2">
+                        <button
+                            title={globalSettings?.theme === 'light' ? 'Переключить на тёмную тему' : 'Переключить на светлую тему'}
+                            onClick={() => {
+                                if (!globalSettings) return;
+                                const newTheme = globalSettings.theme === 'light' ? 'dark' : 'light';
+                                updateSettings({ ...globalSettings, theme: newTheme });
+                            }}
+                            className="p-1.5 hover:bg-zinc-800 rounded transition text-zinc-400 hover:text-zinc-200 pointer-events-auto"
+                        >
+                            {globalSettings?.theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                        </button>
+                        <button
+                            data-testid="settings-close"
+                            onClick={onClose}
+                            className="p-1.5 hover:bg-zinc-800 rounded transition text-zinc-400 hover:text-zinc-200"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex border-b border-zinc-800 bg-zinc-900/50 overflow-x-auto scrollbar-thin">
+                    {[
+                        { id: 'general' as const, label: 'Общие', icon: SlidersHorizontal },
+                        { id: 'llm' as const, label: 'LLM', icon: Cpu },
+                        { id: 'configurator' as const, label: 'Конфиг', icon: Monitor },
+                        { id: 'bsl' as const, label: 'BSL', icon: FileCode },
+                        { id: 'mcp' as const, label: 'MCP', icon: Database },
+                        { id: 'prompts' as const, label: 'Промпты', icon: MessageSquare },
+                        { id: 'slash_commands' as const, label: 'Команды', icon: Terminal },
+                        { id: 'debug' as const, label: 'Advanced', icon: Settings2 },
+                    ].map((t) => (
+                        <button
+                            key={t.id}
+                            data-testid={`settings-tab-${t.id}`}
+                            onClick={() => setTab(t.id)}
+                            title={t.label}
+                            className={`flex items-center gap-2 px-2.5 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-medium transition-all border-b-2 whitespace-nowrap flex-shrink-0 ${tab === t.id
+                                ? 'border-blue-500 text-blue-400 bg-zinc-800/50'
+                                : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/30'
+                                }`}
+                        >
+                            <t.icon className="w-4 h-4 shrink-0" />
+                            <span className="hidden min-[700px]:inline">{t.label}</span>
+                        </button>
+                    ))}
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-hidden flex relative">
+                    {tab === 'general' && settings && (
+                        <GeneralTab
+                            settings={settings}
+                            setSettings={(nextSettings) => setSettings(nextSettings)}
+                            onConfigurationImported={async () => {
+                                await loadProfiles();
+                                await loadSettings();
+                                refreshAll();
+                            }}
+                        />
+                    )}
+
+                    {tab === 'llm' && (
+                        <div className="w-full h-full">
+                            <LLMSettings
+                                profiles={{ profiles, active_profile_id: activeProfileId }}
+                                onUpdate={loadProfiles}
+                            />
+                        </div>
+                    )}
+
+                    {tab === 'prompts' && settings && (
+                        <div className="p-4 sm:p-8 w-full h-full overflow-y-auto scrollbar-thin">
+                            <div className="max-w-2xl mx-auto">
+                                <PromptsTab
+                                    settings={settings}
+                                    onSettingsChange={setSettings}
+                                    onSave={handleSaveSettings}
+                                    saving={saving}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {tab === 'slash_commands' && settings && (
+                        <div className="p-4 sm:p-8 w-full h-full overflow-y-auto scrollbar-thin text-zinc-300">
+                            <div className="max-w-2xl mx-auto">
+                                <SlashCommandsTab
+                                    settings={settings}
+                                    onSettingsChange={setSettings}
+                                    onSave={handleSaveSettings}
+                                    saving={saving}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {tab === 'configurator' && settings && (
+                        <ConfiguratorTab
+                            settings={settings}
+                            setSettings={setSettings}
+                            detectedWindows={detectedWindows}
+                            refreshWindows={refreshWindows}
+                            testCapture={testCapture}
+                            testCaptureResult={testCaptureResult}
+                        />
+                    )}
+
+                    {tab === 'bsl' && settings && (
+                        <BslTab
+                            settings={settings}
+                            setSettings={setSettings}
+                            bslStatus={bslStatus}
+                            refreshBslStatus={refreshBslStatus}
+                            browseJar={browseJar}
+                            handleDownloadBslLs={handleDownloadBslLs}
+                            downloading={downloading}
+                            downloadProgress={downloadProgress}
+                            downloadError={bslDownloadError}
+                            downloadSuccess={bslDownloadSuccess}
+                            diagnosing={diagnosing}
+                            diagReport={diagReport}
+                            setDiagReport={setDiagReport}
+                            runDiagnostics={runDiagnostics}
+                        />
+                    )}
+
+                    {tab === 'mcp' && settings && (
+                        <div className="p-4 sm:p-8 w-full h-full overflow-y-auto scrollbar-thin">
+                            <div className="max-w-2xl mx-auto">
+                                <MCPSettings
+                                    servers={settings.mcp_servers}
+                                    nodePath={settings.node_path}
+                                    searchIndexDir={settings.search_index_dir || ''}
+                                    bslEnabled={settings.bsl_server.enabled}
+                                    onUpdate={(mcpServers) => setSettings({ ...settings, mcp_servers: mcpServers })}
+                                    onSearchIndexDirChange={(searchIndexDir) =>
+                                        setSettings({ ...settings, search_index_dir: searchIndexDir })
+                                    }
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {tab === 'debug' && settings && (
+                        <DebugTab
+                            settings={settings}
+                            setSettings={setSettings}
+                            showResetConfirm={showResetConfirm}
+                            setShowResetConfirm={setShowResetConfirm}
+                            resetOnboarding={async () => {
+                                await invoke('reset_onboarding');
+                                window.location.reload();
+                            }}
+                            saveDebugLogs={async () => {
+                                try {
+                                    await flushPerformanceDiagnosticsToLog('save_debug_logs');
+                                    await invoke('save_debug_logs');
+                                } catch (e) { console.error(e); }
+                            }}
+                            currentProvider={activeProfile?.provider}
+                        />
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end gap-3 z-10 relative">
+                    {tab !== 'llm' && settings && (
+                        <button
+                            onClick={handleSaveSettings}
+                            disabled={saving}
+                            onPointerDown={() => setPressed(true)}
+                            onPointerUp={() => setPressed(false)}
+                            onPointerCancel={() => setPressed(false)}
+                            onPointerLeave={() => setPressed(false)}
+                            className={`flex items-center justify-center gap-2 w-44 px-6 py-2 text-white rounded-lg transform-gpu transition-transform duration-150 ease-out ${pressed ? 'scale-95' : 'scale-100'} disabled:opacity-50 shadow-lg ${showSaved ? 'bg-green-600 hover:bg-green-500 shadow-green-900/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-900/20'}`}
+                        >
+                            {saving ? (
+                                <>
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                    Saving...
+                                </>
+                            ) : showSaved ? (
+                                <>
+                                    <Check className="w-4 h-4" />
+                                    Saved!
+                                </>
+                            ) : (
+                                <>
+                                    <Save className="w-4 h-4" /> Save Settings
+                                </>
+                            )}
+                        </button>
+                    )}
+                </div>
+            </div >
+        </div >
+    );
+}

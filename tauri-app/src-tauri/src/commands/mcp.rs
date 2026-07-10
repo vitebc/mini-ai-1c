@@ -1,0 +1,488 @@
+use crate::mcp_client::{
+    builtin_search_unavailable_reason, McpClient, McpServerStatus, McpTool,
+    BUILTIN_1C_SEARCH_SERVER_ID,
+};
+use crate::settings::{load_settings, McpServerConfig};
+use futures::future::join_all;
+use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashSet;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+/// Struct returned to frontend with aggregated tool metadata
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct McpToolInfo {
+    pub server_name: String,
+    pub tool_name: String,
+    pub description: Option<String>,
+    pub input_schema: Option<Value>,
+    pub is_enabled: bool,
+    pub estimated_tokens: u32,
+}
+
+lazy_static! {
+    static ref MCP_TOOLS_CACHE: Mutex<Option<(String, Vec<McpToolInfo>, Instant)>> =
+        Mutex::new(None);
+}
+const MCP_TOOLS_CACHE_TTL_SECS: u64 = 300;
+const MCP_TOOLS_REQUEST_TIMEOUT_SECS: u64 = 8;
+const INTERNAL_BSL_SERVER_ID: &str = "bsl-ls";
+
+fn estimate_text_tokens(text: &str) -> u32 {
+    if text.is_empty() {
+        0
+    } else {
+        ((text.chars().count() as u32) + 3) / 4
+    }
+}
+
+fn sanitize_tool_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+        .collect()
+}
+
+fn normalized_tool_parameters(input_schema: &Value) -> Value {
+    let mut parameters = input_schema.clone();
+    if !parameters.is_object() {
+        return serde_json::json!({
+            "type": "object",
+            "properties": {}
+        });
+    }
+
+    if let Some(obj) = parameters.as_object_mut() {
+        if !obj.contains_key("type") {
+            obj.insert("type".to_string(), serde_json::json!("object"));
+        }
+        if !obj.contains_key("properties") {
+            obj.insert("properties".to_string(), serde_json::json!({}));
+        }
+    }
+
+    parameters
+}
+
+fn estimate_mcp_tool_tokens(tool: &McpTool) -> u32 {
+    let name = sanitize_tool_name(&tool.name);
+    if name.is_empty() {
+        return 0;
+    }
+
+    let payload = serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": tool.description,
+            "parameters": normalized_tool_parameters(&tool.input_schema)
+        }
+    });
+
+    serde_json::to_string(&payload)
+        .map(|text| estimate_text_tokens(&text))
+        .unwrap_or(0)
+}
+
+fn unavailable_tool(server_name: String, message: String) -> Vec<McpToolInfo> {
+    vec![McpToolInfo {
+        server_name,
+        tool_name: "__server_unavailable__".to_string(),
+        description: Some(message),
+        input_schema: None,
+        is_enabled: false,
+        estimated_tokens: 0,
+    }]
+}
+
+async fn collect_server_tools(config: McpServerConfig) -> Vec<McpToolInfo> {
+    let server_name = config.name.clone();
+    let server_id = config.id.clone();
+    let timeout = Duration::from_secs(MCP_TOOLS_REQUEST_TIMEOUT_SECS);
+
+    if let Some(message) = builtin_search_unavailable_reason(&config) {
+        return unavailable_tool(server_name, message);
+    }
+
+    match tokio::time::timeout(timeout, async move {
+        let client = McpClient::new(config.clone()).await?;
+        let tools = client.list_tools().await?;
+        if server_id == BUILTIN_1C_SEARCH_SERVER_ID {
+            let (help_status, help_message) = client.get_help_state().await;
+            if help_status == "unavailable" {
+                return Err(if help_message.is_empty() {
+                    "Путь к выгрузке конфигурации 1С не задан".to_string()
+                } else {
+                    help_message
+                });
+            }
+        }
+        Ok(tools)
+    })
+    .await
+    {
+        Ok(Ok(tools)) => tools
+            .into_iter()
+            .map(|tool| McpToolInfo {
+                server_name: server_name.clone(),
+                estimated_tokens: estimate_mcp_tool_tokens(&tool),
+                tool_name: tool.name,
+                description: Some(tool.description),
+                input_schema: Some(tool.input_schema),
+                is_enabled: true,
+            })
+            .collect(),
+        Ok(Err(error)) => unavailable_tool(server_name, format!("Failed to list tools: {}", error)),
+        Err(_) => unavailable_tool(
+            server_name,
+            format!(
+                "Timed out while loading tools after {}s",
+                MCP_TOOLS_REQUEST_TIMEOUT_SECS
+            ),
+        ),
+    }
+}
+
+fn get_tool_identity(tool: &McpToolInfo) -> String {
+    format!("{}::{}", tool.server_name, tool.tool_name)
+}
+
+fn dedupe_tools(tools: Vec<McpToolInfo>) -> Vec<McpToolInfo> {
+    let mut seen = HashSet::new();
+    let mut deduped = Vec::with_capacity(tools.len());
+
+    for tool in tools {
+        if seen.insert(get_tool_identity(&tool)) {
+            deduped.push(tool);
+        }
+    }
+
+    deduped
+}
+
+/// Get available MCP tools from a specific server
+#[tauri::command]
+pub async fn get_mcp_tools(server_id: String) -> Result<Vec<McpTool>, String> {
+    let settings = load_settings();
+    let config = settings
+        .mcp_servers
+        .iter()
+        .find(|s| s.id == server_id)
+        .cloned()
+        .or_else(|| {
+            if server_id == "bsl-ls" {
+                Some(crate::settings::McpServerConfig {
+                    id: "bsl-ls".to_string(),
+                    name: "BSL Language Server".to_string(),
+                    enabled: settings.bsl_server.enabled,
+                    transport: crate::settings::McpTransport::Internal,
+                    ..Default::default()
+                })
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| format!("MCP server with ID '{}' not found", server_id))?;
+
+    let client = McpClient::new(config).await?;
+    client.list_tools().await
+}
+
+/// List tools across all enabled MCP servers (cached)
+#[tauri::command]
+pub async fn list_mcp_tools(
+    force_refresh: Option<bool>,
+    mcp_servers_override: Option<Vec<McpServerConfig>>,
+    bsl_enabled_override: Option<bool>,
+) -> Result<Vec<McpToolInfo>, String> {
+    let force = force_refresh.unwrap_or(false);
+    let settings = load_settings();
+    let mcp_servers = mcp_servers_override.unwrap_or_else(|| settings.mcp_servers.clone());
+    let bsl_enabled = bsl_enabled_override.unwrap_or(settings.bsl_server.enabled);
+
+    let mut configs: Vec<McpServerConfig> = mcp_servers
+        .iter()
+        .filter(|server| server.enabled)
+        .cloned()
+        .collect();
+
+    // Include internal BSL LS only when it isn't already represented in the configured MCP list.
+    if bsl_enabled
+        && !configs
+            .iter()
+            .any(|config| config.id == INTERNAL_BSL_SERVER_ID)
+    {
+        configs.push(crate::settings::McpServerConfig {
+            id: INTERNAL_BSL_SERVER_ID.to_string(),
+            name: "BSL Language Server".to_string(),
+            enabled: bsl_enabled,
+            transport: crate::settings::McpTransport::Internal,
+            ..Default::default()
+        });
+    }
+
+    let cache_key = serde_json::to_string(&(configs.clone(), bsl_enabled))
+        .unwrap_or_else(|_| format!("fallback:{}:{}", configs.len(), bsl_enabled));
+
+    // Check cache
+    if !force {
+        if let Ok(cache_lock) = MCP_TOOLS_CACHE.lock() {
+            if let Some((cached_key, cached, ts)) = &*cache_lock {
+                if cached_key == &cache_key && ts.elapsed().as_secs() < MCP_TOOLS_CACHE_TTL_SECS {
+                    return Ok(cached.clone());
+                }
+            }
+        }
+    }
+
+    let result = dedupe_tools(
+        join_all(configs.into_iter().map(collect_server_tools))
+            .await
+            .into_iter()
+            .flatten()
+            .collect(),
+    );
+
+    // Update cache
+    if let Ok(mut cache_lock) = MCP_TOOLS_CACHE.lock() {
+        *cache_lock = Some((cache_key, result.clone(), Instant::now()));
+    }
+
+    Ok(result)
+}
+
+/// Get status of all MCP servers
+#[tauri::command]
+pub async fn get_mcp_server_statuses() -> Result<Vec<McpServerStatus>, String> {
+    Ok(crate::mcp_client::McpManager::get_statuses().await)
+}
+
+/// Get logs of a specific MCP server
+#[tauri::command]
+pub async fn get_mcp_server_logs(server_id: String) -> Result<Vec<String>, String> {
+    Ok(crate::mcp_client::McpManager::get_logs(&server_id).await)
+}
+
+/// Write a log message from the frontend to the Rust backend log buffer
+#[tauri::command]
+pub async fn write_frontend_log(message: String) -> Result<(), String> {
+    crate::logger::log(&message, true);
+    Ok(())
+}
+
+/// Save all debug logs to a file
+#[tauri::command]
+pub async fn save_debug_logs(app_handle: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let logs = crate::logger::get_all_logs();
+
+    let file_path = app_handle
+        .dialog()
+        .file()
+        .add_filter("Text", &["txt"])
+        .set_file_name("mini-ai-1c-logs.txt")
+        .blocking_save_file();
+
+    if let Some(path) = file_path {
+        std::fs::write(path.to_string(), logs)
+            .map_err(|e| format!("Failed to write logs: {}", e))?;
+        crate::app_log!("Logs saved successfully to {}", path.to_string());
+    }
+
+    Ok(())
+}
+
+/// Call an MCP tool on a specific server
+#[tauri::command]
+pub async fn call_mcp_tool(
+    server_id: String,
+    name: String,
+    arguments: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let settings = load_settings();
+    let config = settings
+        .mcp_servers
+        .iter()
+        .find(|s| s.id == server_id)
+        .cloned()
+        .or_else(|| {
+            if server_id == "bsl-ls" {
+                Some(crate::settings::McpServerConfig {
+                    id: "bsl-ls".to_string(),
+                    name: "BSL Language Server".to_string(),
+                    enabled: settings.bsl_server.enabled,
+                    transport: crate::settings::McpTransport::Internal,
+                    ..Default::default()
+                })
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| format!("MCP server with ID '{}' not found", server_id))?;
+
+    let client = McpClient::new(config).await?;
+    client.call_tool(&name, arguments).await
+}
+
+/// Test connection to an MCP server
+#[tauri::command]
+pub async fn test_mcp_connection(config: McpServerConfig) -> Result<String, String> {
+    if let Some(message) = builtin_search_unavailable_reason(&config) {
+        return Err(format!("Ошибка: {}", message));
+    }
+
+    let client = McpClient::new(config).await?;
+    match client.list_tools().await {
+        Ok(tools) => {
+            let (help_status, help_message) = client.get_help_state().await;
+            if help_status == "unavailable" {
+                let message = if help_message.is_empty() {
+                    "Путь к выгрузке конфигурации 1С не задан"
+                } else {
+                    help_message.as_str()
+                };
+                Err(format!("Ошибка: {}", message))
+            } else {
+                Ok(format!("Подключено! ({})", tools.len()))
+            }
+        }
+        Err(e) => Err(format!("Ошибка: {}", e)),
+    }
+}
+
+/// Delete the SQLite search index .db file for a given config path.
+#[tauri::command]
+pub async fn delete_search_index(config_path: String) -> Result<(), String> {
+    let db = search_index_db_path(&config_path);
+    for suffix in ["", "-wal", "-shm"] {
+        let path = std::path::PathBuf::from(format!("{}{}", db.to_string_lossy(), suffix));
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(|e| {
+                format!(
+                    "Не удалось удалить файл индекса {}: {}",
+                    path.to_string_lossy(),
+                    e
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+/// Open the search-index directory in the system file explorer.
+#[tauri::command]
+pub async fn open_search_index_dir(app_handle: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = search_index_dir().ok_or("Не удалось определить директорию данных")?;
+    std::fs::create_dir_all(&dir).ok();
+    app_handle
+        .opener()
+        .open_path(dir.to_string_lossy().as_ref(), None::<&str>)
+        .map_err(|e| format!("Не удалось открыть папку: {}", e))
+}
+
+fn search_index_dir() -> Option<std::path::PathBuf> {
+    resolve_search_index_dir(&load_settings().search_index_dir)
+}
+
+fn resolve_search_index_dir(configured_dir: &str) -> Option<std::path::PathBuf> {
+    let configured_dir = configured_dir.trim();
+    if !configured_dir.is_empty() {
+        return Some(std::path::PathBuf::from(configured_dir));
+    }
+
+    dirs::data_dir().map(|data_dir| data_dir.join("com.mini-ai-1c").join("search-index"))
+}
+
+/// Compute the db path for a given config path (mirrors mcp-1c-search::index::get_db_path).
+fn search_index_db_path(config_path: &str) -> std::path::PathBuf {
+    let hash = fnv_hash_path(config_path);
+    if let Some(dir) = search_index_dir() {
+        dir.join(format!("{:016x}.db", hash))
+    } else {
+        std::path::PathBuf::from(config_path)
+            .join(".mcp-index")
+            .join("symbols.db")
+    }
+}
+
+/// FNV-1 hash — must match the implementation in mcp-1c-search/src/index.rs.
+fn fnv_hash_path(s: &str) -> u64 {
+    let mut hash: u64 = 14695981039346656037;
+    for byte in s.bytes() {
+        hash = hash.wrapping_mul(1099511628211);
+        hash ^= byte as u64;
+    }
+    hash
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn estimate_mcp_tool_tokens_uses_serialized_chat_tool_payload() {
+        let tool = McpTool {
+            name: "find_symbol".to_string(),
+            description: "Find symbol by name".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" }
+                }
+            }),
+        };
+        let expected_payload = json!({
+            "type": "function",
+            "function": {
+                "name": "find_symbol",
+                "description": "Find symbol by name",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" }
+                    }
+                }
+            }
+        });
+        let expected_json = serde_json::to_string(&expected_payload).unwrap();
+        let expected_tokens = ((expected_json.chars().count() as u32) + 3) / 4;
+
+        assert_eq!(estimate_mcp_tool_tokens(&tool), expected_tokens);
+    }
+
+    #[test]
+    fn estimate_mcp_tool_tokens_normalizes_non_object_schema() {
+        let tool = McpTool {
+            name: "ping".to_string(),
+            description: "Ping server".to_string(),
+            input_schema: json!(true),
+        };
+        let expected_payload = json!({
+            "type": "function",
+            "function": {
+                "name": "ping",
+                "description": "Ping server",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        });
+        let expected_json = serde_json::to_string(&expected_payload).unwrap();
+        let expected_tokens = ((expected_json.chars().count() as u32) + 3) / 4;
+
+        assert_eq!(estimate_mcp_tool_tokens(&tool), expected_tokens);
+    }
+
+    #[test]
+    fn resolve_search_index_dir_uses_custom_setting() {
+        let dir = resolve_search_index_dir(r" D:\cfg\erp\search-index ")
+            .expect("custom search-index directory should resolve");
+
+        assert_eq!(dir, std::path::PathBuf::from(r"D:\cfg\erp\search-index"));
+    }
+}

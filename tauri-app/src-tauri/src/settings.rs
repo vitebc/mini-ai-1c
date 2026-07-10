@@ -1,0 +1,1081 @@
+//! Settings management module for Mini AI 1C Agent
+//! Persists application settings to JSON file
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::fs;
+use std::path::PathBuf;
+
+// Helper functions for defaults
+fn default_true() -> bool {
+    true
+}
+
+fn default_editor_bridge_enabled_for_deser() -> bool {
+    true
+}
+
+fn default_configurator_window_title_pattern() -> String {
+    "Конфигуратор|1C:Enterprise".to_string()
+}
+
+fn is_default_configurator_window_title_pattern(value: &String) -> bool {
+    value.trim().is_empty()
+        || value == "Конфигуратор"
+        || value == "Конфигуратор|Configurator"
+        || value == &default_configurator_window_title_pattern()
+}
+
+fn default_addition_marker() -> String {
+    "// Доработка START (Добавление) - {datetime}\n{newCode}\n// Доработка END".to_string()
+}
+
+fn default_modification_marker() -> String {
+    "// Доработка START (Изменение) - {datetime}\n{newCode}\n// Доработка END".to_string()
+}
+
+fn default_deletion_marker() -> String {
+    "// Доработка (Удаление) - {datetime}\n// {oldCode}".to_string()
+}
+
+fn default_max_iterations() -> Option<u32> {
+    Some(7)
+}
+
+fn default_compress_strategy() -> String {
+    "summarize".to_string()
+}
+
+fn default_node_path() -> String {
+    "node".to_string()
+}
+
+fn is_default_node_path(value: &String) -> bool {
+    value.trim().is_empty() || value.trim() == default_node_path()
+}
+
+fn normalize_node_path(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        default_node_path()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// Быстрые команды (Slash Commands)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlashCommand {
+    pub id: String,
+    pub command: String,
+    pub name: String,
+    pub description: String,
+    pub template: String,
+    pub is_enabled: bool,
+    pub is_system: bool,
+}
+
+fn default_slash_commands() -> Vec<SlashCommand> {
+    vec![
+        SlashCommand {
+            id: "fix".to_string(),
+            command: "исправить".to_string(),
+            name: "Исправить".to_string(),
+            description: "Исправить ошибки BSL и логические ошибки".to_string(),
+            template: "Исправь ошибки в этом коде. Обрати внимание на следующие диагностики:\n{diagnostics}\n\nКод для исправления:\n```bsl\n{code}\n```".to_string(),
+            is_enabled: true,
+            is_system: true,
+        },
+        SlashCommand {
+            id: "elaborate".to_string(),
+            command: "доработай".to_string(),
+            name: "Доработай".to_string(),
+            description: "Доработать код по пользовательской задаче".to_string(),
+            template: "Доработай этот код по следующей задаче: {query}\n\nТребования:\n- вноси только изменения, которые нужны для выполнения задачи;\n- сохрани стиль и совместимость с 1С;\n- если меняешь код, верни результат в формате, пригодном для сравнения и применения.\n\nКод для доработки:\n```bsl\n{code}\n```".to_string(),
+            is_enabled: true,
+            is_system: true,
+        },
+        SlashCommand {
+            id: "refactor".to_string(),
+            command: "рефакторинг".to_string(),
+            name: "Рефакторинг".to_string(),
+            description: "Улучшить структуру и читаемость кода".to_string(),
+            template: "Проведи рефакторинг этого кода, улучши его структуру и читаемость, соблюдая стандарты 1С:\n```bsl\n{code}\n```".to_string(),
+            is_enabled: true,
+            is_system: true,
+        },
+        SlashCommand {
+            id: "desc".to_string(),
+            command: "описание".to_string(),
+            name: "Описание".to_string(),
+            description: "Сгенерировать описание процедуры/функции".to_string(),
+            template: "Сгенерируй стандартную шапку описания для этой процедуры/функции в формате 1С (только комментарии //, без тегов <Описание>):\n```bsl\n{code}\n```".to_string(),
+            is_enabled: true,
+            is_system: true,
+        },
+        SlashCommand {
+            id: "explain".to_string(),
+            command: "объясни".to_string(),
+            name: "Объясни".to_string(),
+            description: "Подробно объяснить работу кода".to_string(),
+            template: "Подробно объясни, как работает этот фрагмент кода:\n```bsl\n{code}\n```".to_string(),
+            is_enabled: true,
+            is_system: true,
+        },
+        SlashCommand {
+            id: "review".to_string(),
+            command: "ревью".to_string(),
+            name: "Ревью".to_string(),
+            description: "Провести код-ревью".to_string(),
+            template: "Проведи подробное код-ревью этого фрагмента. Найди потенциальные баги, узкие места и предложи улучшения:\n```bsl\n{code}\n```".to_string(),
+            is_enabled: true,
+            is_system: true,
+        },
+        SlashCommand {
+            id: "standards".to_string(),
+            command: "стандарты".to_string(),
+            name: "Стандарты".to_string(),
+            description: "Проверить на соответствие стандартам 1С".to_string(),
+            template: "Проверь этот код на соответствие официальным стандартам разработки 1С и БСП:\n```bsl\n{code}\n```".to_string(),
+            is_enabled: true,
+            is_system: true,
+        },
+        SlashCommand {
+            id: "its".to_string(),
+            command: "итс".to_string(),
+            name: "1С:ИТС".to_string(),
+            description: "Поиск информации в ИТС через Напарника".to_string(),
+            template: "Используй инструменты MCP сервера \"Напарник\" (1C:Naparnik), чтобы найти ответ на мой вопрос в информационной системе 1С:ИТС. Мой вопрос: {query}".to_string(),
+            is_enabled: true,
+            is_system: true,
+        },
+        SlashCommand {
+            id: "search-1c".to_string(),
+            command: "найти".to_string(),
+            name: "1С:Найти".to_string(),
+            description: "Поиск кода в конфигурации 1С".to_string(),
+            template: "Выполни поиск в конфигурации 1С по запросу: \"{query}\".\n\nИнструкции:\n1. Если запрос содержит имя процедуры или функции — используй find_symbol для точного поиска по символьному индексу.\n2. Если ищешь текст, переменную или фрагмент кода — используй search_code.\n3. Если в запросе упоминается конкретный объект (\"в модуле X\", \"в справочнике Y\") — передай scope в search_code.\n4. Для найденных символов — вызови get_symbol_context чтобы показать полный код.\nПокажи результаты с объяснением.".to_string(),
+            is_enabled: true,
+            is_system: true,
+        },
+        SlashCommand {
+            id: "refs-1c".to_string(),
+            command: "где".to_string(),
+            name: "1С:Где используется".to_string(),
+            description: "Найти все места использования символа в конфигурации".to_string(),
+            template: "Найди все места использования \"{query}\" в конфигурации 1С.\nИспользуй инструмент find_references для поиска всех вхождений.\nПокажи результаты, сгруппированные по модулям, с краткой аннотацией к каждому месту использования.".to_string(),
+            is_enabled: true,
+            is_system: true,
+        },
+        SlashCommand {
+            id: "struct-1c".to_string(),
+            command: "объект".to_string(),
+            name: "1С:Структура объекта".to_string(),
+            description: "Показать структуру объекта конфигурации (реквизиты, ТЧ, формы)".to_string(),
+            template: "Покажи структуру объекта конфигурации 1С: \"{query}\".\n1. Используй get_object_structure для получения реквизитов, табличных частей, форм и модулей.\n2. Если объект не найден — используй list_objects с name_filter для поиска похожих объектов.\n3. Опиши структуру понятно для разработчика.".to_string(),
+            is_enabled: true,
+            is_system: true,
+        },
+    ]
+}
+
+fn ensure_default_slash_commands(settings: &mut AppSettings) -> bool {
+    let defaults = default_slash_commands();
+
+    if settings.slash_commands.is_empty() {
+        settings.slash_commands = defaults;
+        return true;
+    }
+
+    let existing_ids: std::collections::HashSet<String> = settings
+        .slash_commands
+        .iter()
+        .map(|command| command.id.clone())
+        .collect();
+    let missing_system_commands: Vec<SlashCommand> = defaults
+        .into_iter()
+        .filter(|command| command.is_system && !existing_ids.contains(&command.id))
+        .collect();
+
+    if missing_system_commands.is_empty() {
+        return false;
+    }
+
+    settings.slash_commands.extend(missing_system_commands);
+    true
+}
+
+/// Settings for 1C Configurator integration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfiguratorSettings {
+    #[serde(
+        default = "default_configurator_window_title_pattern",
+        skip_serializing_if = "is_default_configurator_window_title_pattern"
+    )]
+    pub window_title_pattern: String,
+    /// Extra user-defined window title patterns (in addition to the default ones)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_window_title_patterns: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_window_hwnd: Option<isize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_window_pid: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_window_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_config_name: Option<String>,
+    #[serde(default)]
+    pub rdp_mode: bool,
+    #[serde(default = "default_editor_bridge_enabled_for_deser")]
+    pub editor_bridge_enabled: bool,
+    #[serde(default)]
+    pub editor_bridge_auto_apply: bool,
+    /// Path to EditorBridge.exe, set after download or manual configuration
+    #[serde(default)]
+    pub editor_bridge_exe_path: String,
+}
+
+impl Default for ConfiguratorSettings {
+    fn default() -> Self {
+        Self {
+            window_title_pattern: default_configurator_window_title_pattern(),
+            extra_window_title_patterns: Vec::new(),
+            selected_window_hwnd: None,
+            selected_window_pid: None,
+            selected_window_title: None,
+            selected_config_name: None,
+            rdp_mode: false,
+            editor_bridge_enabled: false,
+            editor_bridge_auto_apply: false,
+            editor_bridge_exe_path: String::new(),
+        }
+    }
+}
+
+/// Settings for BSL Language Server
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BSLServerSettings {
+    pub jar_path: String,
+    pub auto_download: bool,
+    pub websocket_port: u16,
+    pub java_path: String,
+    pub enabled: bool,
+}
+
+impl Default for BSLServerSettings {
+    fn default() -> Self {
+        Self {
+            jar_path: String::new(),
+            auto_download: true,
+            websocket_port: 8025,
+            java_path: "java".to_string(),
+            enabled: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProxyMode {
+    System,
+    Disabled,
+    Custom,
+}
+
+impl Default for ProxyMode {
+    fn default() -> Self {
+        Self::System
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProxyProtocol {
+    Http,
+    Socks5,
+}
+
+impl Default for ProxyProtocol {
+    fn default() -> Self {
+        Self::Http
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProxySettings {
+    #[serde(default)]
+    pub mode: ProxyMode,
+    #[serde(default)]
+    pub protocol: ProxyProtocol,
+    #[serde(default)]
+    pub host: String,
+    #[serde(default)]
+    pub port: Option<u16>,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password: String,
+}
+
+impl Default for ProxySettings {
+    fn default() -> Self {
+        Self {
+            mode: ProxyMode::System,
+            protocol: ProxyProtocol::Http,
+            host: String::new(),
+            port: None,
+            username: String::new(),
+            password: String::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for ProxySettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProxySettings")
+            .field("mode", &self.mode)
+            .field("protocol", &self.protocol)
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field(
+                "password",
+                &if self.password.is_empty() {
+                    ""
+                } else {
+                    "<redacted>"
+                },
+            )
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum McpTransport {
+    Http,
+    Stdio,
+    Internal,
+}
+
+/// Configuration for an MCP server (HTTP or Stdio)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct McpServerConfig {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
+    pub transport: McpTransport,
+    // HTTP specific
+    pub url: Option<String>,
+    pub login: Option<String>,
+    pub password: Option<String>,
+    pub headers: Option<std::collections::HashMap<String, String>>,
+    // Stdio specific
+    pub command: Option<String>,
+    pub args: Option<Vec<String>>,
+    pub env: Option<std::collections::HashMap<String, String>>,
+}
+
+impl Default for McpServerConfig {
+    fn default() -> Self {
+        Self {
+            id: "default".to_string(),
+            name: "New MCP Server".to_string(),
+            enabled: false,
+            transport: McpTransport::Http,
+            url: Some("http://localhost/mcp".to_string()),
+            login: None,
+            password: None,
+            headers: None,
+            command: None,
+            args: None,
+            env: None,
+        }
+    }
+}
+
+/// Main application settings container
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AppSettings {
+    pub configurator: ConfiguratorSettings,
+    pub bsl_server: BSLServerSettings,
+    #[serde(
+        default = "default_node_path",
+        skip_serializing_if = "is_default_node_path"
+    )]
+    pub node_path: String,
+    /// Directory for mcp-1c-search SQLite index files. Empty means default app data path.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub search_index_dir: String,
+    #[serde(default)]
+    pub proxy: ProxySettings,
+    #[serde(default)]
+    pub mcp_servers: Vec<McpServerConfig>,
+    pub active_llm_profile: String,
+    pub llm: LLMGlobalSettings,
+    #[serde(default)]
+    pub debug_mode: bool,
+    #[serde(default)]
+    pub onboarding_completed: bool,
+    /// Настройки пользовательских промптов
+    #[serde(default)]
+    pub custom_prompts: CustomPromptsSettings,
+    /// Настройки генерации кода
+    #[serde(default)]
+    pub code_generation: CodeGenerationSettings,
+    /// Быстрые команды
+    #[serde(default = "default_slash_commands")]
+    pub slash_commands: Vec<SlashCommand>,
+
+    /// Максимальное количество итераций агента
+    #[serde(default = "default_max_iterations")]
+    pub max_agent_iterations: Option<u32>,
+
+    /// Тема оформления (light / dark)
+    #[serde(default)]
+    pub theme: Option<String>,
+
+    /// Стратегия сжатия контекста: "" / "sliding_window" / "summarize"
+    #[serde(default = "default_compress_strategy")]
+    pub context_compress_strategy: String,
+
+    /// Порог сжатия в токенах (chars/4 эвристика, default 8000).
+    /// Заменяет max_context_messages — сжатие теперь по токенам, а не по числу сообщений.
+    #[serde(default)]
+    pub max_context_tokens: Option<u32>,
+
+    /// Устаревшее поле — сохранено для миграции старых конфигов.
+    #[serde(default)]
+    pub max_context_messages: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LLMGlobalSettings {
+    pub active_provider_id: String,
+    pub providers: std::collections::HashMap<String, ProviderSettings>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderSettings {
+    pub enabled: bool,
+    pub api_key: Option<String>, // TODO: Encrypt this
+    pub base_url: Option<String>,
+    pub active_model_id: Option<String>,
+    pub models: std::collections::HashMap<String, ModelSettings>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelSettings {
+    pub context_window: Option<u32>, // Override
+    pub cost_in: Option<f64>,
+    pub cost_out: Option<f64>,
+}
+
+/// Режим генерации кода
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum CodeGenerationMode {
+    /// Всегда полный код
+    Full,
+    /// Только изменения в формате Search/Replace
+    Diff,
+    /// Автовыбор по размеру модуля
+    Auto,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum PromptBehaviorPreset {
+    Project,
+    Maintenance,
+    Cli,
+}
+
+impl Default for PromptBehaviorPreset {
+    fn default() -> Self {
+        Self::Project
+    }
+}
+
+// LabelingStyle больше не нужен, он зашит в пресет
+
+impl Default for CodeGenerationMode {
+    fn default() -> Self {
+        Self::Diff
+    }
+}
+
+/// Настройки генерации кода
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeGenerationSettings {
+    /// Режим генерации
+    #[serde(default)]
+    pub mode: CodeGenerationMode,
+
+    /// Пресет поведения
+    #[serde(default)]
+    pub behavior_preset: PromptBehaviorPreset,
+
+    /// Маркировать изменения
+    #[serde(default = "default_true")]
+    pub mark_changes: bool,
+
+    /// Шаблон маркера для добавления (Maintenance)
+    #[serde(default = "default_addition_marker")]
+    pub addition_marker_template: String,
+
+    /// Шаблон маркера для изменения (Maintenance)
+    #[serde(default = "default_modification_marker")]
+    pub modification_marker_template: String,
+
+    /// Шаблон маркера для удаления (Maintenance)
+    #[serde(default = "default_deletion_marker")]
+    pub deletion_marker_template: String,
+}
+
+impl Default for CodeGenerationSettings {
+    fn default() -> Self {
+        Self {
+            mode: CodeGenerationMode::Diff,
+            behavior_preset: PromptBehaviorPreset::Project,
+            mark_changes: true,
+            addition_marker_template: default_addition_marker(),
+            modification_marker_template: default_modification_marker(),
+            deletion_marker_template: default_deletion_marker(),
+        }
+    }
+}
+
+/// Шаблон промпта
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptTemplate {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub content: String,
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+/// Настройки пользовательских промптов
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomPromptsSettings {
+    /// Префикс, добавляемый к system prompt
+    #[serde(default)]
+    pub system_prefix: String,
+
+    /// Инструкции при изменении кода
+    #[serde(default)]
+    pub on_code_change: String,
+
+    /// Инструкции при генерации нового кода
+    #[serde(default)]
+    pub on_code_generate: String,
+
+    /// Пользовательские шаблоны промптов
+    #[serde(default)]
+    pub templates: Vec<PromptTemplate>,
+}
+
+fn default_custom_prompt_templates() -> Vec<PromptTemplate> {
+    vec![
+        PromptTemplate {
+            id: "bsl-standards".to_string(),
+            name: "Стандарты 1С".to_string(),
+            description: "Соблюдать стандарты разработки 1С и БСП".to_string(),
+            content:
+                "Соблюдай стандарты разработки 1С и Библиотеки стандартных подсистем (БСП)."
+                    .to_string(),
+            enabled: false,
+        },
+        PromptTemplate {
+            id: "bsl-syntax".to_string(),
+            name: "Синтаксис 1С".to_string(),
+            description: "Контролировать синтаксис 1С".to_string(),
+            content: "Контролируй синтаксис 1С. Если пользователь прислал BSL-код или ты предлагаешь BSL-код, перед финальным ответом проверь синтаксис через доступную проверку BSL/check_bsl_syntax и явно сообщи результат. Если код содержит синтаксические ошибки, не утверждай, что он корректен.".to_string(),
+            enabled: false,
+        },
+    ]
+}
+
+impl Default for CustomPromptsSettings {
+    fn default() -> Self {
+        Self {
+            system_prefix: String::new(),
+            on_code_change: String::new(),
+            on_code_generate: String::new(),
+            templates: default_custom_prompt_templates(),
+        }
+    }
+}
+
+fn ensure_default_custom_prompt_templates(settings: &mut AppSettings) -> bool {
+    let defaults = default_custom_prompt_templates();
+    let existing_ids: std::collections::HashSet<String> = settings
+        .custom_prompts
+        .templates
+        .iter()
+        .map(|template| template.id.clone())
+        .collect();
+
+    let missing_templates: Vec<PromptTemplate> = defaults
+        .into_iter()
+        .filter(|template| !existing_ids.contains(&template.id))
+        .collect();
+
+    if missing_templates.is_empty() {
+        return false;
+    }
+
+    settings.custom_prompts.templates.extend(missing_templates);
+    true
+}
+
+pub fn clear_runtime_only_settings(settings: &mut AppSettings) -> bool {
+    let had_binding = settings.configurator.selected_window_hwnd.is_some()
+        || settings.configurator.selected_window_pid.is_some()
+        || settings.configurator.selected_window_title.is_some()
+        || settings.configurator.selected_config_name.is_some();
+
+    settings.configurator.selected_window_hwnd = None;
+    settings.configurator.selected_window_pid = None;
+    settings.configurator.selected_window_title = None;
+    settings.configurator.selected_config_name = None;
+
+    had_binding
+}
+
+fn is_builtin_node_mcp_server(server_id: &str) -> bool {
+    matches!(
+        server_id,
+        "builtin-1c-naparnik" | "builtin-1c-metadata" | "builtin-1c-help"
+    )
+}
+
+fn migrate_builtin_mcp_launchers(settings: &mut AppSettings) -> bool {
+    let mut modified = false;
+    let node_path = normalize_node_path(&settings.node_path);
+
+    if settings.node_path != node_path {
+        settings.node_path = node_path.clone();
+        modified = true;
+    }
+
+    for server in settings.mcp_servers.iter_mut() {
+        if is_builtin_node_mcp_server(&server.id) {
+            let current_cmd = server.command.as_deref().unwrap_or("");
+            if current_cmd != node_path {
+                crate::app_log!(
+                    "[SETTINGS] Migrating builtin server '{}' from '{}' to '{}' launcher",
+                    server.id,
+                    current_cmd,
+                    node_path
+                );
+                server.command = Some(node_path.clone());
+                modified = true;
+            }
+
+            if let Some(args) = &mut server.args {
+                let original_args = args.clone();
+                args.retain(|a| a != "tsx" && a != "--yes" && !a.contains("node_modules"));
+
+                for arg in args.iter_mut() {
+                    if arg.contains("mcp-servers") {
+                        *arg = arg
+                            .replace("src-tauri/", "")
+                            .replace("src/mcp-servers/", "mcp-servers/");
+                    }
+                    if arg.ends_with(".ts") || arg.ends_with(".js") {
+                        *arg = arg.replace(".ts", ".cjs").replace(".js", ".cjs");
+                    }
+                }
+                if args != &original_args {
+                    crate::app_log!(
+                        "[SETTINGS] Migrated builtin server '{}' args to: {:?}",
+                        server.id,
+                        args
+                    );
+                    modified = true;
+                }
+            }
+        } else if server.id == "builtin-1c-search" {
+            let current_cmd = server.command.as_deref().unwrap_or("");
+            if current_cmd != "mcp-1c-search.exe" && !current_cmd.ends_with("mcp-1c-search.exe") {
+                crate::app_log!(
+                    "[SETTINGS] Migrating builtin-1c-search command to 'mcp-1c-search.exe'"
+                );
+                server.command = Some("mcp-1c-search.exe".to_string());
+                server.args = None;
+                modified = true;
+            }
+        } else if let Some(cmd) = &server.command {
+            if cmd.contains("node_modules") {
+                crate::app_log!(
+                    "[DEBUG] Migrating stale command '{}' to 'npx' for MCP server '{}'",
+                    cmd,
+                    server.id
+                );
+                server.command = Some("npx".to_string());
+                modified = true;
+            }
+        }
+    }
+
+    modified
+}
+
+/// Get the settings directory path
+pub fn get_settings_dir() -> PathBuf {
+    // Use data_local_dir instead of config_dir to avoid UNC paths on terminal servers
+    // data_local_dir points to %LOCALAPPDATA% which is always local, not roaming
+    let config_dir = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
+    config_dir.join("MiniAI1C")
+}
+
+/// Get the settings file path
+pub fn get_settings_file() -> PathBuf {
+    get_settings_dir().join("settings.json")
+}
+
+/// Load settings from file
+pub fn load_settings() -> AppSettings {
+    let path = get_settings_file();
+    let mut settings = if path.exists() {
+        match fs::read_to_string(&path) {
+            Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+            Err(_) => AppSettings::default(),
+        }
+    } else {
+        AppSettings::default()
+    };
+
+    let mut modified = false;
+
+    if clear_runtime_only_settings(&mut settings) {
+        crate::app_log!(
+            "[SETTINGS] Removing transient configurator window binding from persisted settings"
+        );
+        modified = true;
+    }
+
+    // Migration: debug_mcp -> debug_mode
+    let path = get_settings_file();
+    if path.exists() {
+        if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&content) {
+                if let Some(old_val) = map.get("debug_mcp") {
+                    if !map.contains_key("debug_mode") {
+                        if let Some(b) = old_val.as_bool() {
+                            crate::app_log!(
+                                "[SETTINGS] Migrating 'debug_mcp' ({}) to 'debug_mode'",
+                                b
+                            );
+                            settings.debug_mode = b;
+                            modified = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if migrate_builtin_mcp_launchers(&mut settings) {
+        modified = true;
+    }
+
+    // Migration: upgrade old window_title_pattern to include "1C:Enterprise" for English UI
+    {
+        let p = &settings.configurator.window_title_pattern;
+        if p == "Конфигуратор" || p == "Конфигуратор|Configurator" {
+            crate::app_log!(
+                "[SETTINGS] Migrating window_title_pattern '{}' to bilingual default",
+                p
+            );
+            settings.configurator.window_title_pattern =
+                default_configurator_window_title_pattern();
+            modified = true;
+        }
+    }
+
+    // Migration: Force 'Diff' mode over 'Full' if detected (to fix AI interaction issues)
+    if settings.code_generation.mode == CodeGenerationMode::Full {
+        crate::app_log!("[SETTINGS] Migrating deprecated 'Full' mode to 'Diff'");
+        settings.code_generation.mode = CodeGenerationMode::Diff;
+        modified = true;
+    }
+
+    // Migration: ensure default slash commands exist
+    if ensure_default_slash_commands(&mut settings) {
+        modified = true;
+    }
+
+    // Migration: ensure default custom prompt templates exist
+    if ensure_default_custom_prompt_templates(&mut settings) {
+        modified = true;
+    }
+
+    let profile_store = crate::llm_profiles::load_profiles();
+    if !profile_store.active_profile_id.is_empty()
+        && settings.active_llm_profile != profile_store.active_profile_id
+    {
+        crate::app_log!(
+            "[SETTINGS] Syncing legacy active_llm_profile '{}' -> '{}'",
+            settings.active_llm_profile,
+            profile_store.active_profile_id
+        );
+        settings.active_llm_profile = profile_store.active_profile_id;
+        modified = true;
+    }
+
+    if modified {
+        let _ = save_settings(&settings);
+    }
+
+    crate::logger::set_debug_mode(settings.debug_mode);
+    settings
+}
+
+/// Save settings to file
+pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
+    let dir = get_settings_dir();
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let path = get_settings_file();
+    let mut persisted_settings = settings.clone();
+    clear_runtime_only_settings(&mut persisted_settings);
+    let content = serde_json::to_string_pretty(&persisted_settings).map_err(|e| e.to_string())?;
+
+    crate::logger::set_debug_mode(settings.debug_mode);
+    fs::write(path, content).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_configurator_settings_deserialize_without_binding_fields() {
+        let mut json = serde_json::to_value(AppSettings::default())
+            .expect("default settings should serialize to json");
+
+        let configurator = json["configurator"]
+            .as_object_mut()
+            .expect("configurator section should exist");
+        configurator.insert(
+            "window_title_pattern".to_string(),
+            serde_json::Value::String("Конфигуратор".to_string()),
+        );
+        configurator.insert(
+            "selected_window_hwnd".to_string(),
+            serde_json::Value::Number(12345.into()),
+        );
+        configurator.remove("selected_window_pid");
+        configurator.remove("selected_window_title");
+        configurator.remove("selected_config_name");
+
+        let settings: AppSettings =
+            serde_json::from_value(json).expect("legacy settings should deserialize");
+
+        assert_eq!(settings.configurator.selected_window_hwnd, Some(12345));
+        assert_eq!(settings.configurator.selected_window_pid, None);
+        assert_eq!(settings.configurator.selected_window_title, None);
+        assert_eq!(settings.configurator.selected_config_name, None);
+    }
+
+    #[test]
+    fn legacy_configurator_settings_enable_bridge_when_flag_missing() {
+        let mut json = serde_json::to_value(AppSettings::default())
+            .expect("default settings should serialize to json");
+
+        let configurator = json["configurator"]
+            .as_object_mut()
+            .expect("configurator section should exist");
+        configurator.remove("editor_bridge_enabled");
+        configurator.remove("rdp_mode");
+
+        let settings: AppSettings =
+            serde_json::from_value(json).expect("legacy settings should deserialize");
+
+        assert!(settings.configurator.editor_bridge_enabled);
+        assert!(!settings.configurator.rdp_mode);
+    }
+
+    #[test]
+    fn clear_runtime_only_settings_drops_configurator_binding() {
+        let mut settings = AppSettings {
+            configurator: ConfiguratorSettings {
+                window_title_pattern: "Конфигуратор".to_string(),
+                extra_window_title_patterns: Vec::new(),
+                selected_window_hwnd: Some(777),
+                selected_window_pid: Some(888),
+                selected_window_title: Some("Конфигуратор - DemoBase".to_string()),
+                selected_config_name: Some("DemoBase".to_string()),
+                rdp_mode: false,
+                editor_bridge_enabled: true,
+                editor_bridge_auto_apply: false,
+                editor_bridge_exe_path: String::new(),
+            },
+            ..AppSettings::default()
+        };
+
+        assert!(clear_runtime_only_settings(&mut settings));
+        assert_eq!(settings.configurator.selected_window_hwnd, None);
+        assert_eq!(settings.configurator.selected_window_pid, None);
+        assert_eq!(settings.configurator.selected_window_title, None);
+        assert_eq!(settings.configurator.selected_config_name, None);
+        assert_eq!(settings.configurator.window_title_pattern, "Конфигуратор");
+    }
+
+    #[test]
+    fn configurator_runtime_binding_is_not_serialized_when_cleared() {
+        let mut settings = AppSettings::default();
+        settings.configurator.selected_window_hwnd = Some(777);
+        settings.configurator.selected_window_pid = Some(888);
+        settings.configurator.selected_window_title = Some("Конфигуратор - DemoBase".to_string());
+        settings.configurator.selected_config_name = Some("DemoBase".to_string());
+
+        clear_runtime_only_settings(&mut settings);
+
+        let serialized = serde_json::to_string(&settings).expect("settings should serialize");
+
+        assert!(!serialized.contains("selected_window_hwnd"));
+        assert!(!serialized.contains("selected_window_pid"));
+        assert!(!serialized.contains("selected_window_title"));
+        assert!(!serialized.contains("selected_config_name"));
+        assert!(!serialized.contains("window_title_pattern"));
+    }
+
+    #[test]
+    fn legacy_settings_deserialize_node_path_to_default_node() {
+        let mut json = serde_json::to_value(AppSettings::default())
+            .expect("default settings should serialize to json");
+        json.as_object_mut()
+            .expect("settings should be an object")
+            .remove("node_path");
+
+        let settings: AppSettings =
+            serde_json::from_value(json).expect("legacy settings should deserialize");
+
+        assert_eq!(settings.node_path, "node");
+    }
+
+    #[test]
+    fn legacy_settings_deserialize_search_index_dir_to_empty() {
+        let mut json = serde_json::to_value(AppSettings::default())
+            .expect("default settings should serialize to json");
+        json.as_object_mut()
+            .expect("settings should be an object")
+            .remove("search_index_dir");
+
+        let settings: AppSettings =
+            serde_json::from_value(json).expect("legacy settings should deserialize");
+
+        assert_eq!(settings.search_index_dir, "");
+    }
+
+    #[test]
+    fn default_proxy_settings_use_system_mode() {
+        let proxy = ProxySettings::default();
+
+        assert_eq!(proxy.mode, ProxyMode::System);
+        assert_eq!(proxy.protocol, ProxyProtocol::Http);
+        assert_eq!(proxy.host, "");
+        assert_eq!(proxy.port, None);
+    }
+
+    #[test]
+    fn legacy_settings_deserialize_proxy_to_default_system() {
+        let mut json = serde_json::to_value(AppSettings::default())
+            .expect("default settings should serialize to json");
+        json.as_object_mut()
+            .expect("settings should be an object")
+            .remove("proxy");
+
+        let settings: AppSettings =
+            serde_json::from_value(json).expect("legacy settings should deserialize");
+
+        assert_eq!(settings.proxy.mode, ProxyMode::System);
+        assert_eq!(settings.proxy.protocol, ProxyProtocol::Http);
+    }
+
+    #[test]
+    fn proxy_settings_debug_does_not_expose_password() {
+        let proxy = ProxySettings {
+            mode: ProxyMode::Custom,
+            protocol: ProxyProtocol::Http,
+            host: "proxy.corp.local".to_string(),
+            port: Some(8080),
+            username: "user".to_string(),
+            password: "very-secret-proxy-password".to_string(),
+        };
+
+        let debug = format!("{:?}", proxy);
+
+        assert!(debug.contains("proxy.corp.local"));
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains("very-secret-proxy-password"));
+    }
+
+    #[test]
+    fn builtin_mcp_node_migration_uses_custom_node_path() {
+        let custom_node = r"C:\portable\node\node.exe".to_string();
+        let mut settings = AppSettings {
+            node_path: custom_node.clone(),
+            mcp_servers: vec![McpServerConfig {
+                id: "builtin-1c-naparnik".to_string(),
+                name: "1C:Naparnik".to_string(),
+                enabled: false,
+                transport: McpTransport::Stdio,
+                url: None,
+                login: None,
+                password: None,
+                headers: None,
+                command: Some("node".to_string()),
+                args: Some(vec![
+                    "--yes".to_string(),
+                    "tsx".to_string(),
+                    "src/mcp-servers/1c-naparnik.ts".to_string(),
+                ]),
+                env: None,
+            }],
+            ..AppSettings::default()
+        };
+
+        assert!(migrate_builtin_mcp_launchers(&mut settings));
+        let server = &settings.mcp_servers[0];
+
+        assert_eq!(server.command.as_deref(), Some(custom_node.as_str()));
+        assert_eq!(
+            server.args,
+            Some(vec!["mcp-servers/1c-naparnik.cjs".to_string()])
+        );
+    }
+
+    #[test]
+    fn ensure_default_slash_commands_adds_missing_system_commands() {
+        let mut settings = AppSettings::default();
+        settings.slash_commands.retain(|cmd| cmd.id != "elaborate");
+
+        assert!(ensure_default_slash_commands(&mut settings));
+        assert!(settings
+            .slash_commands
+            .iter()
+            .any(|cmd| cmd.id == "elaborate"));
+    }
+
+    #[test]
+    fn ensure_default_custom_prompt_templates_adds_bsl_syntax_rule() {
+        let mut settings = AppSettings::default();
+        settings
+            .custom_prompts
+            .templates
+            .retain(|template| template.id != "bsl-syntax");
+
+        assert!(ensure_default_custom_prompt_templates(&mut settings));
+        assert!(settings
+            .custom_prompts
+            .templates
+            .iter()
+            .any(|template| template.id == "bsl-syntax" && !template.enabled));
+    }
+}
