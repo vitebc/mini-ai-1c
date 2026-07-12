@@ -293,6 +293,37 @@ pub async fn list_tools() -> Value {
                     "detailed": {"type": "boolean", "default": false}
                 }, "required": ["rights_path"]
             })),
+            tool_def("cc_mxl_info", "Информация о табличном документе (MXL)", serde_json::json!({
+                "type": "object", "properties": {
+                    "path": {"type": "string", "description": "Путь к Template.xml"},
+                    "format": {"type": "string", "description": "text|json", "default": "text"}
+                }, "required": ["path"]
+            })),
+            tool_def("cc_mxl_compile", "Скомпилировать MXL.json в Template.xml", serde_json::json!({
+                "type": "object", "properties": {
+                    "json_path": {"type": "string"},
+                    "out_path": {"type": "string"}
+                }, "required": ["json_path", "out_path"]
+            })),
+            tool_def("cc_mxl_decompile", "Декомпилировать Template.xml в MXL.json", serde_json::json!({
+                "type": "object", "properties": {
+                    "xml_path": {"type": "string"},
+                    "out_path": {"type": "string"}
+                }, "required": ["xml_path"]
+            })),
+            tool_def("cc_form_edit", "Редактировать управляемую форму (Form.xml)", serde_json::json!({
+                "type": "object", "properties": {
+                    "form_path": {"type": "string", "description": "Путь к Form.xml"},
+                    "operation": {"type": "string", "description": "add-element|remove-element|move-element|set-property"},
+                    "value": {"type": "string", "description": "Параметры операции"}
+                }, "required": ["form_path", "operation"]
+            })),
+            tool_def("cc_form_validate", "Проверить структуру управляемой формы", serde_json::json!({
+                "type": "object", "properties": {
+                    "path": {"type": "string", "description": "Путь к Form.xml или каталогу формы"},
+                    "detailed": {"type": "boolean", "default": false}
+                }, "required": ["path"]
+            })),
         ]
     })
 }
@@ -369,6 +400,11 @@ pub async fn call_tool(params: Value, config: &crate::config::Config) -> Result<
         "cc_subsystem_validate" => skills::subsystem_validate::validate(args).await,
         "cc_interface_edit" => skills::interface_edit::edit(args).await,
         "cc_role_validate" => skills::role_validate::validate(args).await,
+        "cc_mxl_info" => skills::mxl_info::info(args).await,
+        "cc_mxl_compile" => skills::mxl_compile::compile(args).await,
+        "cc_mxl_decompile" => skills::mxl_decompile::decompile(args).await,
+        "cc_form_edit" => skills::form_edit::edit(args).await,
+        "cc_form_validate" => skills::form_validate::validate(args).await,
         _ => return Err(anyhow!("Tool not implemented: {}", name)),
     };
 
