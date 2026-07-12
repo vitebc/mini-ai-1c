@@ -1,18 +1,18 @@
 # mcp-1c-tools — Портирование скилов из cc-1c-skills
 
-## Статус: 23/71 скилов портировано
+## Статус: 30/71 скилов портировано
 
 ## Priority 1 (простые, ~5-10 KB)
 - [x] `template-add` — Добавить макет/шаблон в XML
-- [ ] `template-remove` — Удалить макет из XML
-- [ ] `form-add` — Создать Form.xml + модуль формы
-- [ ] `form-remove` — Удалить форму из метаданных
-- [ ] `help-add` — Добавить справку
-- [ ] `support-edit` — Снять/поставить с поддержки
-- [ ] `cf-init` — Создать Configuration.xml
-- [ ] `epf-validate` — Проверка структуры EPF
-- [ ] `erf-validate` — Проверка структуры ERF
-- [ ] `cf-info` — Информация о корне конфигурации
+- [x] `template-remove` — Удалить макет из XML
+- [x] `form-add` — Создать Form.xml + модуль формы
+- [x] `form-remove` — Удалить форму из метаданных
+- [x] `help-add` — Добавить справку
+- [x] `support-edit` — Снять/поставить с поддержки
+- [x] `cf-init` — Создать Configuration.xml
+- [x] `epf-validate` — Проверка структуры EPF
+- [x] `erf-validate` — Проверка структуры ERF
+- [x] `cf-info` — Информация о корне конфигурации
 - [ ] `cf-edit` — Правка Configuration.xml
 - [ ] `cf-validate` — Валидация корня конфигурации
 - [ ] `meta-edit` — Правка метаданных
