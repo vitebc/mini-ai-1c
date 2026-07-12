@@ -179,15 +179,28 @@ pub async fn list_infobases(args: Value, config: &Config) -> Result<String> {
 }
 
 pub async fn build_epf(args: Value, config: &Config) -> Result<String> {
-    let src_dir = args.get("src_dir").and_then(|v| v.as_str()).unwrap_or("");
+    let source_file = args.get("source_file").and_then(|v| v.as_str()).unwrap_or("");
     let out_file = args.get("out_file").and_then(|v| v.as_str()).unwrap_or("");
 
+    if source_file.is_empty() || out_file.is_empty() {
+        return Err(anyhow::anyhow!("source_file and out_file are required"));
+    }
+
+    let temp_log = std::env::temp_dir().join("epf_build_log.txt");
+    let log_path = temp_log.to_string_lossy().to_string();
+
     let mut cmd = Command::new(config.v8_path.clone());
-    cmd.args(["DESIGNER", "/C", "EPFBuild", "/Source:", src_dir, "/Destination:", out_file, "/Overwrite:", "/IBConnectionString:", &config.build_base]);
+    cmd.args(["DESIGNER", "/F", &config.build_base]);
+    cmd.arg("/LoadExternalDataProcessorOrReportFromFiles");
+    cmd.arg(&source_file);
+    cmd.arg(&out_file);
+    cmd.arg("/Out").arg(&log_path);
+    cmd.arg("/DisableStartupDialogs");
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     let output = cmd.output().await.context("EPF build failed")?;
     if !output.status.success() {
-        return Err(anyhow::anyhow!("Failed: {}", String::from_utf8_lossy(&output.stderr)));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("Failed: {}", stderr));
     }
     Ok(format!("EPF built: {}\n{}", out_file, String::from_utf8_lossy(&output.stdout)))
 }
@@ -207,15 +220,28 @@ pub async fn dump_epf(args: Value, config: &Config) -> Result<String> {
 }
 
 pub async fn build_erf(args: Value, config: &Config) -> Result<String> {
-    let src_dir = args.get("src_dir").and_then(|v| v.as_str()).unwrap_or("");
+    let source_file = args.get("source_file").and_then(|v| v.as_str()).unwrap_or("");
     let out_file = args.get("out_file").and_then(|v| v.as_str()).unwrap_or("");
 
+    if source_file.is_empty() || out_file.is_empty() {
+        return Err(anyhow::anyhow!("source_file and out_file are required"));
+    }
+
+    let temp_log = std::env::temp_dir().join("erf_build_log.txt");
+    let log_path = temp_log.to_string_lossy().to_string();
+
     let mut cmd = Command::new(config.v8_path.clone());
-    cmd.args(["DESIGNER", "/C", "ERFBuild", "/Source:", src_dir, "/Destination:", out_file, "/Overwrite:", "/IBConnectionString:", &config.build_base]);
+    cmd.args(["DESIGNER", "/F", &config.build_base]);
+    cmd.arg("/LoadExternalDataProcessorOrReportFromFiles");
+    cmd.arg(&source_file);
+    cmd.arg(&out_file);
+    cmd.arg("/Out").arg(&log_path);
+    cmd.arg("/DisableStartupDialogs");
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     let output = cmd.output().await.context("ERF build failed")?;
     if !output.status.success() {
-        return Err(anyhow::anyhow!("Failed: {}", String::from_utf8_lossy(&output.stderr)));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("Failed: {}", stderr));
     }
     Ok(format!("ERF built: {}\n{}", out_file, String::from_utf8_lossy(&output.stdout)))
 }

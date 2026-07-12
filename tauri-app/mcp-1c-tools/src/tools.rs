@@ -78,9 +78,9 @@ pub async fn list_tools() -> Value {
             // EPF/ERF tools
             tool_def("cc_epf_build", "Собрать .epf из исходников", serde_json::json!({
                 "type": "object", "properties": {
-                    "src_dir": {"type": "string", "description": "Путь к src/epf"},
+                    "source_file": {"type": "string", "description": "Путь к корневому XML-файлу исходников"},
                     "out_file": {"type": "string", "description": "Куда сохранить .epf"}
-                }, "required": ["src_dir", "out_file"]
+                }, "required": ["source_file", "out_file"]
             })),
             tool_def("cc_epf_dump", "Разобрать .epf в исходники", serde_json::json!({
                 "type": "object", "properties": {
@@ -90,9 +90,9 @@ pub async fn list_tools() -> Value {
             })),
             tool_def("cc_erf_build", "Собрать .erf из исходников", serde_json::json!({
                 "type": "object", "properties": {
-                    "src_dir": {"type": "string"},
-                    "out_file": {"type": "string"}
-                }, "required": ["src_dir", "out_file"]
+                    "source_file": {"type": "string", "description": "Путь к корневому XML-файлу исходников"},
+                    "out_file": {"type": "string", "description": "Куда сохранить .erf"}
+                }, "required": ["source_file", "out_file"]
             })),
             tool_def("cc_erf_dump", "Разобрать .erf в исходники", serde_json::json!({
                 "type": "object", "properties": {
