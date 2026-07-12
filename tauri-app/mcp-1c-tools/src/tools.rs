@@ -153,6 +153,16 @@ pub async fn list_tools() -> Value {
                     "src_dir": {"type": "string", "description": "Каталог исходников", "default": "src"}
                 }, "required": ["name"]
             })),
+            tool_def("cc_template_add", "Добавить макет/шаблон к объекту 1С", serde_json::json!({
+                "type": "object", "properties": {
+                    "object_name": {"type": "string", "description": "Имя объекта (обработки, отчёта, документа и т.д.)"},
+                    "template_name": {"type": "string", "description": "Имя макета"},
+                    "template_type": {"type": "string", "description": "Тип макета: HTML, Text, SpreadsheetDocument, BinaryData, DataCompositionSchema"},
+                    "synonym": {"type": "string", "description": "Синоним макета"},
+                    "src_dir": {"type": "string", "description": "Каталог исходников", "default": "src"},
+                    "set_main_skd": {"type": "boolean", "description": "Установить основной СКД", "default": false}
+                }, "required": ["object_name", "template_name", "template_type"]
+            })),
         ]
     })
 }
@@ -209,6 +219,7 @@ pub async fn call_tool(params: Value, config: &crate::config::Config) -> Result<
         "cc_skd_compile" => dsl::skd::compile_skd(args).await,
         // Skills (ported from cc-1c-skills)
         "cc_epf_init" => skills::epf_init::init(args).await,
+        "cc_template_add" => skills::template_add::add_template(args).await,
         _ => return Err(anyhow!("Tool not implemented: {}", name)),
     };
 
