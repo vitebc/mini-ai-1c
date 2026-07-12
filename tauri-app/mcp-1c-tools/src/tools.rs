@@ -163,6 +163,13 @@ pub async fn list_tools() -> Value {
                     "set_main_skd": {"type": "boolean", "description": "Установить основной СКД", "default": false}
                 }, "required": ["object_name", "template_name", "template_type"]
             })),
+            tool_def("cc_template_remove", "Удалить макет/шаблон из объекта 1С", serde_json::json!({
+                "type": "object", "properties": {
+                    "object_name": {"type": "string", "description": "Имя объекта"},
+                    "template_name": {"type": "string", "description": "Имя макета"},
+                    "src_dir": {"type": "string", "description": "Каталог исходников", "default": "src"}
+                }, "required": ["object_name", "template_name"]
+            })),
         ]
     })
 }
@@ -220,6 +227,7 @@ pub async fn call_tool(params: Value, config: &crate::config::Config) -> Result<
         // Skills (ported from cc-1c-skills)
         "cc_epf_init" => skills::epf_init::init(args).await,
         "cc_template_add" => skills::template_add::add_template(args).await,
+        "cc_template_remove" => skills::template_remove::remove_template(args).await,
         _ => return Err(anyhow!("Tool not implemented: {}", name)),
     };
 
