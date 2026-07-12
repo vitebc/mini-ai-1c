@@ -209,14 +209,28 @@ pub async fn dump_epf(args: Value, config: &Config) -> Result<String> {
     let epf_path = args.get("epf_path").and_then(|v| v.as_str()).unwrap_or("");
     let out_dir = args.get("out_dir").and_then(|v| v.as_str()).unwrap_or("");
 
-    let mut cmd = Command::new(config.v8_path.clone());
-    cmd.args(["DESIGNER", "/C", "EPFExtract", "/Source:", epf_path, "/Destination:", out_dir, "/Overwrite:", "/IBConnectionString:", &config.build_base]);
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let output = cmd.output().await.context("EPF extract failed")?;
-    if !output.status.success() {
-        return Err(anyhow::anyhow!("Failed: {}", String::from_utf8_lossy(&output.stderr)));
+    if epf_path.is_empty() || out_dir.is_empty() {
+        return Err(anyhow::anyhow!("epf_path and out_dir are required"));
     }
-    Ok(format!("EPF extracted: {}\n{}", out_dir, String::from_utf8_lossy(&output.stdout)))
+
+    let temp_log = std::env::temp_dir().join("epf_dump_log.txt");
+    let log_path = temp_log.to_string_lossy().to_string();
+
+    let mut cmd = Command::new(config.v8_path.clone());
+    cmd.args(["DESIGNER", "/F", &config.build_base]);
+    cmd.arg("/DumpExternalDataProcessorOrReportToFiles");
+    cmd.arg(&out_dir);
+    cmd.arg(&epf_path);
+    cmd.arg("-Format").arg("Hierarchical");
+    cmd.arg("/Out").arg(&log_path);
+    cmd.arg("/DisableStartupDialogs");
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let output = cmd.output().await.context("EPF dump failed")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("Failed: {}", stderr));
+    }
+    Ok(format!("EPF dumped: {}\n{}", out_dir, String::from_utf8_lossy(&output.stdout)))
 }
 
 pub async fn build_erf(args: Value, config: &Config) -> Result<String> {
@@ -250,12 +264,26 @@ pub async fn dump_erf(args: Value, config: &Config) -> Result<String> {
     let erf_path = args.get("erf_path").and_then(|v| v.as_str()).unwrap_or("");
     let out_dir = args.get("out_dir").and_then(|v| v.as_str()).unwrap_or("");
 
-    let mut cmd = Command::new(config.v8_path.clone());
-    cmd.args(["DESIGNER", "/C", "ERFFExtract", "/Source:", erf_path, "/Destination:", out_dir, "/Overwrite:", "/IBConnectionString:", &config.build_base]);
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let output = cmd.output().await.context("ERF extract failed")?;
-    if !output.status.success() {
-        return Err(anyhow::anyhow!("Failed: {}", String::from_utf8_lossy(&output.stderr)));
+    if erf_path.is_empty() || out_dir.is_empty() {
+        return Err(anyhow::anyhow!("erf_path and out_dir are required"));
     }
-    Ok(format!("ERF extracted: {}\n{}", out_dir, String::from_utf8_lossy(&output.stdout)))
+
+    let temp_log = std::env::temp_dir().join("erf_dump_log.txt");
+    let log_path = temp_log.to_string_lossy().to_string();
+
+    let mut cmd = Command::new(config.v8_path.clone());
+    cmd.args(["DESIGNER", "/F", &config.build_base]);
+    cmd.arg("/DumpExternalDataProcessorOrReportToFiles");
+    cmd.arg(&out_dir);
+    cmd.arg(&erf_path);
+    cmd.arg("-Format").arg("Hierarchical");
+    cmd.arg("/Out").arg(&log_path);
+    cmd.arg("/DisableStartupDialogs");
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let output = cmd.output().await.context("ERF dump failed")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("Failed: {}", stderr));
+    }
+    Ok(format!("ERF dumped: {}\n{}", out_dir, String::from_utf8_lossy(&output.stdout)))
 }
