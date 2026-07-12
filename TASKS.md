@@ -1,6 +1,6 @@
 # mcp-1c-tools — Портирование скилов из cc-1c-skills
 
-## Статус: 30/71 скилов портировано
+## Статус: 35/71 скилов портировано (+5)
 
 ## Priority 1 (простые, ~5-10 KB)
 - [x] `template-add` — Добавить макет/шаблон в XML
@@ -13,11 +13,11 @@
 - [x] `epf-validate` — Проверка структуры EPF
 - [x] `erf-validate` — Проверка структуры ERF
 - [x] `cf-info` — Информация о корне конфигурации
-- [ ] `cf-edit` — Правка Configuration.xml
-- [ ] `cf-validate` — Валидация корня конфигурации
-- [ ] `meta-edit` — Правка метаданных
-- [ ] `meta-validate` — Валидация XML метаданных
-- [ ] `meta-remove` — Удаление объекта метаданных
+- [x] `cf-edit` — Правка Configuration.xml
+- [x] `cf-validate` — Валидация корня конфигурации
+- [x] `meta-edit` — Правка метаданных
+- [x] `meta-validate` — Валидация XML метаданных
+- [x] `meta-remove` — Удаление объекта метаданных
 - [ ] `subsystem-info` — Инфо о подсистеме
 - [ ] `subsystem-edit` — Правка подсистемы
 - [ ] `subsystem-validate` — Валидация подсистемы
