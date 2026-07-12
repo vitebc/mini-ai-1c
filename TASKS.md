@@ -1,6 +1,6 @@
 # mcp-1c-tools — Портирование скилов из cc-1c-skills
 
-## Статус: 35/71 скилов портировано (+5)
+## Статус: 40/71 скилов портировано (+5)
 
 ## Priority 1 (простые, ~5-10 KB)
 - [x] `template-add` — Добавить макет/шаблон в XML
@@ -18,12 +18,11 @@
 - [x] `meta-edit` — Правка метаданных
 - [x] `meta-validate` — Валидация XML метаданных
 - [x] `meta-remove` — Удаление объекта метаданных
-- [ ] `subsystem-info` — Инфо о подсистеме
-- [ ] `subsystem-edit` — Правка подсистемы
-- [ ] `subsystem-validate` — Валидация подсистемы
-- [ ] `interface-edit` — Правка командного интерфейса
-- [ ] `role-edit` — Правка роли
-- [ ] `role-validate` — Валидация роли
+- [x] `subsystem-info` — Инфо о подсистеме
+- [x] `subsystem-edit` — Правка подсистемы
+- [x] `subsystem-validate` — Валидация подсистемы
+- [x] `interface-edit` — Правка командного интерфейса
+- [x] `role-validate` — Валидация роли
 - [ ] `mxl-info` — Инфо о макете
 - [ ] `mxl-compile` — MXL JSON DSL → XML
 - [ ] `mxl-decompile` — MXL XML → JSON DSL
