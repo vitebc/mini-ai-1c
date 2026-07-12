@@ -324,6 +324,45 @@ pub async fn list_tools() -> Value {
                     "detailed": {"type": "boolean", "default": false}
                 }, "required": ["path"]
             })),
+            tool_def("cc_cfe_init", "Создать пустое расширение конфигурации (CFE)", serde_json::json!({
+                "type": "object", "properties": {
+                    "name": {"type": "string", "description": "Имя расширения"},
+                    "synonym": {"type": "string"},
+                    "name_prefix": {"type": "string"},
+                    "output_dir": {"type": "string", "default": "src"},
+                    "purpose": {"type": "string", "description": "Patch|Customization|AddOn", "default": "Customization"},
+                    "version": {"type": "string"},
+                    "vendor": {"type": "string"},
+                    "no_role": {"type": "boolean", "default": false}
+                }, "required": ["name"]
+            })),
+            tool_def("cc_cfe_diff", "Анализ расширения конфигурации", serde_json::json!({
+                "type": "object", "properties": {
+                    "extension_path": {"type": "string"},
+                    "mode": {"type": "string", "description": "A|B", "default": "A"}
+                }, "required": ["extension_path"]
+            })),
+            tool_def("cc_cfe_patch_method", "Добавить перехватчик метода в расширение", serde_json::json!({
+                "type": "object", "properties": {
+                    "extension_path": {"type": "string"},
+                    "module_path": {"type": "string", "description": "Catalog.X.ObjectModule или Catalog.X.Form.Y"},
+                    "method_name": {"type": "string"},
+                    "interceptor_type": {"type": "string", "description": "Before|After|ModificationAndControl"},
+                    "context": {"type": "string", "description": "НаСервере|НаКлиенте|НаСервереБезКонтекста", "default": "НаСервере"},
+                    "is_function": {"type": "boolean", "default": false}
+                }, "required": ["extension_path", "module_path", "method_name", "interceptor_type"]
+            })),
+            tool_def("cc_cfe_validate", "Проверить структуру расширения конфигурации", serde_json::json!({
+                "type": "object", "properties": {
+                    "extension_path": {"type": "string"},
+                    "detailed": {"type": "boolean", "default": false}
+                }, "required": ["extension_path"]
+            })),
+            tool_def("cc_form_patterns", "Паттерны проектирования управляемых форм 1С", serde_json::json!({
+                "type": "object", "properties": {
+                    "pattern": {"type": "string", "description": "list|form-document|form-data-processor|form-list", "default": "list"}
+                }
+            })),
         ]
     })
 }
@@ -405,6 +444,11 @@ pub async fn call_tool(params: Value, config: &crate::config::Config) -> Result<
         "cc_mxl_decompile" => skills::mxl_decompile::decompile(args).await,
         "cc_form_edit" => skills::form_edit::edit(args).await,
         "cc_form_validate" => skills::form_validate::validate(args).await,
+        "cc_cfe_init" => skills::cfe_init::init(args).await,
+        "cc_cfe_diff" => skills::cfe_diff::diff(args).await,
+        "cc_cfe_patch_method" => skills::cfe_patch_method::patch_method(args).await,
+        "cc_cfe_validate" => skills::cfe_validate::validate(args).await,
+        "cc_form_patterns" => skills::form_patterns::patterns(args).await,
         _ => return Err(anyhow!("Tool not implemented: {}", name)),
     };
 
