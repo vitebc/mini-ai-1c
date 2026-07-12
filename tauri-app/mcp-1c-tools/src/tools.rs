@@ -260,6 +260,39 @@ pub async fn list_tools() -> Value {
                     "force": {"type": "boolean", "default": false}
                 }, "required": ["config_dir", "object"]
             })),
+            tool_def("cc_subsystem_info", "Информация о подсистеме 1С", serde_json::json!({
+                "type": "object", "properties": {
+                    "path": {"type": "string", "description": "Путь к Subsystem.xml или каталогу"},
+                    "mode": {"type": "string", "description": "overview|content|ci|tree|full", "default": "overview"}
+                }, "required": ["path"]
+            })),
+            tool_def("cc_subsystem_edit", "Редактировать подсистему 1С", serde_json::json!({
+                "type": "object", "properties": {
+                    "path": {"type": "string", "description": "Путь к Subsystem.xml"},
+                    "operation": {"type": "string", "description": "add-content|remove-content|add-child|remove-child|set-property"},
+                    "value": {"type": "string", "description": "Значение операции"}
+                }, "required": ["path", "operation"]
+            })),
+            tool_def("cc_subsystem_validate", "Проверить структуру подсистемы 1С", serde_json::json!({
+                "type": "object", "properties": {
+                    "path": {"type": "string", "description": "Путь к Subsystem.xml"},
+                    "detailed": {"type": "boolean", "default": false}
+                }, "required": ["path"]
+            })),
+            tool_def("cc_interface_edit", "Редактировать CommandInterface.xml", serde_json::json!({
+                "type": "object", "properties": {
+                    "path": {"type": "string", "description": "Путь к CommandInterface.xml"},
+                    "operation": {"type": "string", "description": "hide|show|place|order|subsystem-order"},
+                    "value": {"type": "string", "description": "Параметры операции"},
+                    "create_if_missing": {"type": "boolean", "description": "Создать если отсутствует", "default": false}
+                }, "required": ["path", "operation"]
+            })),
+            tool_def("cc_role_validate", "Проверить структуру роли 1С", serde_json::json!({
+                "type": "object", "properties": {
+                    "rights_path": {"type": "string", "description": "Путь к Rights.xml или каталогу роли"},
+                    "detailed": {"type": "boolean", "default": false}
+                }, "required": ["rights_path"]
+            })),
         ]
     })
 }
@@ -331,6 +364,11 @@ pub async fn call_tool(params: Value, config: &crate::config::Config) -> Result<
         "cc_meta_edit" => skills::meta_edit::edit(args).await,
         "cc_meta_validate" => skills::meta_validate::validate(args).await,
         "cc_meta_remove" => skills::meta_remove::remove(args).await,
+        "cc_subsystem_info" => skills::subsystem_info::info(args).await,
+        "cc_subsystem_edit" => skills::subsystem_edit::edit(args).await,
+        "cc_subsystem_validate" => skills::subsystem_validate::validate(args).await,
+        "cc_interface_edit" => skills::interface_edit::edit(args).await,
+        "cc_role_validate" => skills::role_validate::validate(args).await,
         _ => return Err(anyhow!("Tool not implemented: {}", name)),
     };
 
