@@ -179,6 +179,13 @@ pub async fn list_tools() -> Value {
                     "set_default": {"type": "boolean", "description": "Установить как форму по умолчанию", "default": false}
                 }, "required": ["object_path", "form_name"]
             })),
+            tool_def("cc_form_remove", "Удалить форму из объекта 1С", serde_json::json!({
+                "type": "object", "properties": {
+                    "object_name": {"type": "string", "description": "Имя объекта"},
+                    "form_name": {"type": "string", "description": "Имя формы"},
+                    "src_dir": {"type": "string", "description": "Каталог исходников", "default": "src"}
+                }, "required": ["object_name", "form_name"]
+            })),
         ]
     })
 }
@@ -238,6 +245,7 @@ pub async fn call_tool(params: Value, config: &crate::config::Config) -> Result<
         "cc_template_add" => skills::template_add::add_template(args).await,
         "cc_template_remove" => skills::template_remove::remove_template(args).await,
         "cc_form_add" => skills::form_add::add_form(args).await,
+        "cc_form_remove" => skills::form_remove::remove_form(args).await,
         _ => return Err(anyhow!("Tool not implemented: {}", name)),
     };
 
