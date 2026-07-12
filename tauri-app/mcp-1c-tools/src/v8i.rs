@@ -60,6 +60,8 @@ fn parse_v8i_content(content: &str) -> Vec<InfobaseInfo> {
     let mut current_id = String::new();
     let mut current_folder = String::new();
 
+    let content = content.trim_start_matches('\u{FEFF}');
+
     for line in content.lines() {
         let trimmed = line.trim();
 

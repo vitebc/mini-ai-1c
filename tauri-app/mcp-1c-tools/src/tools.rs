@@ -64,9 +64,12 @@ pub async fn list_tools() -> Value {
                     "password": {"type": "string", "default": ""}
                 }, "required": ["ib_path"]
             })),
-            tool_def("cc_db_run", "Запустить 1С:Предприятие", serde_json::json!({
+            tool_def("cc_db_run", "Запустить 1С:Предприятие или Конфигуратор", serde_json::json!({
                 "type": "object", "properties": {
-                    "ib_path": {"type": "string"}
+                    "ib_path": {"type": "string", "description": "Путь к ИБ или строка соединения"},
+                    "mode": {"type": "string", "enum": ["ENTERPRISE", "DESIGNER"], "default": "ENTERPRISE", "description": "ENTERPRISE — 1С:Предприятие, DESIGNER — Конфигуратор"},
+                    "user": {"type": "string", "default": "", "description": "Пользователь (для DESIGNER)"},
+                    "password": {"type": "string", "default": "", "description": "Пароль (для DESIGNER)"}
                 }, "required": ["ib_path"]
             })),
             tool_def("cc_db_list", "Список ИБ", serde_json::json!({
@@ -392,7 +395,7 @@ pub async fn call_tool(params: Value, config: &crate::config::Config) -> Result<
         "cc_db_dump_xml" => cli::dump_xml(args, config).await,
         "cc_db_load_xml" => cli::load_xml(args, config).await,
         "cc_db_update" => cli::update_infobase(args, config).await,
-        "cc_db_run" => cli::run_enterprise(args, config).await,
+        "cc_db_run" => cli::run_1c(args, config).await,
         // DB (non-1C — use v8i parser)
         "cc_db_list" => {
             let bases = v8i::parse_v8i_file(None);

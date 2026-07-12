@@ -122,14 +122,36 @@ pub async fn update_infobase(args: Value, config: &Config) -> Result<String> {
     Ok(format!("Infobase updated: {}\n{}", ib_path, String::from_utf8_lossy(&output.stdout)))
 }
 
-pub async fn run_enterprise(args: Value, config: &Config) -> Result<String> {
+pub async fn run_1c(args: Value, config: &Config) -> Result<String> {
     let ib_path = args.get("ib_path").and_then(|v| v.as_str()).unwrap_or("");
+    let mode = args.get("mode").and_then(|v| v.as_str()).unwrap_or("ENTERPRISE");
+    let user = args.get("user").and_then(|v| v.as_str()).unwrap_or("");
+    let pwd = args.get("password").and_then(|v| v.as_str()).unwrap_or("");
+
+    if ib_path.is_empty() {
+        return Err(anyhow::anyhow!("ib_path is required"));
+    }
 
     let mut cmd = Command::new(config.v8_path.clone());
-    cmd.args(["ENTERPRISE", "/IBConnectionString:", ib_path]);
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    if ib_path.contains("Srvr=") || ib_path.contains("File=") {
+        let escaped = format!("\"{}\"", ib_path.replace('\"', "\"\""));
+        cmd.args([mode, "/IBConnectionString", &escaped]);
+    } else {
+        cmd.args([mode, "/F", &ib_path]);
+    }
+
+    if !user.is_empty() {
+        cmd.arg("/User:").arg(&user);
+    }
+    if !pwd.is_empty() {
+        cmd.arg("/Password:").arg(&pwd);
+    }
+
     let _ = cmd.spawn()?;
-    Ok(format!("1C:Enterprise started for: {}", ib_path))
+    Ok(format!("{} started for: {}",
+        if mode == "DESIGNER" { "Configurator" } else { "1C:Enterprise" },
+        ib_path))
 }
 
 pub async fn list_infobases(args: Value, config: &Config) -> Result<String> {
