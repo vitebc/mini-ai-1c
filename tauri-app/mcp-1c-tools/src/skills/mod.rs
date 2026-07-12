@@ -1,6 +1,11 @@
+pub mod cf_init;
+pub mod cf_info;
 pub mod epf_init;
+pub mod epf_validate;
+pub mod erf_validate;
 pub mod form_add;
 pub mod form_remove;
 pub mod help_add;
+pub mod support_edit;
 pub mod template_add;
 pub mod template_remove;

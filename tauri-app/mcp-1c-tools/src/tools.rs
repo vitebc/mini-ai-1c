@@ -193,6 +193,38 @@ pub async fn list_tools() -> Value {
                     "src_dir": {"type": "string", "description": "Каталог исходников", "default": "src"}
                 }, "required": ["object_name"]
             })),
+            tool_def("cc_support_edit", "Переключить состояние поддержки типовой конфигурации 1С", serde_json::json!({
+                "type": "object", "properties": {
+                    "target_path": {"type": "string", "description": "Путь к объекту"},
+                    "set": {"type": "string", "description": "editable|off-support|locked"},
+                    "capability": {"type": "string", "description": "on|off"}
+                }, "required": ["target_path"]
+            })),
+            tool_def("cc_cf_init", "Создать пустую конфигурацию 1С (scaffold)", serde_json::json!({
+                "type": "object", "properties": {
+                    "name": {"type": "string", "description": "Имя конфигурации"},
+                    "synonym": {"type": "string", "description": "Синоним"},
+                    "output_dir": {"type": "string", "description": "Каталог для выгрузки", "default": "src"},
+                    "version": {"type": "string", "description": "Версия"},
+                    "vendor": {"type": "string", "description": "Вендор"},
+                    "compatibility_mode": {"type": "string", "description": "Режим совместимости", "default": "Version8_3_24"}
+                }, "required": ["name"]
+            })),
+            tool_def("cc_epf_validate", "Проверить структуру внешней обработки (EPF)", serde_json::json!({
+                "type": "object", "properties": {
+                    "path": {"type": "string", "description": "Путь к XML-файлу обработки"}
+                }, "required": ["path"]
+            })),
+            tool_def("cc_erf_validate", "Проверить структуру внешнего отчёта (ERF)", serde_json::json!({
+                "type": "object", "properties": {
+                    "path": {"type": "string", "description": "Путь к XML-файлу отчёта"}
+                }, "required": ["path"]
+            })),
+            tool_def("cc_cf_info", "Информация о конфигурации из Configuration.xml", serde_json::json!({
+                "type": "object", "properties": {
+                    "path": {"type": "string", "description": "Путь к Configuration.xml или каталогу src"}
+                }, "required": ["path"]
+            })),
         ]
     })
 }
@@ -254,6 +286,11 @@ pub async fn call_tool(params: Value, config: &crate::config::Config) -> Result<
         "cc_form_add" => skills::form_add::add_form(args).await,
         "cc_form_remove" => skills::form_remove::remove_form(args).await,
         "cc_help_add" => skills::help_add::add_help(args).await,
+        "cc_support_edit" => skills::support_edit::support_edit(args).await,
+        "cc_cf_init" => skills::cf_init::init(args).await,
+        "cc_epf_validate" => skills::epf_validate::validate(args).await,
+        "cc_erf_validate" => skills::erf_validate::validate(args).await,
+        "cc_cf_info" => skills::cf_info::info(args).await,
         _ => return Err(anyhow!("Tool not implemented: {}", name)),
     };
 
