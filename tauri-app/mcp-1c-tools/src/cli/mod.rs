@@ -133,19 +133,32 @@ pub async fn run_1c(args: Value, config: &Config) -> Result<String> {
     }
 
     let mut cmd = Command::new(config.v8_path.clone());
+    cmd.arg(mode);
 
-    if ib_path.contains("Srvr=") || ib_path.contains("File=") {
-        let escaped = format!("\"{}\"", ib_path.replace('\"', "\"\""));
-        cmd.args([mode, "/IBConnectionString", &escaped]);
+    let lower = ib_path.to_lowercase();
+    if let Some(pos) = lower.find("file=") {
+        let rest = &ib_path[pos + 5..];
+        if let Some(start) = rest.find('"') {
+            if let Some(end) = rest[start + 1..].find('"') {
+                cmd.arg("/F").arg(&rest[start + 1..start + 1 + end]);
+            } else {
+                cmd.arg("/F").arg(rest.trim_matches('"'));
+            }
+        } else {
+            cmd.arg("/F").arg(rest.trim());
+        }
+    } else if lower.contains("srvr=") && lower.contains("ref=") {
+        cmd.arg("/S").arg(&ib_path);
     } else {
-        cmd.args([mode, "/F", &ib_path]);
+        cmd.arg("/F").arg(&ib_path);
     }
 
-    if !user.is_empty() {
-        cmd.arg("/User:").arg(&user);
-    }
-    if !pwd.is_empty() {
-        cmd.arg("/Password:").arg(&pwd);
+    if mode == "DESIGNER" {
+        if !user.is_empty() { cmd.arg("/User:").arg(&user); }
+        if !pwd.is_empty() { cmd.arg("/Password:").arg(&pwd); }
+    } else {
+        if !user.is_empty() { cmd.arg("/N").arg(&user); }
+        if !pwd.is_empty() { cmd.arg("/P").arg(&pwd); }
     }
 
     let _ = cmd.spawn()?;
