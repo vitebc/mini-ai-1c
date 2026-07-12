@@ -1,8 +1,13 @@
 # mcp-1c-tools — Портирование скилов из cc-1c-skills
 
-## Статус: 40/71 скилов портировано (+5)
+## Статус: 45/71 скилов портировано (+5)
 
-## Priority 1 (простые, ~5-10 KB)
+## Priority 1 (простые, ~5-10 KB) — ✅ ВСЁ
+- [x] `mxl-info` — Инфо о макете
+- [x] `mxl-compile` — MXL JSON DSL → XML
+- [x] `mxl-decompile` — MXL XML → JSON DSL
+- [x] `form-edit` — Правка формы через DSL
+- [x] `form-validate` — Проверка формы
 - [x] `template-add` — Добавить макет/шаблон в XML
 - [x] `template-remove` — Удалить макет из XML
 - [x] `form-add` — Создать Form.xml + модуль формы
@@ -28,9 +33,13 @@
 - [ ] `mxl-decompile` — MXL XML → JSON DSL
 
 ## Priority 2 (средние, ~15-30 KB)
-- [ ] `form-edit` — Правка формы через DSL
-- [ ] `form-validate` — Проверка формы
 - [ ] `form-patterns` — Паттерны форм (документация)
+- [ ] `cfe-init` — Создать расширение
+- [ ] `cfe-borrow` — Заимствовать объекты
+- [ ] `cfe-diff` — Сравнить расширение
+- [ ] `cfe-patch-method` — Пропатчить метод
+- [ ] `cfe-validate` — Валидация расширения
+- [ ] `img-grid` — Сетка для изображений
 - [ ] `cfe-init` — Создать расширение
 - [ ] `cfe-borrow` — Заимствовать объекты
 - [ ] `cfe-diff` — Сравнить расширение
