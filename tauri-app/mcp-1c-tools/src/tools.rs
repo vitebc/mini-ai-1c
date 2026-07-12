@@ -170,6 +170,15 @@ pub async fn list_tools() -> Value {
                     "src_dir": {"type": "string", "description": "Каталог исходников", "default": "src"}
                 }, "required": ["object_name", "template_name"]
             })),
+            tool_def("cc_form_add", "Добавить пустую управляемую форму к объекту 1С", serde_json::json!({
+                "type": "object", "properties": {
+                    "object_path": {"type": "string", "description": "Путь к XML-файлу объекта"},
+                    "form_name": {"type": "string", "description": "Имя формы"},
+                    "purpose": {"type": "string", "description": "Назначение: Object, List, Choice, Record", "default": "Object"},
+                    "synonym": {"type": "string", "description": "Синоним формы"},
+                    "set_default": {"type": "boolean", "description": "Установить как форму по умолчанию", "default": false}
+                }, "required": ["object_path", "form_name"]
+            })),
         ]
     })
 }
@@ -228,6 +237,7 @@ pub async fn call_tool(params: Value, config: &crate::config::Config) -> Result<
         "cc_epf_init" => skills::epf_init::init(args).await,
         "cc_template_add" => skills::template_add::add_template(args).await,
         "cc_template_remove" => skills::template_remove::remove_template(args).await,
+        "cc_form_add" => skills::form_add::add_form(args).await,
         _ => return Err(anyhow!("Tool not implemented: {}", name)),
     };
 
