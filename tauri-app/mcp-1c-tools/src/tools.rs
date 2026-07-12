@@ -186,6 +186,13 @@ pub async fn list_tools() -> Value {
                     "src_dir": {"type": "string", "description": "Каталог исходников", "default": "src"}
                 }, "required": ["object_name", "form_name"]
             })),
+            tool_def("cc_help_add", "Добавить встроенную справку к объекту 1С", serde_json::json!({
+                "type": "object", "properties": {
+                    "object_name": {"type": "string", "description": "Путь объекта относительно SrcDir (DataProcessors/МояОбработка)"},
+                    "lang": {"type": "string", "description": "Код языка", "default": "ru"},
+                    "src_dir": {"type": "string", "description": "Каталог исходников", "default": "src"}
+                }, "required": ["object_name"]
+            })),
         ]
     })
 }
@@ -246,6 +253,7 @@ pub async fn call_tool(params: Value, config: &crate::config::Config) -> Result<
         "cc_template_remove" => skills::template_remove::remove_template(args).await,
         "cc_form_add" => skills::form_add::add_form(args).await,
         "cc_form_remove" => skills::form_remove::remove_form(args).await,
+        "cc_help_add" => skills::help_add::add_help(args).await,
         _ => return Err(anyhow!("Tool not implemented: {}", name)),
     };
 
