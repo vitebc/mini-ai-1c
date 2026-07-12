@@ -225,6 +225,41 @@ pub async fn list_tools() -> Value {
                     "path": {"type": "string", "description": "Путь к Configuration.xml или каталогу src"}
                 }, "required": ["path"]
             })),
+            tool_def("cc_cf_edit", "Редактировать Configuration.xml", serde_json::json!({
+                "type": "object", "properties": {
+                    "config_path": {"type": "string", "description": "Путь к Configuration.xml"},
+                    "operation": {"type": "string", "description": "modify-property|add-childObject|remove-childObject|set-defaultRoles"},
+                    "value": {"type": "string", "description": "PropertyName=Value или Type=Name"}
+                }, "required": ["config_path", "operation"]
+            })),
+            tool_def("cc_cf_validate", "Проверить структуру Configuration.xml", serde_json::json!({
+                "type": "object", "properties": {
+                    "config_path": {"type": "string", "description": "Путь к Configuration.xml или каталогу"},
+                    "detailed": {"type": "boolean", "description": "Показать все проверки", "default": false}
+                }, "required": ["config_path"]
+            })),
+            tool_def("cc_meta_edit", "Редактировать объект метаданных", serde_json::json!({
+                "type": "object", "properties": {
+                    "object_path": {"type": "string", "description": "Путь к XML объекта"},
+                    "operation": {"type": "string", "description": "add-attribute|remove-attribute|modify-property|add-tabularSection|remove-tabularSection|set-synonym"},
+                    "value": {"type": "string", "description": "Параметры операции"}
+                }, "required": ["object_path", "operation"]
+            })),
+            tool_def("cc_meta_validate", "Проверить структуру XML метаданных", serde_json::json!({
+                "type": "object", "properties": {
+                    "object_path": {"type": "string", "description": "Путь к XML объекта"},
+                    "detailed": {"type": "boolean", "default": false}
+                }, "required": ["object_path"]
+            })),
+            tool_def("cc_meta_remove", "Удалить объект метаданных из конфигурации", serde_json::json!({
+                "type": "object", "properties": {
+                    "config_dir": {"type": "string", "description": "Корень выгрузки конфигурации"},
+                    "object": {"type": "string", "description": "Type.Name (например Catalog.Товары)"},
+                    "dry_run": {"type": "boolean", "default": false},
+                    "keep_files": {"type": "boolean", "default": false},
+                    "force": {"type": "boolean", "default": false}
+                }, "required": ["config_dir", "object"]
+            })),
         ]
     })
 }
@@ -291,6 +326,11 @@ pub async fn call_tool(params: Value, config: &crate::config::Config) -> Result<
         "cc_epf_validate" => skills::epf_validate::validate(args).await,
         "cc_erf_validate" => skills::erf_validate::validate(args).await,
         "cc_cf_info" => skills::cf_info::info(args).await,
+        "cc_cf_edit" => skills::cf_edit::edit(args).await,
+        "cc_cf_validate" => skills::cf_validate::validate(args).await,
+        "cc_meta_edit" => skills::meta_edit::edit(args).await,
+        "cc_meta_validate" => skills::meta_validate::validate(args).await,
+        "cc_meta_remove" => skills::meta_remove::remove(args).await,
         _ => return Err(anyhow!("Tool not implemented: {}", name)),
     };
 
