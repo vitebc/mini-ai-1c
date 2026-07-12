@@ -363,6 +363,13 @@ pub async fn list_tools() -> Value {
                     "pattern": {"type": "string", "description": "list|form-document|form-data-processor|form-list", "default": "list"}
                 }
             })),
+            tool_def("cc_skd_edit", "Редактировать схему компоновки данных (СКД)", serde_json::json!({
+                "type": "object", "properties": {
+                    "path": {"type": "string", "description": "Путь к Template.xml"},
+                    "operation": {"type": "string", "description": "set-name|add-dataset|add-field|set-setting"},
+                    "value": {"type": "string", "description": "Параметры операции"}
+                }, "required": ["path", "operation"]
+            })),
         ]
     })
 }
@@ -449,6 +456,7 @@ pub async fn call_tool(params: Value, config: &crate::config::Config) -> Result<
         "cc_cfe_patch_method" => skills::cfe_patch_method::patch_method(args).await,
         "cc_cfe_validate" => skills::cfe_validate::validate(args).await,
         "cc_form_patterns" => skills::form_patterns::patterns(args).await,
+        "cc_skd_edit" => skills::skd_edit::edit(args).await,
         _ => return Err(anyhow!("Tool not implemented: {}", name)),
     };
 

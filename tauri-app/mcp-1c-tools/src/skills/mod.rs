@@ -23,6 +23,7 @@ pub mod mxl_compile;
 pub mod mxl_decompile;
 pub mod mxl_info;
 pub mod role_validate;
+pub mod skd_edit;
 pub mod subsystem_edit;
 pub mod subsystem_info;
 pub mod subsystem_validate;
