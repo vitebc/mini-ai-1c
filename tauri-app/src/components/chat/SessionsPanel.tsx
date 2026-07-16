@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useChat, ChatSession } from '../../contexts/ChatContext';
-import { ChevronRight, Plus, Trash2, MessageSquare, MessageSquarePlus, FolderClosed, FolderOpen, FileText, X } from 'lucide-react';
+import { ChevronRight, MessageSquare, MessageSquarePlus, FolderClosed, FolderOpen, FileText, X } from 'lucide-react';
 
 interface SubGroup {
   label: string;
@@ -120,9 +120,9 @@ export function SessionsPanel() {
   }, [createNewChat, isOpen]);
 
   return (
-    <div className="flex items-stretch h-full">
-      <div className={`transition-all duration-200 ease-out overflow-hidden ${isOpen ? 'w-[240px]' : 'w-0'}`}>
-        <div className="w-[240px] h-full border-r border-[#27272a] bg-[#0d0d10] flex flex-col shrink-0">
+    <div className="flex min-h-0">
+      <div className={`transition-all duration-200 ease-out overflow-hidden flex flex-col ${isOpen ? 'w-[240px] min-w-0' : 'w-0'}`}>
+        <div className="w-[240px] flex-1 border-r border-[#27272a] bg-[#0d0d10] flex flex-col shrink-0">
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#27272a]">
             <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Сессии</span>
             <button
@@ -152,13 +152,25 @@ export function SessionsPanel() {
         </div>
       </div>
 
-      <button
-        onClick={() => setIsOpen(v => !v)}
-        className="flex items-center justify-center w-4 h-12 my-auto bg-[#1f1f23] border border-[#27272a] border-l-0 rounded-r-md cursor-pointer hover:bg-[#27272a] transition-colors shrink-0 z-10"
-        title={isOpen ? 'Скрыть панель' : 'Показать панель'}
-      >
-        <ChevronRight className={`w-3 h-3 text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+      <div className="flex flex-col shrink-0">
+        {!isOpen && (
+          <div className="w-[3px] flex-1 bg-gradient-to-b from-transparent via-zinc-700/30 to-transparent" />
+        )}
+        <button
+          onClick={() => setIsOpen(v => !v)}
+          className={`flex items-center justify-center w-6 h-16 my-auto rounded-r-md transition-all shrink-0 cursor-pointer ${
+            isOpen
+              ? 'bg-[#1f1f23] text-zinc-300 hover:bg-[#27272a] shadow-sm'
+              : 'bg-[#141418] text-zinc-500 hover:text-zinc-200 hover:bg-[#1f1f23] hover:w-7'
+          }`}
+          title={isOpen ? 'Скрыть панель сессий' : 'Показать панель сессий'}
+        >
+          <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {!isOpen && (
+          <div className="w-[3px] flex-1 bg-gradient-to-b from-zinc-700/30 via-transparent to-zinc-700/30" />
+        )}
+      </div>
     </div>
   );
 }
