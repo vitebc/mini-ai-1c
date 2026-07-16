@@ -138,9 +138,10 @@ export function ConfiguratorProvider({ children }: { children: React.ReactNode }
             }
             // Auto-select the single available window when nothing is bound
             // Also auto-switch when current window disappears and only one other is available
-            if (resolution.status === 'unselected' && windows.length === 1) {
-                await persistBinding(bindConfiguratorWindow(windows[0]));
-            } else if (resolution.status === 'missing' && windows.length === 1) {
+            const needsAutoSelect =
+                (resolution.status === 'unselected' || resolution.status === 'missing')
+                && windows.length === 1;
+            if (needsAutoSelect) {
                 await persistBinding(bindConfiguratorWindow(windows[0]));
             }
         } catch (e) {
@@ -148,14 +149,14 @@ export function ConfiguratorProvider({ children }: { children: React.ReactNode }
         }
     }, [currentBinding, pattern, persistBinding]);
 
-    // Initial refresh when settings are loaded, and periodic re-scan every 30s.
+    // Initial refresh when settings are loaded, and periodic re-scan every 10s.
     // This ensures newly opened Configurator windows appear without manual refresh.
     useEffect(() => {
         if (!settings) return;
         void refreshWindows();
         const interval = setInterval(() => {
             void refreshWindows();
-        }, 30_000);
+        }, 10_000);
         return () => clearInterval(interval);
     }, [settings, refreshWindows]);
 
