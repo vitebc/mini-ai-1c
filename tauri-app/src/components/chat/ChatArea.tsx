@@ -1993,7 +1993,7 @@ export const ChatArea = memo(function ChatArea({
                                         )}
                                         <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-1">
                                             {detectedWindows.length > 0 ? detectedWindows.map(w => (
-                                                <button key={w.hwnd} onClick={() => { selectWindow(w); }}
+                                                <button key={w.hwnd} onClick={() => { selectWindow(w); setShowConfigDropdown(false); }}
                                                     className={`w-full text-left px-3 py-2 rounded-md text-[13px] truncate transition-colors ${selectedHwnd === w.hwnd ? 'bg-emerald-500/10 text-emerald-400 font-medium' : 'text-zinc-400 hover:bg-[#27272a] hover:text-zinc-200'}`}
                                                     title={w.title}
                                                 >
