@@ -1945,7 +1945,7 @@ export const ChatArea = memo(function ChatArea({
 
 
                             {/* Объединенный Конфигуратор & Код */}
-                            <div className="relative flex-shrink-0" id="tour-get-code">
+                            <div className="relative flex-shrink-0 flex items-center gap-0.5" id="tour-get-code">
                                 <button onClick={() => {
                                     const next = !showConfigDropdown;
                                     setShowConfigDropdown(next);
@@ -1955,11 +1955,28 @@ export const ChatArea = memo(function ChatArea({
                                     }
                                 }}
                                     className={`flex-shrink-0 flex items-center gap-1.5 text-[12px] font-medium px-2.5 h-8 rounded-xl transition-all border border-transparent ${showConfigDropdown ? 'bg-zinc-800 text-zinc-200 border-zinc-700' : 'bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}
-                                    title="Выбор Конфигуратора и работа с кодом"
+                                    title="Выбор окна Конфигуратора"
                                 >
                                     <Monitor className="w-4 h-4 text-emerald-400" />
                                     <span className="hidden sm:inline max-w-[150px] truncate block">{activeConfigTitle || 'Конфигуратор'}</span>
                                     <ChevronDown className={`w-3 h-3 transition-transform duration-200 ml-1 ${showConfigDropdown ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                <button
+                                    onClick={() => { handleLoadCode(true); setShowConfigDropdown(false); }}
+                                    disabled={!selectedHwnd}
+                                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title="Получить модуль целиком"
+                                >
+                                    <FileText className="w-4 h-4 text-emerald-400" />
+                                </button>
+                                <button
+                                    onClick={() => { handleLoadCode(false); setShowConfigDropdown(false); }}
+                                    disabled={!selectedHwnd}
+                                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title="Получить выделенный фрагмент"
+                                >
+                                    <MousePointerClick className="w-3.5 h-3.5 text-emerald-400" />
                                 </button>
 
                                 {showConfigDropdown && (
@@ -1987,18 +2004,6 @@ export const ChatArea = memo(function ChatArea({
                                                     Окна не найдены
                                                 </div>
                                             )}
-                                        </div>
-
-                                        {/* Секция действий с кодом */}
-                                        <div className="border-t border-[#27272a] bg-[#18181b] p-1 flex flex-col gap-0.5">
-                                            <button onClick={() => { handleLoadCode(true); setShowConfigDropdown(false); }} disabled={!selectedHwnd} className="flex items-center gap-2 px-3 py-2.5 text-[12px] font-medium text-zinc-300 hover:text-white hover:bg-emerald-500/20 hover:border-emerald-500/20 border border-transparent transition-all rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
-                                                <FileText className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                                                <span>Получить модуль целиком</span>
-                                            </button>
-                                            <button onClick={() => { handleLoadCode(false); setShowConfigDropdown(false); }} disabled={!selectedHwnd} className="flex items-center gap-2 px-3 py-2.5 text-[12px] font-medium text-zinc-300 hover:text-white hover:bg-emerald-500/20 hover:border-emerald-500/20 border border-transparent transition-all rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
-                                                <MousePointerClick className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                                                <span>Получить выделенный фрагмент</span>
-                                            </button>
                                         </div>
 
                                     </div>

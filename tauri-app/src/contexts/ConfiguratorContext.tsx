@@ -137,7 +137,10 @@ export function ConfiguratorProvider({ children }: { children: React.ReactNode }
                 await persistBinding(resolution.nextBinding);
             }
             // Auto-select the single available window when nothing is bound
+            // Also auto-switch when current window disappears and only one other is available
             if (resolution.status === 'unselected' && windows.length === 1) {
+                await persistBinding(bindConfiguratorWindow(windows[0]));
+            } else if (resolution.status === 'missing' && windows.length === 1) {
                 await persistBinding(bindConfiguratorWindow(windows[0]));
             }
         } catch (e) {
