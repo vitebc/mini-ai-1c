@@ -16,6 +16,7 @@ import { SettingsPanel } from '../SettingsPanel';
 import { ConflictDialog } from '../ui/ConflictDialog';
 import { Header } from './Header';
 import { ChatArea } from '../chat/ChatArea';
+import { SessionsPanel } from '../chat/SessionsPanel';
 import { OnboardingWizard } from '../Onboarding/OnboardingWizard';
 import type { OverlayQuickActionSessionPayload } from '../../types/quickActionSessions';
 import { useCodeSession } from '../../hooks/useCodeSession';
@@ -497,6 +498,7 @@ export function MainLayout() {
                 />
 
                 <div className="flex flex-1 overflow-hidden bg-[#09090b] relative">
+                    <SessionsPanel />
                     <div className={`flex flex-1 overflow-hidden transition-all duration-300 ${viewMode === 'code' ? 'hidden' : 'opacity-100'}`}>
                         <ChatArea
                             originalCode={uiBaselineCode}

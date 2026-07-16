@@ -7,6 +7,9 @@ export interface ChatSession {
     createdAt: number;
     updatedAt: number;
     messages: ChatMessage[];
+    configName?: string;
+    objectPath?: string;
+    moduleType?: string;
 }
 
 const STORAGE_KEY = 'chat_sessions';
@@ -78,6 +81,35 @@ export function useChatSessions() {
         return newSession.id;
     }, []);
 
+    const createSessionWithCode = useCallback((code: string, meta: { configName?: string; objectPath?: string; moduleType?: string }): string => {
+        const now = Date.now();
+        const id = generateId();
+        const codeMessage: ChatMessage = {
+            id: generateId(),
+            role: 'user',
+            content: code,
+            displayContent: code.slice(0, 200),
+            parts: [{ type: 'text', content: code }],
+            timestamp: now,
+        };
+        const newSession: ChatSession = {
+            id,
+            title: code.slice(0, 40) + (code.length > 40 ? '…' : ''),
+            createdAt: now,
+            updatedAt: now,
+            messages: [codeMessage],
+            configName: meta.configName,
+            objectPath: meta.objectPath,
+            moduleType: meta.moduleType,
+        };
+        setSessions(prev => {
+            const updated = [newSession, ...prev];
+            return updated.length > MAX_SESSIONS ? updated.slice(0, MAX_SESSIONS) : updated;
+        });
+        setActiveId(newSession.id);
+        return newSession.id;
+    }, []);
+
     const switchSession = useCallback((id: string) => {
         setActiveId(id);
     }, []);
@@ -115,6 +147,7 @@ export function useChatSessions() {
         activeId,
         activeSession,
         createSession,
+        createSessionWithCode,
         switchSession,
         startDraft,
         deleteSession,

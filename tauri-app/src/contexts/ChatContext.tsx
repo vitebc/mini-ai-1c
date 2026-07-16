@@ -218,6 +218,7 @@ interface ChatContextType {
     sessions: ChatSession[];
     activeSessionId: string | null;
     createNewChat: () => void;
+    createSessionWithCode: (code: string, meta: { configName?: string; objectPath?: string; moduleType?: string }) => string;
     switchChat: (id: string) => void;
     deleteChat: (id: string) => void;
     sendMessage: (content: string, codeContext?: string, diagnostics?: string[], displayContent?: string, configuratorCtx?: ConfiguratorTitleContext | null) => Promise<void>;
@@ -244,6 +245,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         activeId: activeSessionId,
         activeSession,
         createSession,
+        createSessionWithCode,
         switchSession,
         startDraft,
         deleteSession,
@@ -1023,6 +1025,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             sessions,
             activeSessionId,
             createNewChat,
+            createSessionWithCode,
             switchChat,
             deleteChat,
             sendMessage,

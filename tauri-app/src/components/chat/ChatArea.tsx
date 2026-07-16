@@ -358,7 +358,7 @@ export const ChatArea = memo(function ChatArea({
     activeDiffContent,
     getLatestWorkingCode,
 }: ChatAreaProps) {
-    const { messages, compressionIndicator, isLoading, streamStartTime, chatStatus, currentIteration, messageQueue, activeSessionId, sendMessage, stopChat, editAndRerun, addSystemMessage, injectMessage, removeQueuedMessage, updateQueuedMessage, clearQueue, clearChat } = useChat();
+    const { messages, compressionIndicator, isLoading, streamStartTime, chatStatus, currentIteration, messageQueue, activeSessionId, sendMessage, stopChat, editAndRerun, addSystemMessage, injectMessage, removeQueuedMessage, updateQueuedMessage, clearQueue, clearChat, createSessionWithCode } = useChat();
     const { profiles, activeProfileId, activeProfile, setActiveProfile } = useProfiles();
     const isNaparnikActive = activeProfile?.provider === 'OneCNaparnik';
     const { settings, updateSettings } = useSettings();
@@ -1096,6 +1096,18 @@ export const ChatArea = memo(function ChatArea({
             onActiveDiffChange('');
         }
         setShowGetCodeDropdown(false);
+
+        // Создаём новую сессию с кодом и метаданными объекта
+        const objectPath = parsedTitleContext
+            ? [parsedTitleContext.object_type, parsedTitleContext.object_name, parsedTitleContext.module_type]
+                .filter(Boolean)
+                .join('.')
+            : undefined;
+        createSessionWithCode(code, {
+            configName: parsedTitleContext?.config_name,
+            objectPath,
+            moduleType: parsedTitleContext?.module_type,
+        });
     };
 
     const handleRemoveCodeContext = () => {
