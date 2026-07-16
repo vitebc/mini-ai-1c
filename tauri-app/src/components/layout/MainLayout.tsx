@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useDeferredValue, useMemo } from 'react';
+import { useState, useEffect, useCallback, useDeferredValue, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 import { getVersion } from '@tauri-apps/api/app';
@@ -40,7 +40,8 @@ interface OverlayExplainPayload {
 export function MainLayout() {
     const { settings } = useSettings();
     const { status: bslStatus, analyzeCode } = useBsl();
-    const { clearChat, exportChat, isLoading } = useChat();
+    const { clearChat, exportChat, isLoading, sessions, activeSessionId } = useChat();
+    const lastCodeSessionIdRef = useRef<string | null>(null);
     const { pasteCode, checkSelection, getCode } = useConfigurator();
 
     const [viewMode, setViewMode] = useState<'assistant' | 'split' | 'code'>('assistant');
@@ -417,8 +418,33 @@ export function MainLayout() {
         }
     }, []);
 
+    // При переключении на другую сессию — загружаем код в редактор, если он есть
+    useEffect(() => {
+        if (!activeSessionId) return;
+        if (lastCodeSessionIdRef.current === activeSessionId) return;
+
+        const session = sessions.find(s => s.id === activeSessionId);
+        if (!session || !session.messages.length) return;
+
+        // Если сессия создана через "Получить модуль" — код уже загружен через handleCodeLoaded
+        if (session.objectPath) return;
+
+        const firstUser = session.messages.find(m => m.role === 'user');
+        if (!firstUser) return;
+
+        const code = firstUser.content;
+        // Примерная проверка: длинный текст с переносами — скорее всего код
+        if (!code || code.length < 80 || !code.includes('\n')) return;
+
+        lastCodeSessionIdRef.current = activeSessionId;
+        loadFromConfigurator(code, false);
+        setDiagnostics([]);
+        setActiveDiffContent('');
+    }, [activeSessionId, sessions, loadFromConfigurator]);
+
     const handleNewChat = useCallback(() => {
         clearChat();
+        lastCodeSessionIdRef.current = null;
         setActiveQuickActionSession(null);
         clearAll();
         setDiagnostics([]);

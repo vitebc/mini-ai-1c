@@ -1,6 +1,11 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useChat, ChatSession } from '../../contexts/ChatContext';
-import { ChevronRight, MessageSquare, MessageSquarePlus, FolderClosed, FolderOpen, FileText, X } from 'lucide-react';
+import { useSettings } from '../../contexts/SettingsContext';
+import { ChevronRight, MessageSquare, MessageSquarePlus, FolderClosed, FolderOpen, FileText, X, GripVertical } from 'lucide-react';
+
+const PANEL_MIN = 280;
+const PANEL_MAX = 480;
+const PANEL_WIDTH_KEY = 'sessions_panel_width';
 
 interface SubGroup {
   label: string;
@@ -15,7 +20,7 @@ interface Group {
 
 function useExpanded(key: string): [boolean, () => void] {
   const [expanded, setExpanded] = useState(() => {
-    try { return localStorage.getItem(`sessions_expanded_${key}`) === 'true'; } catch { return true; }
+    try { return localStorage.getItem(`sessions_expanded_${key}`) !== 'false'; } catch { return true; }
   });
   const toggle = useCallback(() => {
     setExpanded(v => {
@@ -27,15 +32,15 @@ function useExpanded(key: string): [boolean, () => void] {
   return [expanded, toggle];
 }
 
-function SessionItem({ session, isActive, onSwitch, onDelete }: { session: ChatSession; isActive: boolean; onSwitch: (id: string) => void; onDelete: (id: string) => void }) {
+function SessionItem({ session, isActive, onSwitch, onDelete, isLight }: { session: ChatSession; isActive: boolean; onSwitch: (id: string) => void; onDelete: (id: string) => void; isLight: boolean }) {
   const [showDelete, setShowDelete] = useState(false);
 
   return (
     <div
       className={`group flex items-center gap-1.5 px-2 py-1.5 mx-1 rounded-md cursor-pointer text-[12px] transition-colors ${
         isActive
-          ? 'bg-emerald-500/10 text-emerald-400'
-          : 'text-zinc-400 hover:bg-[#1f1f23] hover:text-zinc-200'
+          ? isLight ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-500/10 text-emerald-400'
+          : isLight ? 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800' : 'text-zinc-400 hover:bg-[#1f1f23] hover:text-zinc-200'
       }`}
       onClick={() => onSwitch(session.id)}
       onMouseEnter={() => setShowDelete(true)}
@@ -46,7 +51,9 @@ function SessionItem({ session, isActive, onSwitch, onDelete }: { session: ChatS
       {showDelete && (
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
-          className="shrink-0 p-0.5 rounded hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition-colors"
+          className={`shrink-0 p-0.5 rounded transition-colors ${
+            isLight ? 'text-zinc-400 hover:bg-red-100 hover:text-red-600' : 'text-zinc-500 hover:bg-red-500/20 hover:text-red-400'
+          }`}
           title="Удалить"
         >
           <X className="w-3 h-3" />
@@ -58,13 +65,44 @@ function SessionItem({ session, isActive, onSwitch, onDelete }: { session: ChatS
 
 export function SessionsPanel() {
   const { sessions, activeSessionId, switchChat, deleteChat, createNewChat } = useChat();
+  const { settings } = useSettings();
+  const isLight = settings?.theme === 'light';
+
   const [isOpen, setIsOpen] = useState(() => {
-    try { return localStorage.getItem('sessions_panel_open') === 'true'; } catch { return false; }
+    try { return localStorage.getItem('sessions_panel_open') !== 'false'; } catch { return true; }
   });
+  const [panelWidth, setPanelWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem(PANEL_WIDTH_KEY);
+      return saved ? Math.max(PANEL_MIN, Math.min(PANEL_MAX, Number(saved))) : PANEL_MIN;
+    } catch { return PANEL_MIN; }
+  });
+
+  const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
 
   useEffect(() => {
     try { localStorage.setItem('sessions_panel_open', String(isOpen)); } catch {}
   }, [isOpen]);
+
+  useEffect(() => {
+    try { localStorage.setItem(PANEL_WIDTH_KEY, String(panelWidth)); } catch {}
+  }, [panelWidth]);
+
+  useEffect(() => {
+    if (!resizeRef.current) return;
+    const onMouseMove = (e: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const newW = Math.max(PANEL_MIN, Math.min(PANEL_MAX, resizeRef.current.startW + (e.clientX - resizeRef.current.startX)));
+      setPanelWidth(newW);
+    };
+    const onMouseUp = () => { resizeRef.current = null; };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
 
   const groups = useMemo(() => {
     const configMap = new Map<string, { flatSessions: ChatSession[]; objectMap: Map<string, ChatSession[]> }>();
@@ -119,15 +157,33 @@ export function SessionsPanel() {
     if (!isOpen) setIsOpen(true);
   }, [createNewChat, isOpen]);
 
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizeRef.current = { startX: e.clientX, startW: panelWidth };
+  }, [panelWidth]);
+
   return (
     <div className="flex min-h-0">
-      <div className={`transition-all duration-200 ease-out overflow-hidden flex flex-col ${isOpen ? 'w-[240px] min-w-0' : 'w-0'}`}>
-        <div className="w-[240px] flex-1 border-r border-[#27272a] bg-[#0d0d10] flex flex-col shrink-0">
-          <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#27272a]">
-            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Сессии</span>
+      <div className={`transition-all duration-200 ease-out overflow-hidden flex flex-col ${isOpen ? 'min-w-0' : 'w-0'}`}
+        style={isOpen ? { width: panelWidth, minWidth: PANEL_MIN, maxWidth: PANEL_MAX } : undefined}
+      >
+        <div
+          className={`flex-1 flex flex-col shrink-0 border-r ${
+            isLight ? 'border-zinc-200 bg-white' : 'border-[#27272a] bg-[#0d0d10]'
+          }`}
+          style={{ width: panelWidth }}
+        >
+          <div className={`flex items-center justify-between px-3 py-2.5 border-b ${
+            isLight ? 'border-zinc-200' : 'border-[#27272a]'
+          }`}>
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${
+              isLight ? 'text-zinc-500' : 'text-zinc-500'
+            }`}>Сессии</span>
             <button
               onClick={handleNewChat}
-              className="p-1 rounded hover:bg-[#27272a] text-zinc-400 hover:text-zinc-200 transition-colors"
+              className={`p-1 rounded transition-colors ${
+                isLight ? 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700' : 'hover:bg-[#27272a] text-zinc-400 hover:text-zinc-200'
+              }`}
               title="Новый чат"
             >
               <MessageSquarePlus className="w-3.5 h-3.5" />
@@ -136,7 +192,7 @@ export function SessionsPanel() {
 
           <div className="flex-1 overflow-y-auto custom-scrollbar py-1.5 space-y-0.5">
             {groups.length === 0 ? (
-              <div className="px-3 py-6 text-center text-[11px] text-zinc-600">
+              <div className={`px-3 py-6 text-center text-[11px] ${isLight ? 'text-zinc-400' : 'text-zinc-600'}`}>
                 Нет сессий
               </div>
             ) : groups.map(group => (
@@ -146,36 +202,45 @@ export function SessionsPanel() {
                 activeSessionId={activeSessionId}
                 onSwitch={switchChat}
                 onDelete={deleteChat}
+                isLight={isLight}
               />
             ))}
           </div>
         </div>
       </div>
 
-      <div className="flex flex-col shrink-0">
-        {!isOpen && (
-          <div className="w-[3px] flex-1 bg-gradient-to-b from-transparent via-zinc-700/30 to-transparent" />
-        )}
+      {isOpen && (
+        <div
+          onMouseDown={handleResizeStart}
+          className={`w-1.5 shrink-0 cursor-col-resize transition-colors ${
+            isLight ? 'hover:bg-zinc-300 bg-zinc-200' : 'hover:bg-zinc-600 bg-transparent'
+          }`}
+          title="Изменить размер"
+        />
+      )}
+
+      <div className={`flex flex-col shrink-0 ${isLight ? 'border-l border-zinc-200' : ''}`}>
         <button
           onClick={() => setIsOpen(v => !v)}
           className={`flex items-center justify-center w-6 h-16 my-auto rounded-r-md transition-all shrink-0 cursor-pointer ${
             isOpen
-              ? 'bg-[#1f1f23] text-zinc-300 hover:bg-[#27272a] shadow-sm'
-              : 'bg-[#141418] text-zinc-500 hover:text-zinc-200 hover:bg-[#1f1f23] hover:w-7'
+              ? isLight
+                ? 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 shadow-sm'
+                : 'bg-[#1f1f23] text-zinc-300 hover:bg-[#27272a] shadow-sm'
+              : isLight
+                ? 'bg-white text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100'
+                : 'bg-[#141418] text-zinc-500 hover:text-zinc-200 hover:bg-[#1f1f23] hover:w-7'
           }`}
           title={isOpen ? 'Скрыть панель сессий' : 'Показать панель сессий'}
         >
           <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
         </button>
-        {!isOpen && (
-          <div className="w-[3px] flex-1 bg-gradient-to-b from-zinc-700/30 via-transparent to-zinc-700/30" />
-        )}
       </div>
     </div>
   );
 }
 
-function ConfigGroup({ group, activeSessionId, onSwitch, onDelete }: { group: Group; activeSessionId: string | null; onSwitch: (id: string) => void; onDelete: (id: string) => void }) {
+function ConfigGroup({ group, activeSessionId, onSwitch, onDelete, isLight }: { group: Group; activeSessionId: string | null; onSwitch: (id: string) => void; onDelete: (id: string) => void; isLight: boolean }) {
   const [expanded, toggle] = useExpanded(`config_${group.configName}`);
 
   const allSessionIds = useMemo(() => {
@@ -194,20 +259,26 @@ function ConfigGroup({ group, activeSessionId, onSwitch, onDelete }: { group: Gr
       <button
         onClick={toggle}
         className={`flex items-center gap-1.5 w-full px-3 py-1.5 text-[11px] font-medium transition-colors ${
-          hasActive ? 'text-emerald-400' : 'text-zinc-400 hover:text-zinc-200'
+          hasActive
+            ? isLight ? 'text-emerald-600' : 'text-emerald-400'
+            : isLight ? 'text-zinc-500 hover:text-zinc-700' : 'text-zinc-400 hover:text-zinc-200'
         }`}
       >
         {expanded ? <FolderOpen className="w-3 h-3 shrink-0" /> : <FolderClosed className="w-3 h-3 shrink-0" />}
         <ChevronRight className={`w-2.5 h-2.5 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
         <span className="truncate">{group.configName}</span>
-        <span className="text-[10px] text-zinc-600 ml-auto">{allSessionIds.size}</span>
+        <span className={`text-[10px] ml-auto ${isLight ? 'text-zinc-400' : 'text-zinc-600'}`}>{allSessionIds.size}</span>
       </button>
 
       {expanded && (
         <div className="ml-1">
-          {group.flatSessions.map(s => (
-            <SessionItem key={s.id} session={s} isActive={s.id === activeSessionId} onSwitch={onSwitch} onDelete={onDelete} />
-          ))}
+          {group.flatSessions.length > 0 && (
+            <div className="pl-3">
+              {group.flatSessions.map(s => (
+                <SessionItem key={s.id} session={s} isActive={s.id === activeSessionId} onSwitch={onSwitch} onDelete={onDelete} isLight={isLight} />
+              ))}
+            </div>
+          )}
 
           {group.children.map(child => (
             <ObjectGroup
@@ -217,6 +288,7 @@ function ConfigGroup({ group, activeSessionId, onSwitch, onDelete }: { group: Gr
               activeSessionId={activeSessionId}
               onSwitch={onSwitch}
               onDelete={onDelete}
+              isLight={isLight}
             />
           ))}
         </div>
@@ -225,7 +297,7 @@ function ConfigGroup({ group, activeSessionId, onSwitch, onDelete }: { group: Gr
   );
 }
 
-function ObjectGroup({ label, sessions, activeSessionId, onSwitch, onDelete }: { label: string; sessions: ChatSession[]; activeSessionId: string | null; onSwitch: (id: string) => void; onDelete: (id: string) => void }) {
+function ObjectGroup({ label, sessions, activeSessionId, onSwitch, onDelete, isLight }: { label: string; sessions: ChatSession[]; activeSessionId: string | null; onSwitch: (id: string) => void; onDelete: (id: string) => void; isLight: boolean }) {
   const [expanded, toggle] = useExpanded(`obj_${label}`);
 
   const hasActive = sessions.some(s => s.id === activeSessionId);
@@ -235,19 +307,21 @@ function ObjectGroup({ label, sessions, activeSessionId, onSwitch, onDelete }: {
       <button
         onClick={toggle}
         className={`flex items-center gap-1.5 w-full px-3 py-1 pl-5 text-[11px] font-medium transition-colors ${
-          hasActive ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'
+          hasActive
+            ? isLight ? 'text-emerald-600' : 'text-emerald-400'
+            : isLight ? 'text-zinc-500 hover:text-zinc-700' : 'text-zinc-500 hover:text-zinc-300'
         }`}
       >
         <ChevronRight className={`w-2.5 h-2.5 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
         <FileText className="w-3 h-3 shrink-0" />
         <span className="truncate">{label}</span>
-        <span className="text-[10px] text-zinc-600 ml-auto">{sessions.length}</span>
+        <span className={`text-[10px] ml-auto ${isLight ? 'text-zinc-400' : 'text-zinc-600'}`}>{sessions.length}</span>
       </button>
 
       {expanded && (
         <div>
           {sessions.map(s => (
-            <SessionItem key={s.id} session={s} isActive={s.id === activeSessionId} onSwitch={onSwitch} onDelete={onDelete} />
+            <SessionItem key={s.id} session={s} isActive={s.id === activeSessionId} onSwitch={onSwitch} onDelete={onDelete} isLight={isLight} />
           ))}
         </div>
       )}
