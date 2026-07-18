@@ -217,7 +217,7 @@ export function SessionsPanel() {
         <div
           onMouseDown={handleResizeStart}
           className={`w-1.5 shrink-0 cursor-col-resize transition-colors ${
-            isLight ? 'hover:bg-zinc-300 bg-zinc-200' : 'hover:bg-zinc-600 bg-transparent'
+            isLight ? 'bg-blue-100 hover:bg-blue-300' : 'hover:bg-zinc-600 bg-transparent'
           }`}
           title="Изменить размер"
         />
@@ -229,10 +229,10 @@ export function SessionsPanel() {
           className={`flex items-center justify-center w-6 h-16 my-auto rounded-r-md transition-all shrink-0 cursor-pointer ${
             isOpen
               ? isLight
-                ? 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 shadow-sm'
+                ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 shadow-sm'
                 : 'bg-[#1f1f23] text-zinc-300 hover:bg-[#27272a] shadow-sm'
               : isLight
-                ? 'bg-white text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100'
+                ? 'bg-white text-blue-400 hover:text-blue-600 hover:bg-blue-50'
                 : 'bg-[#141418] text-zinc-500 hover:text-zinc-200 hover:bg-[#1f1f23] hover:w-7'
           }`}
           title={isOpen ? 'Скрыть панель сессий' : 'Показать панель сессий'}
