@@ -1099,7 +1099,7 @@ export const ChatArea = memo(function ChatArea({
 
         // Создаём новую сессию с кодом и метаданными объекта
         const objectPath = parsedTitleContext
-            ? [parsedTitleContext.object_type, parsedTitleContext.object_name, parsedTitleContext.module_type]
+            ? [parsedTitleContext.object_type, parsedTitleContext.object_name]
                 .filter(Boolean)
                 .join('.')
             : undefined;

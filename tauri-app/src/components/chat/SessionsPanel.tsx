@@ -1,21 +1,44 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useChat, ChatSession } from '../../contexts/ChatContext';
 import { useSettings } from '../../contexts/SettingsContext';
-import { ChevronRight, MessageSquare, MessageSquarePlus, FolderClosed, FolderOpen, FileText, X, GripVertical } from 'lucide-react';
+import { ChevronRight, MessageSquare, MessageSquarePlus, FolderClosed, FolderOpen, FileText, X } from 'lucide-react';
 
 const PANEL_MIN = 280;
 const PANEL_MAX = 480;
 const PANEL_WIDTH_KEY = 'sessions_panel_width';
 
-interface SubGroup {
-  label: string;
+const KNOWN_MODULE_SUFFIXES = [
+  'МодульМенеджера', 'МодульОбъекта', 'МодульФормы', 'МодульНабораЗаписей',
+  'МодульПриложения', 'МодульВнешнегоСоединения', 'МодульСеанса', 'Модуль', 'Форма',
+];
+
+interface ModuleGroupData {
+  moduleName: string;
   sessions: ChatSession[];
+}
+
+interface ObjectGroupData {
+  label: string;
+  modules: ModuleGroupData[];
+  flatSessions: ChatSession[];
 }
 
 interface Group {
   configName: string;
-  children: SubGroup[];
+  children: ObjectGroupData[];
   flatSessions: ChatSession[];
+}
+
+function splitModule(path: string, givenModule?: string): { basePath: string; moduleName: string | null } {
+  if (givenModule) {
+    return { basePath: path, moduleName: givenModule };
+  }
+  for (const suffix of KNOWN_MODULE_SUFFIXES) {
+    if (path.endsWith('.' + suffix)) {
+      return { basePath: path.slice(0, -suffix.length - 1), moduleName: suffix };
+    }
+  }
+  return { basePath: path, moduleName: null };
 }
 
 function useExpanded(key: string): [boolean, () => void] {
@@ -90,7 +113,7 @@ export function SessionsPanel() {
   }, [panelWidth]);
 
   const groups = useMemo(() => {
-    const configMap = new Map<string, { flatSessions: ChatSession[]; objectMap: Map<string, ChatSession[]> }>();
+    const configMap = new Map<string, { flatSessions: ChatSession[]; objectMap: Map<string, { moduleMap: Map<string, ChatSession[]>; flatSessions: ChatSession[] }> }>();
 
     for (const s of sessions) {
       const config = s.configName || '';
@@ -100,10 +123,21 @@ export function SessionsPanel() {
       const entry = configMap.get(config)!;
 
       if (s.objectPath) {
-        if (!entry.objectMap.has(s.objectPath)) {
-          entry.objectMap.set(s.objectPath, []);
+        const { basePath, moduleName } = splitModule(s.objectPath, s.moduleType);
+
+        if (!entry.objectMap.has(basePath)) {
+          entry.objectMap.set(basePath, { moduleMap: new Map(), flatSessions: [] });
         }
-        entry.objectMap.get(s.objectPath)!.push(s);
+        const obj = entry.objectMap.get(basePath)!;
+
+        if (moduleName) {
+          if (!obj.moduleMap.has(moduleName)) {
+            obj.moduleMap.set(moduleName, []);
+          }
+          obj.moduleMap.get(moduleName)!.push(s);
+        } else {
+          obj.flatSessions.push(s);
+        }
       } else {
         entry.flatSessions.push(s);
       }
@@ -112,11 +146,20 @@ export function SessionsPanel() {
     const result: Group[] = [];
 
     for (const [configName, entry] of configMap) {
-      const children: SubGroup[] = [];
-      for (const [objectPath, obSessions] of entry.objectMap) {
+      const children: ObjectGroupData[] = [];
+
+      for (const [basePath, obj] of entry.objectMap) {
+        const modules: ModuleGroupData[] = [];
+
+        for (const [mn, obSessions] of obj.moduleMap) {
+          modules.push({ moduleName: mn, sessions: obSessions.sort((a, b) => b.updatedAt - a.updatedAt) });
+        }
+        modules.sort((a, b) => a.moduleName.localeCompare(b.moduleName));
+
         children.push({
-          label: objectPath,
-          sessions: obSessions.sort((a, b) => b.updatedAt - a.updatedAt),
+          label: basePath,
+          modules,
+          flatSessions: obj.flatSessions.sort((a, b) => b.updatedAt - a.updatedAt),
         });
       }
       children.sort((a, b) => a.label.localeCompare(b.label));
@@ -180,9 +223,7 @@ export function SessionsPanel() {
           <div className={`flex items-center justify-between px-3 py-2.5 border-b ${
             isLight ? 'border-zinc-200' : 'border-[#27272a]'
           }`}>
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${
-              isLight ? 'text-zinc-500' : 'text-zinc-500'
-            }`}>Сессии</span>
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-500'}`}>Сессии</span>
             <button
               onClick={handleNewChat}
               className={`p-1 rounded transition-colors ${
@@ -233,8 +274,8 @@ export function SessionsPanel() {
               ? 'bg-[#1f1f23] text-zinc-600 hover:bg-[#27272a] hover:text-zinc-800 shadow-sm'
               : 'bg-[#1f1f23] text-zinc-300 hover:bg-[#27272a] shadow-sm'
             : isLight
-              ? 'bg-[#1f1f23] text-zinc-400 hover:bg-[#27272a] hover:text-zinc-600'
-              : 'bg-[#1f1f23] text-zinc-500 hover:bg-[#27272a] hover:text-zinc-200'
+              ? 'bg-[#1f1f23] text-zinc-400 hover:text-zinc-600 hover:bg-[#27272a]'
+              : 'bg-[#1f1f23] text-zinc-500 hover:text-zinc-200 hover:bg-[#27272a]'
         }`}
         title={isOpen ? 'Скрыть панель сессий' : 'Показать панель сессий'}
       >
@@ -251,7 +292,10 @@ function ConfigGroup({ group, activeSessionId, onSwitch, onDelete, isLight }: { 
     const ids = new Set<string>();
     for (const s of group.flatSessions) ids.add(s.id);
     for (const child of group.children) {
-      for (const s of child.sessions) ids.add(s.id);
+      for (const s of child.flatSessions) ids.add(s.id);
+      for (const mod of child.modules) {
+        for (const s of mod.sessions) ids.add(s.id);
+      }
     }
     return ids;
   }, [group]);
@@ -288,7 +332,8 @@ function ConfigGroup({ group, activeSessionId, onSwitch, onDelete, isLight }: { 
             <ObjectGroup
               key={child.label}
               label={child.label}
-              sessions={child.sessions}
+              modules={child.modules}
+              flatSessions={child.flatSessions}
               activeSessionId={activeSessionId}
               onSwitch={onSwitch}
               onDelete={onDelete}
@@ -301,10 +346,19 @@ function ConfigGroup({ group, activeSessionId, onSwitch, onDelete, isLight }: { 
   );
 }
 
-function ObjectGroup({ label, sessions, activeSessionId, onSwitch, onDelete, isLight }: { label: string; sessions: ChatSession[]; activeSessionId: string | null; onSwitch: (id: string) => void; onDelete: (id: string) => void; isLight: boolean }) {
+function ObjectGroup({ label, modules, flatSessions, activeSessionId, onSwitch, onDelete, isLight }: { label: string; modules: ModuleGroupData[]; flatSessions: ChatSession[]; activeSessionId: string | null; onSwitch: (id: string) => void; onDelete: (id: string) => void; isLight: boolean }) {
   const [expanded, toggle] = useExpanded(`obj_${label}`);
 
-  const hasActive = sessions.some(s => s.id === activeSessionId);
+  const allIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const s of flatSessions) ids.add(s.id);
+    for (const mod of modules) {
+      for (const s of mod.sessions) ids.add(s.id);
+    }
+    return ids;
+  }, [modules, flatSessions]);
+
+  const hasActive = activeSessionId && allIds.has(activeSessionId);
 
   return (
     <div>
@@ -319,6 +373,49 @@ function ObjectGroup({ label, sessions, activeSessionId, onSwitch, onDelete, isL
         <ChevronRight className={`w-2.5 h-2.5 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
         <FileText className="w-3 h-3 shrink-0" />
         <span className="truncate">{label}</span>
+        <span className={`text-[10px] ml-auto ${isLight ? 'text-zinc-400' : 'text-zinc-600'}`}>{allIds.size}</span>
+      </button>
+
+      {expanded && (
+        <div>
+          {flatSessions.map(s => (
+            <SessionItem key={s.id} session={s} isActive={s.id === activeSessionId} onSwitch={onSwitch} onDelete={onDelete} isLight={isLight} />
+          ))}
+
+          {modules.map(mod => (
+            <ModuleGroup
+              key={mod.moduleName}
+              moduleName={mod.moduleName}
+              sessions={mod.sessions}
+              activeSessionId={activeSessionId}
+              onSwitch={onSwitch}
+              onDelete={onDelete}
+              isLight={isLight}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModuleGroup({ moduleName, sessions, activeSessionId, onSwitch, onDelete, isLight }: { moduleName: string; sessions: ChatSession[]; activeSessionId: string | null; onSwitch: (id: string) => void; onDelete: (id: string) => void; isLight: boolean }) {
+  const [expanded, toggle] = useExpanded(`mod_${moduleName}`);
+
+  const hasActive = sessions.some(s => s.id === activeSessionId);
+
+  return (
+    <div>
+      <button
+        onClick={toggle}
+        className={`flex items-center gap-1.5 w-full px-3 py-1 pl-8 text-[11px] font-medium transition-colors ${
+          hasActive
+            ? isLight ? 'text-emerald-600' : 'text-emerald-400'
+            : isLight ? 'text-zinc-400 hover:text-zinc-600' : 'text-zinc-500 hover:text-zinc-300'
+        }`}
+      >
+        <ChevronRight className={`w-2 h-2 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+        <span className="truncate">{moduleName}</span>
         <span className={`text-[10px] ml-auto ${isLight ? 'text-zinc-400' : 'text-zinc-600'}`}>{sessions.length}</span>
       </button>
 
