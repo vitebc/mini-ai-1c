@@ -216,30 +216,30 @@ export function SessionsPanel() {
       {isOpen && (
         <div
           onMouseDown={handleResizeStart}
-          className={`w-1.5 shrink-0 cursor-col-resize transition-colors ${
-            isLight ? 'bg-blue-100 hover:bg-blue-300' : 'hover:bg-zinc-600 bg-transparent'
-          }`}
+          className="relative w-1.5 shrink-0 cursor-col-resize hover:bg-blue-500/30 transition-colors group flex items-center justify-center"
           title="Изменить размер"
-        />
+        >
+          <div className={`w-0.5 h-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity ${
+            isLight ? 'bg-zinc-400 group-hover:bg-blue-500' : 'bg-zinc-700 group-hover:bg-blue-400'
+          }`} />
+        </div>
       )}
 
-      <div className={`flex flex-col shrink-0 ${isLight ? 'border-l border-zinc-200' : ''}`}>
-        <button
-          onClick={() => setIsOpen(v => !v)}
-          className={`flex items-center justify-center w-6 h-16 my-auto rounded-r-md transition-all shrink-0 cursor-pointer ${
-            isOpen
-              ? isLight
-                ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 shadow-sm'
-                : 'bg-[#1f1f23] text-zinc-300 hover:bg-[#27272a] shadow-sm'
-              : isLight
-                ? 'bg-white text-blue-400 hover:text-blue-600 hover:bg-blue-50'
-                : 'bg-[#141418] text-zinc-500 hover:text-zinc-200 hover:bg-[#1f1f23] hover:w-7'
-          }`}
-          title={isOpen ? 'Скрыть панель сессий' : 'Показать панель сессий'}
-        >
-          <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-        </button>
-      </div>
+      <button
+        onClick={() => setIsOpen(v => !v)}
+        className={`flex items-center justify-center w-6 h-16 my-auto rounded-r-md transition-all shrink-0 cursor-pointer ${
+          isOpen
+            ? isLight
+              ? 'bg-[#1f1f23] text-zinc-600 hover:bg-[#27272a] hover:text-zinc-800 shadow-sm'
+              : 'bg-[#1f1f23] text-zinc-300 hover:bg-[#27272a] shadow-sm'
+            : isLight
+              ? 'bg-[#1f1f23] text-zinc-400 hover:bg-[#27272a] hover:text-zinc-600'
+              : 'bg-[#1f1f23] text-zinc-500 hover:bg-[#27272a] hover:text-zinc-200'
+        }`}
+        title={isOpen ? 'Скрыть панель сессий' : 'Показать панель сессий'}
+      >
+        <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
     </div>
   );
 }
