@@ -331,9 +331,9 @@ function ConfigGroup({ group, activeSessionId, onSwitch, onDelete, isLight }: { 
       </button>
 
       {expanded && (
-        <div className="ml-1">
+        <div className="ml-4">
           {group.flatSessions.length > 0 && (
-            <div className="pl-3">
+            <div>
               {group.flatSessions.map(s => (
                 <SessionItem key={s.id} session={s} isActive={s.id === activeSessionId} onSwitch={onSwitch} onDelete={onDelete} isLight={isLight} />
               ))}
@@ -376,7 +376,7 @@ function ObjectGroup({ label, modules, flatSessions, activeSessionId, onSwitch, 
     <div>
       <button
         onClick={toggle}
-        className={`flex items-center gap-1.5 w-full px-3 py-1 pl-5 text-[11px] font-medium transition-colors ${
+        className={`flex items-center gap-1.5 w-full px-3 py-1 pl-4 text-[11px] font-medium transition-colors ${
           hasActive
             ? isLight ? 'text-emerald-600' : 'text-emerald-400'
             : isLight ? 'text-zinc-500 hover:text-zinc-700' : 'text-zinc-500 hover:text-zinc-300'
@@ -389,7 +389,7 @@ function ObjectGroup({ label, modules, flatSessions, activeSessionId, onSwitch, 
       </button>
 
       {expanded && (
-        <div>
+        <div className="ml-4">
           {flatSessions.map(s => (
             <SessionItem key={s.id} session={s} isActive={s.id === activeSessionId} onSwitch={onSwitch} onDelete={onDelete} isLight={isLight} />
           ))}
@@ -420,7 +420,7 @@ function ModuleGroup({ moduleName, sessions, activeSessionId, onSwitch, onDelete
     <div>
       <button
         onClick={toggle}
-        className={`flex items-center gap-1.5 w-full px-3 py-1 pl-8 text-[11px] font-medium transition-colors ${
+        className={`flex items-center gap-1.5 w-full px-3 py-1 pl-4 text-[11px] font-medium transition-colors ${
           hasActive
             ? isLight ? 'text-emerald-600' : 'text-emerald-400'
             : isLight ? 'text-zinc-400 hover:text-zinc-600' : 'text-zinc-500 hover:text-zinc-300'
@@ -432,7 +432,7 @@ function ModuleGroup({ moduleName, sessions, activeSessionId, onSwitch, onDelete
       </button>
 
       {expanded && (
-        <div>
+        <div className="ml-4">
           {sessions.map(s => (
             <SessionItem key={s.id} session={s} isActive={s.id === activeSessionId} onSwitch={onSwitch} onDelete={onDelete} isLight={isLight} />
           ))}
