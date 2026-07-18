@@ -73,7 +73,7 @@ function SessionItem({ session, isActive, onSwitch, onDelete, isLight }: { sessi
       onMouseLeave={() => setShowDelete(false)}
     >
       <MessageSquare className="w-3 h-3 shrink-0" />
-      <span className="truncate flex-1">{session.title}</span>
+      <span className="truncate flex-1">{session.objectPath ? session.objectPath.split('.').pop() : '—'}</span>
       {showDelete && (
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
