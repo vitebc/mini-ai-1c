@@ -1098,11 +1098,10 @@ export const ChatArea = memo(function ChatArea({
         setShowGetCodeDropdown(false);
 
         // Создаём новую сессию с кодом и метаданными объекта
-        const objectPath = parsedTitleContext
-            ? [parsedTitleContext.object_type, parsedTitleContext.object_name]
-                .filter(Boolean)
-                .join('.')
-            : undefined;
+        const objectParts = parsedTitleContext
+            ? [parsedTitleContext.object_type, parsedTitleContext.object_name].filter(Boolean)
+            : [];
+        const objectPath = objectParts.length > 0 ? objectParts.join('.') : undefined;
         createSessionWithCode(code, {
             configName: parsedTitleContext?.config_name,
             objectPath,

@@ -31,6 +31,9 @@ interface Group {
 
 function splitModule(path: string, givenModule?: string): { basePath: string; moduleName: string | null } {
   if (givenModule) {
+    if (path.endsWith('.' + givenModule)) {
+      return { basePath: path.slice(0, -givenModule.length - 1), moduleName: givenModule };
+    }
     return { basePath: path, moduleName: givenModule };
   }
   for (const suffix of KNOWN_MODULE_SUFFIXES) {
