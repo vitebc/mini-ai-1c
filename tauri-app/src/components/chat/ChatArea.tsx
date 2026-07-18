@@ -1102,11 +1102,16 @@ export const ChatArea = memo(function ChatArea({
             ? [parsedTitleContext.object_type, parsedTitleContext.object_name].filter(Boolean)
             : [];
         const objectPath = objectParts.length > 0 ? objectParts.join('.') : undefined;
-        createSessionWithCode(code, {
-            configName: parsedTitleContext?.config_name,
-            objectPath,
-            moduleType: parsedTitleContext?.module_type,
-        });
+        console.log('[ChatArea] Creating session with meta:', { configName: parsedTitleContext?.config_name, objectPath, moduleType: parsedTitleContext?.module_type });
+        try {
+            createSessionWithCode(code, {
+                configName: parsedTitleContext?.config_name,
+                objectPath,
+                moduleType: parsedTitleContext?.module_type,
+            });
+        } catch (e) {
+            console.error('[ChatArea] Failed to create session:', e);
+        }
     };
 
     const handleRemoveCodeContext = () => {

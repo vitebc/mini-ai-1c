@@ -73,7 +73,10 @@ function SessionItem({ session, isActive, onSwitch, onDelete, isLight }: { sessi
       onMouseLeave={() => setShowDelete(false)}
     >
       <MessageSquare className="w-3 h-3 shrink-0" />
-      <span className="truncate flex-1">{session.objectPath ? session.objectPath.split('.').pop() : '—'}</span>
+      <span className={`truncate flex-1 ${!session.objectPath ? (isLight ? 'text-amber-600' : 'text-amber-400') : ''}`}>{session.title}</span>
+      {!session.objectPath && (
+        <span className={`text-[8px] px-1 rounded ${isLight ? 'bg-amber-100 text-amber-700' : 'bg-amber-500/10 text-amber-400'}`}>—</span>
+      )}
       {showDelete && (
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
@@ -116,6 +119,7 @@ export function SessionsPanel() {
   }, [panelWidth]);
 
   const groups = useMemo(() => {
+    console.log('[SessionsPanel] sessions:', sessions.map(s => ({ id: s.id.slice(0,6), title: s.title.slice(0,30), config: s.configName, obj: s.objectPath, mod: s.moduleType })));
     const configMap = new Map<string, { flatSessions: ChatSession[]; objectMap: Map<string, { moduleMap: Map<string, ChatSession[]>; flatSessions: ChatSession[] }> }>();
 
     for (const s of sessions) {
@@ -180,6 +184,11 @@ export function SessionsPanel() {
       return a.configName.localeCompare(b.configName);
     });
 
+    console.log('[SessionsPanel] groups:', result.map(g => ({
+      config: g.configName,
+      objs: g.children.map(c => ({ label: c.label, mods: c.modules.map(m => m.moduleName), flat: c.flatSessions.length })),
+      flat: g.flatSessions.length,
+    })));
     return result;
   }, [sessions]);
 
