@@ -79,6 +79,7 @@ export function SessionsPanel() {
   });
 
   const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
 
   useEffect(() => {
     try { localStorage.setItem('sessions_panel_open', String(isOpen)); } catch {}
@@ -87,22 +88,6 @@ export function SessionsPanel() {
   useEffect(() => {
     try { localStorage.setItem(PANEL_WIDTH_KEY, String(panelWidth)); } catch {}
   }, [panelWidth]);
-
-  useEffect(() => {
-    if (!resizeRef.current) return;
-    const onMouseMove = (e: MouseEvent) => {
-      if (!resizeRef.current) return;
-      const newW = Math.max(PANEL_MIN, Math.min(PANEL_MAX, resizeRef.current.startW + (e.clientX - resizeRef.current.startX)));
-      setPanelWidth(newW);
-    };
-    const onMouseUp = () => { resizeRef.current = null; };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-  }, []);
 
   const groups = useMemo(() => {
     const configMap = new Map<string, { flatSessions: ChatSession[]; objectMap: Map<string, ChatSession[]> }>();
@@ -159,13 +144,32 @@ export function SessionsPanel() {
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    resizeRef.current = { startX: e.clientX, startW: panelWidth };
+    const startX = e.clientX;
+    const startW = panelWidth;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const newW = Math.max(PANEL_MIN, Math.min(PANEL_MAX, startW + (ev.clientX - startX)));
+      setPanelWidth(newW);
+    };
+    const onMouseUp = () => {
+      setIsResizing(false);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+    setIsResizing(true);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
   }, [panelWidth]);
 
   return (
     <div className="flex min-h-0">
-      <div className={`transition-all duration-200 ease-out overflow-hidden flex flex-col ${isOpen ? 'min-w-0' : 'w-0'}`}
-        style={isOpen ? { width: panelWidth, minWidth: PANEL_MIN, maxWidth: PANEL_MAX } : undefined}
+      <div className={`overflow-hidden flex flex-col shrink-0 ${isOpen ? 'opacity-100' : 'w-0 opacity-0'}`}
+        style={{
+          width: isOpen ? panelWidth : 0,
+          minWidth: isOpen ? PANEL_MIN : 0,
+          maxWidth: isOpen ? PANEL_MAX : 0,
+          transition: isResizing ? 'none' : 'width 0.2s ease-out, opacity 0.15s ease-out',
+        }}
       >
         <div
           className={`flex-1 flex flex-col shrink-0 border-r ${
