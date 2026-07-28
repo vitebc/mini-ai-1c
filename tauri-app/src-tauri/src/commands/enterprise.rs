@@ -1,5 +1,5 @@
 use crate::enterprise;
-use crate::settings::{self, EnterpriseConfig};
+use crate::settings;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]

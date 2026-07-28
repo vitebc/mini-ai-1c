@@ -234,30 +234,34 @@ pub fn run() {
 
             // Enterprise mode: if enterprise.json exists, fetch remote config
             {
-                let app_handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    let enterprise_cfg = crate::settings::load_enterprise_config();
-                    if let Some(cfg) = enterprise_cfg {
-                        crate::app_log!(
-                            "[ENTERPRISE] Enterprise mode enabled. Server: {}",
-                            cfg.server_url
-                        );
-                        let mut local = crate::settings::load_settings();
-                        match crate::enterprise::fetch_and_merge(&cfg, &mut local).await {
-                            Ok(merged) => {
-                                if merged {
-                                    let _ = crate::settings::save_settings(&local);
-                                    crate::app_log!("[ENTERPRISE] Remote config merged and saved");
-                                } else {
-                                    crate::app_log!("[ENTERPRISE] Remote config unchanged");
+                let enterprise_path = crate::settings::get_enterprise_config_path();
+                if enterprise_path.exists() {
+                    crate::app_log!(force: true, "[ENTERPRISE] enterprise.json found");
+                    let cfg = crate::settings::load_enterprise_config();
+                    if let Some(cfg) = cfg {
+                        let server_url = cfg.server_url.clone();
+                        let token = cfg.token.clone();
+                        crate::app_log!(force: true, "[ENTERPRISE] Enterprise mode enabled. Server: {}", server_url);
+                        tauri::async_runtime::spawn(async move {
+                            let mut local = crate::settings::load_settings();
+                            match crate::enterprise::fetch_and_merge_config(&server_url, token.as_deref(), &mut local).await {
+                                Ok(merged) => {
+                                    if merged {
+                                        let _ = crate::settings::save_settings(&local);
+                                        crate::app_log!(force: true, "[ENTERPRISE] Remote config merged and saved");
+                                    } else {
+                                        crate::app_log!(force: true, "[ENTERPRISE] Remote config unchanged");
+                                    }
+                                }
+                                Err(e) => {
+                                    crate::app_log!(force: true, "[ENTERPRISE] Failed to fetch remote config: {}", e);
                                 }
                             }
-                            Err(e) => {
-                                crate::app_log!("[ENTERPRISE] Failed to fetch remote config: {}", e);
-                            }
-                        }
+                        });
                     }
-                });
+                } else {
+                    crate::app_log!(force: true, "[ENTERPRISE] No enterprise.json found (checked: {:?})", enterprise_path);
+                }
             }
 
             // Start BSL Language Server using managed state

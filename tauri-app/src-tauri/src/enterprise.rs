@@ -8,7 +8,16 @@ pub async fn fetch_and_merge(
     config: &EnterpriseConfig,
     local_settings: &mut crate::settings::AppSettings,
 ) -> Result<bool, String> {
-    let url = format!("{}/api/client/config", config.server_url.trim_end_matches('/'));
+    fetch_and_merge_config(&config.server_url, config.token.as_deref(), local_settings).await
+}
+
+/// Fetch remote config using server URL and optional token
+pub async fn fetch_and_merge_config(
+    server_url: &str,
+    token: Option<&str>,
+    local_settings: &mut crate::settings::AppSettings,
+) -> Result<bool, String> {
+    let url = format!("{}/api/client/config", server_url.trim_end_matches('/'));
 
     let client = http_client_builder()
         .map_err(|e| format!("HTTP client init: {}", e))?
@@ -17,8 +26,8 @@ pub async fn fetch_and_merge(
         .map_err(|e| format!("HTTP client build: {}", e))?;
 
     let mut req = client.get(&url);
-    if let Some(ref token) = config.token {
-        req = req.header("Authorization", format!("Bearer {}", token));
+    if let Some(t) = token {
+        req = req.header("Authorization", format!("Bearer {}", t));
     }
 
     let resp = req.send().await.map_err(|e| format!("Request failed: {}", e))?;
@@ -31,7 +40,12 @@ pub async fn fetch_and_merge(
         .await
         .map_err(|e| format!("Parse failed: {}", e))?;
 
-    merge_remote_config(local_settings, &remote, config);
+    let enterprise_config = EnterpriseConfig {
+        server_url: server_url.to_string(),
+        token: token.map(|s| s.to_string()),
+        auto_update: true,
+    };
+    merge_remote_config(local_settings, &remote, &enterprise_config);
     Ok(true)
 }
 
