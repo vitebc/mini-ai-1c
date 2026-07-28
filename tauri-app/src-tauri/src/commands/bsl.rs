@@ -83,14 +83,22 @@ pub async fn check_bsl_status_cmd(
     use crate::bsl_client::BSLClient;
     let settings = settings::load_settings();
 
-    let installed = BSLClient::check_install(&settings.bsl_server.jar_path);
-    let java_info = BSLClient::check_java(&settings.bsl_server.java_path);
-
     let connected = if let Ok(client) = state.inner().try_lock() {
         client.is_connected()
     } else {
         false
     };
+
+    if settings.bsl_server.is_remote() {
+        return Ok(BslStatus {
+            installed: true,
+            java_info: "Remote (server-side)".to_string(),
+            connected,
+        });
+    }
+
+    let installed = BSLClient::check_install(&settings.bsl_server.jar_path);
+    let java_info = BSLClient::check_java(&settings.bsl_server.java_path);
 
     Ok(BslStatus {
         installed,
@@ -110,21 +118,30 @@ pub async fn install_bsl_ls_cmd(app: tauri::AppHandle) -> Result<String, String>
 pub async fn reconnect_bsl_ls_cmd(
     state: tauri::State<'_, Arc<tokio::sync::Mutex<crate::bsl_client::BSLClient>>>,
 ) -> Result<(), String> {
+    let is_remote = {
+        let settings = settings::load_settings();
+        settings.bsl_server.is_remote()
+    };
+
     {
         let mut client = state.inner().lock().await;
         client.stop();
     }
 
-    // Wait for the old Java process to fully release the port before checking is_port_listening
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    if !is_remote {
+        // Wait for the old Java process to fully release the port before checking is_port_listening
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
 
     {
         let mut client = state.inner().lock().await;
         client.start_server()?;
     }
 
-    // Wait for BSL LS to initialize (Spring Boot takes ~4-5 seconds)
-    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    if !is_remote {
+        // Wait for BSL LS to initialize (Spring Boot takes ~4-5 seconds)
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    }
 
     let mut client = state.inner().lock().await;
     client.connect().await?;
@@ -144,6 +161,53 @@ pub struct BslDiagnosticItem {
 pub async fn diagnose_bsl_ls_cmd() -> Vec<BslDiagnosticItem> {
     let settings = settings::load_settings();
     let mut report = Vec::new();
+
+    // --- Remote mode: skip local Java/JAR checks, only test WebSocket ---
+    if settings.bsl_server.is_remote() {
+        let remote_url = &settings.bsl_server.remote_url;
+        report.push(BslDiagnosticItem {
+            status: "ok".to_string(),
+            title: "Режим работы".to_string(),
+            message: format!("Используется удалённый сервер: {}", remote_url),
+            suggestion: None,
+        });
+
+        match tokio::time::timeout(Duration::from_secs(5), connect_async(remote_url)).await {
+            Ok(Ok(_)) => {
+                report.push(BslDiagnosticItem {
+                    status: "ok".to_string(),
+                    title: "WebSocket соединение".to_string(),
+                    message: "Удалённый сервер доступен, WebSocket рукопожатие прошло успешно."
+                        .to_string(),
+                    suggestion: None,
+                });
+            }
+            Ok(Err(e)) => {
+                report.push(BslDiagnosticItem {
+                    status: "error".to_string(),
+                    title: "Ошибка WebSocket".to_string(),
+                    message: format!("Не удалось подключиться к удалённому серверу: {}", e),
+                    suggestion: Some(
+                        "Проверьте доступность хоста, порт и брандмауэр на сервере.".to_string(),
+                    ),
+                });
+            }
+            Err(_) => {
+                report.push(BslDiagnosticItem {
+                    status: "error".to_string(),
+                    title: "Таймаут подключения".to_string(),
+                    message: "Удалённый сервер не отвечает в течение 5 секунд.".to_string(),
+                    suggestion: Some(
+                        "Проверьте правильность URL и доступность сервера.".to_string(),
+                    ),
+                });
+            }
+        }
+
+        return report;
+    }
+
+    // --- Local mode ---
 
     let mut java_cmd = std::process::Command::new(&settings.bsl_server.java_path);
     java_cmd.arg("-version");

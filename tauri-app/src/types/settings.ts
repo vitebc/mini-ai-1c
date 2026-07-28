@@ -156,6 +156,7 @@ export interface AppSettings {
         enabled: boolean;
         java_path: string;
         auto_download: boolean;
+        remote_url: string;
     };
     mcp_servers: McpServerConfig[];
     node_path: string;

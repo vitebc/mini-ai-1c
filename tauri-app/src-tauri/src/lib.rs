@@ -13,6 +13,7 @@ mod crypto;
 mod editor_bridge;
 #[cfg(windows)]
 mod editor_bridge_installer;
+mod enterprise;
 mod history_manager;
 mod http_client;
 mod job_guard;
@@ -131,6 +132,11 @@ pub fn run() {
             commands::settings::import_settings,
             commands::settings::validate_import_settings_file,
             commands::settings::import_settings_from_file,
+            // Enterprise
+            get_enterprise_status,
+            fetch_enterprise_config,
+            check_for_updates,
+            download_update,
             // 1С:Напарник
             clear_naparnik_session,
             // Scintilla diagnostics
@@ -224,6 +230,34 @@ pub fn run() {
                         crate::app_log!("[MIGRATE] Migration complete, removed old dir");
                     }
                 }
+            }
+
+            // Enterprise mode: if enterprise.json exists, fetch remote config
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let enterprise_cfg = crate::settings::load_enterprise_config();
+                    if let Some(cfg) = enterprise_cfg {
+                        crate::app_log!(
+                            "[ENTERPRISE] Enterprise mode enabled. Server: {}",
+                            cfg.server_url
+                        );
+                        let mut local = crate::settings::load_settings();
+                        match crate::enterprise::fetch_and_merge(&cfg, &mut local).await {
+                            Ok(merged) => {
+                                if merged {
+                                    let _ = crate::settings::save_settings(&local);
+                                    crate::app_log!("[ENTERPRISE] Remote config merged and saved");
+                                } else {
+                                    crate::app_log!("[ENTERPRISE] Remote config unchanged");
+                                }
+                            }
+                            Err(e) => {
+                                crate::app_log!("[ENTERPRISE] Failed to fetch remote config: {}", e);
+                            }
+                        }
+                    }
+                });
             }
 
             // Start BSL Language Server using managed state

@@ -84,6 +84,9 @@ pub struct BSLClient {
     capabilities: Option<serde_json::Value>,
     workspace_root: Option<String>,
     actual_port: Option<u16>,
+    /// When set, the client connects to this remote WebSocket URL
+    /// instead of spawning a local Java process.
+    remote_url: Option<String>,
 }
 
 impl BSLClient {
@@ -95,6 +98,7 @@ impl BSLClient {
             capabilities: None,
             workspace_root: None,
             actual_port: None,
+            remote_url: None,
         }
     }
 
@@ -127,16 +131,24 @@ impl BSLClient {
 
     /// Start the BSL Language Server
     pub fn start_server(&mut self) -> Result<(), String> {
-        // Guard: already running in this process instance
-        if self.server_process.is_some() {
-            crate::app_log!("[BSL LS] Already running in this instance, skipping start");
-            return Ok(());
-        }
-
         let settings = load_settings();
 
         if !settings.bsl_server.enabled {
             return Err("BSL LS is disabled in settings".to_string());
+        }
+
+        // --- Remote mode ---
+        if settings.bsl_server.is_remote() {
+            let url = settings.bsl_server.remote_url.clone();
+            crate::app_log!("[BSL LS] Remote mode — will connect to {}", url);
+            self.remote_url = Some(url);
+            return Ok(());
+        }
+
+        // Guard: already running in this process instance
+        if self.server_process.is_some() {
+            crate::app_log!("[BSL LS] Already running in this instance, skipping start");
+            return Ok(());
         }
 
         let jar_path = &settings.bsl_server.jar_path;
@@ -220,21 +232,29 @@ impl BSLClient {
 
     /// Connect to the BSL Language Server
     pub async fn connect(&mut self) -> Result<(), String> {
-        let port = self
-            .actual_port
-            .unwrap_or_else(|| load_settings().bsl_server.websocket_port);
-        let url = format!("ws://127.0.0.1:{}/lsp", port);
+        let is_remote = self.remote_url.is_some();
+
+        let url = if let Some(ref remote_url) = self.remote_url {
+            remote_url.clone()
+        } else {
+            let port = self
+                .actual_port
+                .unwrap_or_else(|| load_settings().bsl_server.websocket_port);
+            format!("ws://127.0.0.1:{}/lsp", port)
+        };
 
         crate::app_log!("[BSL LS] Attempting to connect to {}", url);
 
-        let mut retries = 0;
-        let max_retries = 30; // 15 seconds total
+        // Remote: fewer retries (server is external, no point waiting long)
+        // Local: up to 30 retries (waiting for Java to start)
+        let max_retries = if is_remote { 3 } else { 30 };
 
-        loop {
-            // Add timeout to connect_async to prevent hang during handshake (common in terminal servers)
-            let connect_timeout =
-                tokio::time::timeout(tokio::time::Duration::from_secs(3), connect_async(&url))
-                    .await;
+        for attempt in 1..=max_retries {
+            let connect_timeout = tokio::time::timeout(
+                tokio::time::Duration::from_secs(if is_remote { 5 } else { 3 }),
+                connect_async(&url),
+            )
+            .await;
 
             match connect_timeout {
                 Ok(Ok((ws_stream, _))) => {
@@ -243,8 +263,7 @@ impl BSLClient {
                     break;
                 }
                 Ok(Err(e)) => {
-                    retries += 1;
-                    if retries >= max_retries {
+                    if attempt >= max_retries {
                         crate::app_log!(
                             "[BSL LS] Connection FAILED after {} attempts. Last error: {}",
                             max_retries,
@@ -255,10 +274,10 @@ impl BSLClient {
                             max_retries, e
                         ));
                     }
-                    if retries % 5 == 0 {
+                    if attempt % 5 == 0 || is_remote {
                         crate::app_log!(
                             "[BSL LS] connection attempt {}/{}... (error: {})",
-                            retries,
+                            attempt,
                             max_retries,
                             e
                         );
@@ -266,18 +285,17 @@ impl BSLClient {
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 }
                 Err(_) => {
-                    retries += 1;
-                    crate::app_log!(
-                        "[BSL LS] Connection HANDSHAKE TIMEOUT (3s) at {}/{}",
-                        retries,
-                        max_retries
-                    );
-                    if retries >= max_retries {
+                    if attempt >= max_retries {
                         return Err(format!(
                             "Failed to connect to BSL LS (Handshake Timeout) after {} attempts",
                             max_retries
                         ));
                     }
+                    crate::app_log!(
+                        "[BSL LS] Connection HANDSHAKE TIMEOUT (3s) at {}/{}",
+                        attempt,
+                        max_retries
+                    );
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 }
             }
@@ -993,6 +1011,13 @@ impl BSLClient {
 
     /// Stop the server
     pub fn stop(&mut self) {
+        // In remote mode: just close the WebSocket, don't kill anything
+        if self.remote_url.is_some() {
+            crate::app_log!("[BSL LS] Remote mode — closing WebSocket only");
+            self.ws.take();
+            return;
+        }
+
         if let Some(mut child) = self.server_process.take() {
             // Try to send exit notification if WS is still alive
             if let Some(ws_mutex) = self.ws.take() {

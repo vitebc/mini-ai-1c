@@ -38,6 +38,7 @@ notify = "8.2.0"
 async-trait = "0.1.89"
 url = "2.5"
 keyring = "2"
+zip = { version = "2", features = ["deflate"] }
 
 
 [target.'cfg(windows)'.dependencies]

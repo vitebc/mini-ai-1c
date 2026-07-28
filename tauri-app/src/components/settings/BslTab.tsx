@@ -143,17 +143,55 @@ export function BslTab({
                             />
                         </div>
 
-                        <div>
-                            <label className="text-xs text-zinc-500 uppercase font-semibold mb-1 block">WebSocket Port</label>
-                            <input
-                                type="number"
-                                value={settings.bsl_server.websocket_port}
-                                onChange={(e) => setSettings({
-                                    ...settings,
-                                    bsl_server: { ...settings.bsl_server, websocket_port: parseInt(e.target.value) || 8025 }
-                                })}
-                                className="w-32 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100"
-                            />
+                        <div className="border-t border-zinc-700 pt-4 mt-2">
+                            <label className="text-xs text-zinc-500 uppercase font-semibold mb-1 block">Режим подключения</label>
+                            <div className="flex items-center gap-3 mb-3">
+                                <span className="text-xs text-zinc-500">Локальный (Java + JAR)</span>
+                                <input
+                                    type="checkbox"
+                                    checked={!!settings.bsl_server.remote_url}
+                                    onChange={(e) => setSettings({
+                                        ...settings,
+                                        bsl_server: {
+                                            ...settings.bsl_server,
+                                            remote_url: e.target.checked ? 'ws://' : ''
+                                        }
+                                    })}
+                                    className="rounded bg-zinc-700 border-zinc-600 text-blue-500 focus:ring-blue-500"
+                                />
+                                <span className="text-xs text-zinc-500">Удалённый сервер</span>
+                            </div>
+
+                            {settings.bsl_server.remote_url ? (
+                                <div>
+                                    <label className="text-xs text-zinc-500 uppercase font-semibold mb-1 block">WebSocket URL сервера</label>
+                                    <input
+                                        type="text"
+                                        value={settings.bsl_server.remote_url}
+                                        onChange={(e) => setSettings({
+                                            ...settings,
+                                            bsl_server: { ...settings.bsl_server, remote_url: e.target.value }
+                                        })}
+                                        placeholder="ws://192.168.1.100:8025/lsp"
+                                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100 font-mono"
+                                    />
+                                </div>
+                            ) : (
+                                <>
+                                    <div>
+                                        <label className="text-xs text-zinc-500 uppercase font-semibold mb-1 block">WebSocket Port</label>
+                                        <input
+                                            type="number"
+                                            value={settings.bsl_server.websocket_port}
+                                            onChange={(e) => setSettings({
+                                                ...settings,
+                                                bsl_server: { ...settings.bsl_server, websocket_port: parseInt(e.target.value) || 8025 }
+                                            })}
+                                            className="w-32 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100"
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 </section>

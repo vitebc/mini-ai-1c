@@ -127,7 +127,8 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                     jar_path: "",
                     websocket_port: 9225,
                     java_path: "",
-                    auto_download: true
+                    auto_download: true,
+                    remote_url: ""
                 },
                 node_path: "node",
                 search_index_dir: "",

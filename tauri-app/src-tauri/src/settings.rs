@@ -260,6 +260,10 @@ pub struct BSLServerSettings {
     pub websocket_port: u16,
     pub java_path: String,
     pub enabled: bool,
+    /// Remote WebSocket URL (e.g. ws://192.168.1.100:8025/lsp).
+    /// When set, the client connects to this URL instead of spawning a local Java process.
+    #[serde(default)]
+    pub remote_url: String,
 }
 
 impl Default for BSLServerSettings {
@@ -270,7 +274,15 @@ impl Default for BSLServerSettings {
             websocket_port: 8025,
             java_path: "java".to_string(),
             enabled: true,
+            remote_url: String::new(),
         }
+    }
+}
+
+impl BSLServerSettings {
+    /// Returns true if configured to use a remote server (not a local Java process).
+    pub fn is_remote(&self) -> bool {
+        !self.remote_url.is_empty()
     }
 }
 
@@ -392,6 +404,68 @@ impl Default for McpServerConfig {
             env: None,
         }
     }
+}
+
+/// Enterprise mode config (loaded from enterprise.json next to EXE)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct EnterpriseConfig {
+    /// Server URL (e.g. http://server:9224)
+    pub server_url: String,
+    /// API token for authentication (optional)
+    #[serde(default)]
+    pub token: Option<String>,
+    /// Auto-update enabled
+    #[serde(default = "default_enterprise_true")]
+    pub auto_update: bool,
+}
+
+fn default_enterprise_true() -> bool {
+    true
+}
+
+/// Get the enterprise config file path (next to executable)
+pub fn get_enterprise_config_path() -> PathBuf {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+    exe_dir.join("enterprise.json")
+}
+
+/// Load enterprise config from file next to EXE
+pub fn load_enterprise_config() -> Option<EnterpriseConfig> {
+    let path = get_enterprise_config_path();
+    if path.exists() {
+        match fs::read_to_string(&path) {
+            Ok(content) => serde_json::from_str(&content).ok(),
+            Err(_) => None,
+        }
+    } else {
+        None
+    }
+}
+
+/// Remote enterprise config fetched from server
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RemoteEnterpriseConfig {
+    /// MCP server overrides (transport → http, url → server endpoint)
+    #[serde(default)]
+    pub mcp_servers: Vec<McpServerConfig>,
+    /// BSL Language Server remote URL
+    #[serde(default)]
+    pub bsl_remote_url: String,
+    /// Default LLM profile ID
+    #[serde(default)]
+    pub active_llm_profile: String,
+    /// LLM providers config
+    #[serde(default)]
+    pub llm: LLMGlobalSettings,
+    /// Theme override
+    #[serde(default)]
+    pub theme: Option<String>,
+    /// Extra settings as raw JSON (merged into AppSettings)
+    #[serde(default)]
+    pub extra_settings: Option<serde_json::Value>,
 }
 
 /// Main application settings container
