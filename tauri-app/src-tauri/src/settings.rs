@@ -471,6 +471,9 @@ pub struct RemoteEnterpriseConfig {
 /// Main application settings container
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppSettings {
+    /// Enterprise server URL (set when enterprise config was applied, empty = not applied)
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub enterprise_server_applied: String,
     pub configurator: ConfiguratorSettings,
     pub bsl_server: BSLServerSettings,
     #[serde(
@@ -899,6 +902,58 @@ pub fn load_settings() -> AppSettings {
         );
         settings.active_llm_profile = profile_store.active_profile_id;
         modified = true;
+    }
+
+    // Cleanup stale enterprise config: if enterprise_server_applied is set
+    // but enterprise.json no longer exists, revert to defaults
+    let enterprise_missing = !get_enterprise_config_path().exists();
+    let had_enterprise = !settings.enterprise_server_applied.is_empty();
+
+    if had_enterprise && enterprise_missing {
+        crate::app_log!(
+            force: true,
+            "[SETTINGS] Cleaning stale enterprise config (server: {}, enterprise.json not found)",
+            settings.enterprise_server_applied
+        );
+        // Remove HTTP-transport MCP servers that were set by enterprise mode
+        let enterprise_ids: Vec<String> = settings
+            .mcp_servers
+            .iter()
+            .filter(|s| {
+                s.transport == McpTransport::Http
+                    && s.url.as_deref().map_or(false, |u| {
+                        u.contains(&settings.enterprise_server_applied)
+                    })
+            })
+            .map(|s| s.id.clone())
+            .collect();
+
+        settings.mcp_servers.retain(|s| !enterprise_ids.contains(&s.id));
+
+        // Clear BSL remote URL if it points to the enterprise server
+        if settings.bsl_server.remote_url.contains(&settings.enterprise_server_applied) {
+            settings.bsl_server.remote_url.clear();
+        }
+
+        settings.enterprise_server_applied.clear();
+        modified = true;
+    }
+
+    // Migration: if enterprise.json doesn't exist but MCP servers still have
+    // HTTP transport pointing to localhost URLs (from a previous enterprise
+    // session before the marker was added), clean them up too
+    if enterprise_missing && !had_enterprise {
+        let stale_count = settings.mcp_servers.len();
+        settings.mcp_servers.retain(|s| {
+            let is_stale = s.transport == McpTransport::Http
+                && s.url.as_deref().map_or(false, |u| u.contains("localhost"))
+                && matches!(s.id.as_str(), "builtin-1c-search" | "builtin-1c-help" | "builtin-1c-naparnik" | "builtin-1c-metadata");
+            !is_stale
+        });
+        if settings.mcp_servers.len() != stale_count {
+            crate::app_log!(force: true, "[SETTINGS] Removed {} stale enterprise MCP servers (legacy cleanup)", stale_count - settings.mcp_servers.len());
+            modified = true;
+        }
     }
 
     if modified {

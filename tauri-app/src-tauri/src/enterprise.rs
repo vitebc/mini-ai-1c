@@ -55,6 +55,7 @@ fn merge_remote_config(
     enterprise: &EnterpriseConfig,
 ) {
     let base_url = enterprise.server_url.trim_end_matches('/').to_string();
+    local.enterprise_server_applied = enterprise.server_url.clone();
 
     // Override MCP servers: switch to HTTP transport pointing at server
     if !remote.mcp_servers.is_empty() {
