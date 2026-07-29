@@ -725,7 +725,7 @@ pub fn clear_runtime_only_settings(settings: &mut AppSettings) -> bool {
 fn is_builtin_node_mcp_server(server_id: &str) -> bool {
     matches!(
         server_id,
-        "builtin-1c-naparnik" | "builtin-1c-metadata" | "builtin-1c-help"
+        "builtin-1c-naparnik" | "builtin-1c-metadata" | "builtin-1c-help" | "builtin-mcp-skills"
     )
 }
 
@@ -784,6 +784,19 @@ fn migrate_builtin_mcp_launchers(settings: &mut AppSettings) -> bool {
                 server.command = Some("mcp-1c-search.exe".to_string());
                 server.args = None;
                 modified = true;
+            }
+        } else if server.id == "builtin-mcp-skills" {
+            // Ensure mcp-skills has the correct node launcher
+            let current_cmd = server.command.as_deref().unwrap_or("");
+            if current_cmd != node_path {
+                server.command = Some(node_path.clone());
+                modified = true;
+            }
+            if let Some(args) = &mut server.args {
+                if !args.iter().any(|a| a.contains("mcp-skills")) {
+                    *args = vec!["mcp-servers/mcp-skills.cjs".to_string()];
+                    modified = true;
+                }
             }
         } else if let Some(cmd) = &server.command {
             if cmd.contains("node_modules") {

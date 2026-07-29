@@ -51,18 +51,48 @@ fn format_unix_msk(unix: u64) -> String {
 pub(crate) const BUILTIN_1C_SEARCH_SERVER_ID: &str = "builtin-1c-search";
 pub(crate) const SEARCH_INDEX_DIR_ENV: &str = "MINI_AI_1C_SEARCH_INDEX_DIR";
 
-fn with_runtime_settings(mut config: McpServerConfig, settings: &AppSettings) -> McpServerConfig {
-    if config.id != BUILTIN_1C_SEARCH_SERVER_ID {
-        return config;
+const BUILTIN_MCP_SKILLS_SERVER_ID: &str = "builtin-mcp-skills";
+
+fn resolve_skills_dir() -> Option<String> {
+    // 1. Next to current exe
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let p = dir.join(".agents").join("skills");
+            if p.exists() && p.is_dir() {
+                return Some(p.to_string_lossy().to_string());
+            }
+        }
     }
+    // 2. Development: walk up from target/<profile>/ to find .agents/skills/
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors() {
+            let p = ancestor.join(".agents").join("skills");
+            if p.exists() && p.is_dir() {
+                return Some(p.to_string_lossy().to_string());
+            }
+        }
+    }
+    None
+}
 
+fn with_runtime_settings(mut config: McpServerConfig, settings: &AppSettings) -> McpServerConfig {
     let mut env = config.env.take().unwrap_or_default();
-    let search_index_dir = settings.search_index_dir.trim();
 
-    if search_index_dir.is_empty() {
-        env.remove(SEARCH_INDEX_DIR_ENV);
-    } else {
-        env.insert(SEARCH_INDEX_DIR_ENV.to_string(), search_index_dir.to_string());
+    match config.id.as_str() {
+        BUILTIN_1C_SEARCH_SERVER_ID => {
+            let search_index_dir = settings.search_index_dir.trim();
+            if search_index_dir.is_empty() {
+                env.remove(SEARCH_INDEX_DIR_ENV);
+            } else {
+                env.insert(SEARCH_INDEX_DIR_ENV.to_string(), search_index_dir.to_string());
+            }
+        }
+        BUILTIN_MCP_SKILLS_SERVER_ID => {
+            if let Some(skills_dir) = resolve_skills_dir() {
+                env.insert("SKILLS_DIR".to_string(), skills_dir);
+            }
+        }
+        _ => return config,
     }
 
     config.env = if env.is_empty() { None } else { Some(env) };
@@ -801,6 +831,7 @@ impl McpSession {
             "1c-help.cjs" => Some(include_bytes!("../mcp-servers/1c-help.cjs")),
             "1c-metadata.cjs" => Some(include_bytes!("../mcp-servers/1c-metadata.cjs")),
             "1c-naparnik.cjs" => Some(include_bytes!("../mcp-servers/1c-naparnik.cjs")),
+            "mcp-skills.cjs" => Some(include_bytes!("../mcp-servers/mcp-skills.cjs")),
             "mcp-1c-search.exe" => Some(include_bytes!("../mcp-servers/mcp-1c-search.exe")),
             _ => None,
         }
