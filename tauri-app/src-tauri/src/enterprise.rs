@@ -133,6 +133,7 @@ fn deep_merge(a: Value, b: Value) -> Value {
 }
 
 /// Build MCP server configs pointing to enterprise server
+#[allow(dead_code)]
 pub fn build_enterprise_mcp_configs(
     server_url: &str,
     token: Option<&str>,
