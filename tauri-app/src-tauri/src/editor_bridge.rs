@@ -332,7 +332,17 @@ pub(crate) fn find_exe() -> Result<PathBuf, String> {
         }
     }
 
-    // 3. Development: manually placed next to app in editor-bridge/ subfolder
+    // 3. Config directory (downloaded or migrated)
+    {
+        let p = crate::settings::get_settings_dir()
+            .join("bin")
+            .join("EditorBridge.exe");
+        if let Some(candidate) = resolve_bridge_candidate(p, "config dir") {
+            return Ok(candidate);
+        }
+    }
+
+    // 4. Development: manually placed next to app in editor-bridge/ subfolder
     if let Ok(exe) = std::env::current_exe() {
         for ancestor in exe.ancestors() {
             let p = ancestor

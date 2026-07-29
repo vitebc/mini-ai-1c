@@ -241,6 +241,25 @@ pub fn run() {
                 }
             }
 
+            // Migration: update EditorBridge path in settings if it points to old location
+            {
+                let new_settings_dir = crate::settings::get_settings_dir();
+                let expected_path = new_settings_dir.join("bin").join("EditorBridge.exe");
+                let mut settings = crate::settings::load_settings();
+                if !settings.configurator.editor_bridge_exe_path.is_empty() {
+                    let current = std::path::PathBuf::from(&settings.configurator.editor_bridge_exe_path);
+                    // If the saved path doesn't exist but the new path does, update
+                    if !current.exists() && expected_path.exists() {
+                        crate::app_log!(force: true,
+                            "[MIGRATE] Updating EditorBridge path: {:?} → {:?}",
+                            current, expected_path
+                        );
+                        settings.configurator.editor_bridge_exe_path = expected_path.to_string_lossy().to_string();
+                        let _ = crate::settings::save_settings(&settings);
+                    }
+                }
+            }
+
             // Enterprise mode: if enterprise.json exists, fetch remote config
             {
                 let enterprise_path = crate::settings::get_enterprise_config_path();
