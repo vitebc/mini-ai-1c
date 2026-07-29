@@ -112,9 +112,9 @@ function findPlatform(): PlatformInfo | null {
 // ---------- Путь к базе данных ----------
 
 function getDbPath(): string {
-    // Используем AppData/home директорию пользователя для хранения базы
-    const base = process.env.APPDATA || process.env.HOME || homedir() || tmpdir();
-    const dir = join(base, 'com.mini-ai-1c', 'help');
+    // Используем $HOME/.config/mini-ai-1c/help/ для хранения базы
+    const home = homedir() || tmpdir();
+    const dir = join(home, '.config', 'mini-ai-1c', 'help');
     if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
     }

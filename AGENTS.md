@@ -36,7 +36,7 @@ All commands run from the **`tauri-app/`** directory unless noted.
 - Windows-only modules are gated with `#[cfg(windows)]` — `configurator`, `editor_bridge`, `mouse_hook`, `scintilla`.
 - `mcp-1c-search/` is a **separate** Rust binary (not a workspace member), built independently with `cargo build --release`.
 - `mcp-1c-tools/` — standalone Rust MCP server for 1C:Enterprise tools (build with `cargo build --release` from `tauri-app/mcp-1c-tools/`).
-- App data migration from `com.miniai1c.agent` → `com.mini-ai-1c` runs on startup in `lib.rs`.
+- App data migrated to `$HOME/.config/mini-ai-1c/` on startup in `lib.rs` (from `%LOCALAPPDATA%\MiniAI1C`, `%APPDATA%\com.mini-ai-1c`, `%APPDATA%\mini-ai-1c`).
 
 ## Git workflow
 

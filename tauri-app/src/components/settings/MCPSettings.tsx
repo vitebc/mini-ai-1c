@@ -1045,7 +1045,7 @@ export function MCPSettings({
                                                                         value={searchIndexDir}
                                                                         onChange={(e) => onSearchIndexDirChange(e.target.value)}
                                                                         className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono min-w-0"
-                                                                        placeholder="По умолчанию: AppData\\com.mini-ai-1c\\search-index"
+                                                                        placeholder="По умолчанию: ~/.config/mini-ai-1c/search-index"
                                                                     />
                                                                     <button
                                                                         onClick={browseSearchIndexDir}
