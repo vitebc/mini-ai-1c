@@ -155,7 +155,7 @@ pub struct SymbolMatch {
 }
 
 /// Derive database path from config root.
-/// Stored in AppData\com.mini-ai-1c\search-index\{hash}.db
+/// Stored in $HOME/.config/mini-ai-1c/search-index/{hash}.db
 const SEARCH_INDEX_DIR_ENV: &str = "MINI_AI_1C_SEARCH_INDEX_DIR";
 
 fn configured_search_index_dir() -> Option<PathBuf> {
@@ -165,7 +165,7 @@ fn configured_search_index_dir() -> Option<PathBuf> {
 }
 
 fn default_search_index_dir() -> Option<PathBuf> {
-    dirs::data_dir().map(|data_dir| data_dir.join("com.mini-ai-1c").join("search-index"))
+    dirs::home_dir().map(|home| home.join(".config").join("mini-ai-1c").join("search-index"))
 }
 
 pub fn get_db_path(config_root: &Path) -> PathBuf {
