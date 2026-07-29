@@ -45,7 +45,7 @@ llm_profiles.json
 
 backup/
 tests/
-scripts/
+# scripts/ — now tracked, contains dev/build scripts
 
 # Antigravity Skills
 .agent/
