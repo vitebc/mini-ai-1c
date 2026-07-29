@@ -803,10 +803,11 @@ fn migrate_builtin_mcp_launchers(settings: &mut AppSettings) -> bool {
 
 /// Get the settings directory path
 pub fn get_settings_dir() -> PathBuf {
-    // Use data_local_dir instead of config_dir to avoid UNC paths on terminal servers
-    // data_local_dir points to %LOCALAPPDATA% which is always local, not roaming
-    let config_dir = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
-    config_dir.join("MiniAI1C")
+    // Use HOME/.config/mini-ai-1c/ for cross-platform consistency
+    // On Windows: C:\Users\<user>\.config\mini-ai-1c\
+    // On Linux:   /home/<user>/.config/mini-ai-1c/
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    home.join(".config").join("mini-ai-1c")
 }
 
 /// Get the settings file path

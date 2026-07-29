@@ -393,7 +393,7 @@ fn resolve_search_index_dir(configured_dir: &str) -> Option<std::path::PathBuf> 
         return Some(std::path::PathBuf::from(configured_dir));
     }
 
-    dirs::data_dir().map(|data_dir| data_dir.join("com.mini-ai-1c").join("search-index"))
+    Some(crate::settings::get_settings_dir().join("search-index"))
 }
 
 /// Compute the db path for a given config path (mirrors mcp-1c-search::index::get_db_path).

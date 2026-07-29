@@ -276,9 +276,7 @@ impl QwenCliProvider {
     // ── Local usage counter (file-based, multi-instance safe) ─────────────────
 
     fn usage_file_path(profile_id: &str) -> std::path::PathBuf {
-        dirs::data_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("mini-ai-1c")
+        crate::settings::get_settings_dir()
             .join(format!("qwen-usage-{}.json", profile_id))
     }
 

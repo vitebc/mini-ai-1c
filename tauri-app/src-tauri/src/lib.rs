@@ -211,23 +211,32 @@ pub fn run() {
                 });
             }
 
-            // Migration: com.miniai1c.agent → com.mini-ai-1c
-            // The app identifier was changed; migrate old Tauri app data to the new folder.
-            if let Some(roaming) = dirs::data_dir() {
-                let old_dir = roaming.join("com.miniai1c.agent");
-                let new_dir = roaming.join("com.mini-ai-1c");
-                if old_dir.exists() && old_dir.is_dir() {
-                    crate::app_log!(
-                        "[MIGRATE] Migrating app data from {:?} to {:?}",
-                        old_dir,
-                        new_dir
-                    );
-                    if let Err(e) = migrate_dir(&old_dir, &new_dir) {
-                        crate::app_log!("[MIGRATE] Migration error: {}", e);
-                    } else {
-                        // Remove old dir only if migration succeeded and it's now empty
-                        let _ = std::fs::remove_dir_all(&old_dir);
-                        crate::app_log!("[MIGRATE] Migration complete, removed old dir");
+            // Migration: old paths → .config/mini-ai-1c
+            // Migrate from:
+            //   %LOCALAPPDATA%\MiniAI1C       (settings, profiles, keys, binaries)
+            //   %APPDATA%\com.mini-ai-1c      (search index, legacy migration target)
+            // To:
+            //   $HOME/.config/mini-ai-1c/     (unified cross-platform path)
+            let new_dir = crate::settings::get_settings_dir();
+            for (label, old) in [
+                ("%LOCALAPPDATA%\\MiniAI1C", dirs::data_local_dir().map(|p| p.join("MiniAI1C"))),
+                ("%APPDATA%\\com.mini-ai-1c", dirs::data_dir().map(|p| p.join("com.mini-ai-1c"))),
+                ("%APPDATA%\\mini-ai-1c", dirs::data_dir().map(|p| p.join("mini-ai-1c"))),
+            ] {
+                if let Some(old_dir) = old {
+                    if old_dir.exists() && old_dir.is_dir() && old_dir != new_dir {
+                        crate::app_log!(
+                            force: true,
+                            "[MIGRATE] Migrating from {:?} to {:?}",
+                            old_dir, new_dir
+                        );
+                        if let Err(e) = migrate_dir(&old_dir, &new_dir) {
+                            crate::app_log!("[MIGRATE] Migration error: {}", e);
+                        } else {
+                            // Remove old dir only if migration succeeded
+                            let _ = std::fs::remove_dir_all(&old_dir);
+                            crate::app_log!("[MIGRATE] Removed old dir {:?}", old_dir);
+                        }
                     }
                 }
             }
@@ -267,11 +276,15 @@ pub fn run() {
             // Start BSL Language Server using managed state
             let app_handle = app.handle().clone();
 
-            // Clean up old history file if exists (Issue #11)
-            let app_dir = app.path().app_data_dir().unwrap_or_default();
-            let history_path = app_dir.join("chat_history.json");
-            if history_path.exists() {
-                let _ = std::fs::remove_file(history_path);
+            // Clean up old history files if exists
+            let settings_dir = crate::settings::get_settings_dir();
+            for history in [
+                settings_dir.join("chat_history.json"),
+                app.path().app_data_dir().unwrap_or_default().join("chat_history.json"),
+            ] {
+                if history.exists() {
+                    let _ = std::fs::remove_file(history);
+                }
             }
             // Start settings watcher for reactive MCP
             crate::mcp_client::start_settings_watcher(app.handle().clone());
