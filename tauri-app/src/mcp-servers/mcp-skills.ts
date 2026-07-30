@@ -78,24 +78,38 @@ function scanSkills(): SkillInfo[] {
     }
 
     const skills: SkillInfo[] = [];
+    function readSkillFrom(category: string, skillDir: string, name: string) {
+        const sp = join(skillDir, 'SKILL.md');
+        if (!existsSync(sp)) return;
+        try {
+            const raw = readFileSync(sp, 'utf-8');
+            const { metadata } = parseSkillFrontmatter(raw);
+            const id = category ? `${category}/${name}` : name;
+            skills.push({
+                id,
+                name: (metadata.name as string) || name,
+                description: (metadata.description as string) || '',
+                category: category || (metadata as any).category || (metadata as any).domain || '',
+            });
+        } catch { /* skip */ }
+    }
+
     try {
         const entries = readdirSync(SKILLS_DIR, { withFileTypes: true });
         for (const entry of entries) {
             if (!entry.isDirectory()) continue;
-            const skillDir = join(SKILLS_DIR, entry.name);
-            const skillPath = join(skillDir, 'SKILL.md');
-            if (!existsSync(skillPath)) continue;
-
-            try {
-                const raw = readFileSync(skillPath, 'utf-8');
-                const { metadata } = parseSkillFrontmatter(raw);
-                skills.push({
-                    id: entry.name,
-                    name: (metadata.name as string) || entry.name,
-                    description: (metadata.description as string) || '',
-                    category: (metadata as any).category || (metadata as any).domain || '',
-                });
-            } catch { /* skip malformed */ }
+            const fullPath = join(SKILLS_DIR, entry.name);
+            // Case 1: flat skill (SKILL.md directly)
+            if (existsSync(join(fullPath, 'SKILL.md'))) {
+                readSkillFrom('', fullPath, entry.name);
+                continue;
+            }
+            // Case 2: category directory with sub-skills
+            const subs = readdirSync(fullPath, { withFileTypes: true });
+            for (const sub of subs) {
+                if (!sub.isDirectory()) continue;
+                readSkillFrom(entry.name, join(fullPath, sub.name), sub.name);
+            }
         }
     } catch { /* no skills dir */ }
 
@@ -104,9 +118,13 @@ function scanSkills(): SkillInfo[] {
     return skills;
 }
 
+function skillDirFromId(id: string): string {
+    return join(SKILLS_DIR, id.replace('/', '/'));
+}
+
 function getSkillFiles(skillId: string): string[] {
     if (!SKILLS_DIR) return [];
-    const skillDir = join(SKILLS_DIR, skillId);
+    const skillDir = skillDirFromId(skillId);
     if (!existsSync(skillDir)) return [];
 
     const files: string[] = [];
@@ -129,7 +147,7 @@ function getSkillFiles(skillId: string): string[] {
 
 function readSkillFile(skillId: string, filePath: string): string {
     try {
-        return readFileSync(join(SKILLS_DIR, skillId, filePath), 'utf-8');
+        return readFileSync(join(skillDirFromId(skillId), filePath), 'utf-8');
     } catch {
         return '';
     }
@@ -222,7 +240,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const info = all.find(s => s.id === id);
             if (!info) throw new Error(`Skill "${id}" not found`);
 
-            const skillDir = join(SKILLS_DIR, id);
+            const skillDir = skillDirFromId(id);
             const skillPath = join(skillDir, 'SKILL.md');
             const raw = readFileSync(skillPath, 'utf-8');
             const { metadata, body } = parseSkillFrontmatter(raw);

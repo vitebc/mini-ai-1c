@@ -33,34 +33,64 @@ fn scan_skills_dir() -> Vec<SkillFile> {
         if !path.is_dir() {
             continue;
         }
-        let skill_id = path
+
+        let entry_name = path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
-        let skill_path = path.join("SKILL.md");
-        if !skill_path.exists() {
+
+        // Check if this is a flat skill (SKILL.md directly in this dir)
+        let flat_skill_path = path.join("SKILL.md");
+        if flat_skill_path.exists() {
+            if let Some(s) = read_skill_file(&entry_name, &path, "") {
+                skills.push(s);
+            }
             continue;
         }
-        let content = match std::fs::read_to_string(&skill_path) {
-            Ok(c) => c,
+
+        // Otherwise, treat this as a category directory with sub-skills
+        let sub_entries = match std::fs::read_dir(&path) {
+            Ok(e) => e,
             Err(_) => continue,
         };
+        let category = entry_name;
 
-        // Parse frontmatter for name, description, category
-        let (name, description, category) = parse_frontmatter(&content);
-
-        skills.push(SkillFile {
-            id: skill_id,
-            name,
-            description,
-            category,
-            content,
-        });
+        for sub in sub_entries.flatten() {
+            let sub_path = sub.path();
+            if !sub_path.is_dir() {
+                continue;
+            }
+            let skill_id = sub_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            let skill_path = sub_path.join("SKILL.md");
+            if !skill_path.exists() {
+                continue;
+            }
+            if let Some(s) = read_skill_file(&format!("{}/{}", category, skill_id), &sub_path, &category) {
+                skills.push(s);
+            }
+        }
     }
 
     skills.sort_by(|a, b| a.name.cmp(&b.name));
     skills
+}
+
+fn read_skill_file(id: &str, skill_dir: &PathBuf, category: &str) -> Option<SkillFile> {
+    let skill_path = skill_dir.join("SKILL.md");
+    let content = std::fs::read_to_string(&skill_path).ok()?;
+    let (name, description, _) = parse_frontmatter(&content);
+    Some(SkillFile {
+        id: id.to_string(),
+        name,
+        description,
+        category: category.to_string(),
+        content,
+    })
 }
 
 fn parse_frontmatter(content: &str) -> (String, String, String) {
