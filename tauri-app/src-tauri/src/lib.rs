@@ -137,6 +137,11 @@ pub fn run() {
             fetch_enterprise_config,
             check_for_updates,
             download_update,
+            // Skills
+            list_skills,
+            get_skill,
+            save_skill,
+            delete_skill,
             // 1С:Напарник
             clear_naparnik_session,
             // Scintilla diagnostics

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
-import { X, Save, Cpu, Monitor, FileCode, Database, Settings2, MessageSquare, Terminal, Sun, Moon, Check, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { X, Save, Cpu, Monitor, FileCode, Database, Settings2, MessageSquare, Terminal, Sun, Moon, Check, RefreshCw, SlidersHorizontal, Brain } from 'lucide-react';
 
 import { LLMSettings } from './settings/LLMSettings';
 import { MCPSettings } from './settings/MCPSettings';
@@ -12,6 +12,7 @@ import { DebugTab } from './settings/DebugTab';
 import { GeneralTab } from './settings/GeneralTab';
 import { PromptsTab } from './settings/PromptsTab';
 import { SlashCommandsTab } from './settings/SlashCommandsTab';
+import { SkillsTab } from './settings/SkillsTab';
 
 import { useProfiles } from '../contexts/ProfileContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -21,11 +22,11 @@ import { flushPerformanceDiagnosticsToLog } from '../utils/performanceDiagnostic
 interface SettingsPanelProps {
     isOpen: boolean;
     onClose: () => void;
-    initialTab?: 'general' | 'configurator' | 'llm' | 'bsl' | 'mcp' | 'debug' | 'prompts' | 'slash_commands';
+    initialTab?: 'general' | 'configurator' | 'llm' | 'bsl' | 'mcp' | 'debug' | 'prompts' | 'slash_commands' | 'skills';
 }
 
 export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProps) {
-    const [tab, setTab] = useState<'general' | 'llm' | 'configurator' | 'bsl' | 'mcp' | 'debug' | 'prompts' | 'slash_commands'>('llm');
+    const [tab, setTab] = useState<'general' | 'llm' | 'configurator' | 'bsl' | 'mcp' | 'debug' | 'prompts' | 'slash_commands' | 'skills'>('llm');
 
     useEffect(() => {
         if (isOpen && initialTab) {
@@ -251,6 +252,7 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
                         { id: 'mcp' as const, label: 'MCP', icon: Database },
                         { id: 'prompts' as const, label: 'Промпты', icon: MessageSquare },
                         { id: 'slash_commands' as const, label: 'Команды', icon: Terminal },
+                        { id: 'skills' as const, label: 'Скиллы', icon: Brain },
                         { id: 'debug' as const, label: 'Advanced', icon: Settings2 },
                     ].map((t) => (
                         <button
@@ -346,6 +348,12 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
                             setDiagReport={setDiagReport}
                             runDiagnostics={runDiagnostics}
                         />
+                    )}
+
+                    {tab === 'skills' && (
+                        <div className="w-full h-full overflow-hidden">
+                            <SkillsTab />
+                        </div>
                     )}
 
                     {tab === 'mcp' && settings && (
