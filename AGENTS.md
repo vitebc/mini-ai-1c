@@ -1,74 +1,180 @@
-# AGENTS.md — Mini AI 1C
+# Mini AI 1C — Enterprise агент для разработки на 1С:Предприятие
 
-## Monorepo structure
+## О проекте
 
-- **Root** `package.json` with npm workspaces (`tauri-app`).
-- **Two independent Rust crates** (separate `Cargo.toml`, own targets):
-  - `tauri-app/src-tauri/` — main Tauri 2 app (lib crate `mini_ai_1c_lib`, entrypoint `lib.rs::run()`)
-  - `tauri-app/mcp-1c-search/` — standalone MCP search binary
-- **Frontend** (`tauri-app/`): React 19, TypeScript, Vite, Tailwind CSS v4, Monaco Editor, Radix UI.
+Mini AI 1C — десктопное приложение (Tauri 2 + React 19) для AI-ассистированной разработки на платформе 1С:Предприятие.  
+Работает с Конфигуратором через EditorBridge (.NET named pipe), анализирует BSL-код, генерирует и применяет изменения.
 
-## Key commands
+**Разработка переезжает на VPS-сервер.**  
+Репозиторий серверной части: `E:\1C_AI\ai-1c-server` / `https://github.com/vitebc/ai-1c-server`
 
-All commands run from the **`tauri-app/`** directory unless noted.
+---
 
-| Action | Command |
-|--------|---------|
-| Install deps | `npm install` (root, for workspace resolution) |
-| Dev server | `npm run app:dev` (builds MCP search Rust binary → bundles TS MCP servers → `tauri dev`) |
+## Структура проекта
+
+```
+mini-ai-1c/
+├── tauri-app/                    # Основное приложение
+│   ├── src/                      # Frontend (React 19, TypeScript, Vite, Tailwind v4, Monaco)
+│   │   ├── api/                  # Tauri invoke-обёртки
+│   │   ├── components/           # UI компоненты
+│   │   │   ├── chat/             # Чат, SessionPanel, MCP-панели
+│   │   │   ├── layout/           # Header, MainLayout
+│   │   │   ├── settings/         # Настройки: LLM, MCP, BSL, Configurator, Skills
+│   │   │   └── ...
+│   │   ├── contexts/             # React Context: Chat, Settings, Configurator, BSL, Profile
+│   │   ├── hooks/                # useChatSessions, useCodeSession
+│   │   ├── mcp-servers/          # MCP-серверы TypeScript (1c-help, naparnik, metadata, skills)
+│   │   └── utils/                # Утилиты
+│   ├── src-tauri/                # Backend (Rust)
+│   │   └── src/
+│   │       ├── lib.rs            # Точка входа, Tauri setup
+│   │       ├── settings.rs       # Настройки, AppSettings, EnterpriseConfig, пути
+│   │       ├── mcp_client.rs     # MCP менеджер (Http/Stdio/Internal transport)
+│   │       ├── enterprise.rs     # Enterprise режим: fetch + merge конфига с сервера
+│   │       ├── bsl_client.rs     # BSL Language Server WebSocket клиент
+│   │       ├── editor_bridge.rs  # EditorBridge (.NET named pipe)
+│   │       ├── llm_profiles.rs   # LLM профили с AES-GCM шифрованием ключей
+│   │       └── commands/         # Tauri команды
+│   │           ├── skills.rs     # CRUD локальных скиллов
+│   │           ├── enterprise.rs # Команды enterprise-режима
+│   │           └── ...
+│   ├── mcp-1c-search/            # Отдельный Rust MCP-сервер для поиска по 1С-конфигурации
+│   └── scripts/                  # dev.ps1, build.ps1, portable.ps1, mock-enterprise-server.mjs
+├── scripts/                      # dev.ps1, build.ps1 (запуск из корня)
+├── .agents/skills/               # Скиллы для AI-агента (копируются в ~/.config/mini-ai-1c/.agents/skills/)
+└── AGENTS.md                     # Этот файл
+```
+
+---
+
+## Что сделано (реализованные фичи)
+
+### 1. Панель сессий (SessionsPanel)
+- Левая боковая панель с деревом сессий
+- Иерархия: Конфигурация → Объект 1С → Модуль → Чаты
+- Переключение чатов, удаление, создание новых
+- Ресайз панели (280-480px), темы (light/dark), состояние открыта/закрыта
+
+### 2. Enterprise-режим
+- `enterprise.json` рядом с EXE → при старте `GET {server}/api/client/config`
+- Deep-merge конфига с сервера в локальные настройки
+- Graceful degradation при недоступности сервера
+- Авто-очистка устаревших enterprise-настроек при отсутствии `enterprise.json`
+
+### 3. Единый конфиг-путь
+- Все данные перенесены в `$HOME/.config/mini-ai-1c/`
+- Миграция со старых путей при первом запуске
+- EditorBridge path auto-fix после миграции
+
+### 4. MCP-сервер mcp-skills
+- TypeScript stdio-сервер (как 1c-help, naparnik, metadata)
+- Инструменты: `list_skills`, `get_skill`, `search_skills`
+- Двухуровневая структура скиллов: `<category>/<skill>/SKILL.md`
+- Встроен `include_bytes!` + авто-билд через esbuild
+
+### 5. Вкладка «Скиллы» в настройках
+- Слева список скиллов, справа Markdown-редактор + превью
+- CRUD через Rust-команды (list, get, save, delete)
+
+### 6. Portable сборка
+- `scripts/build-portable.ps1` — ZIP с EXE + MCP-серверами + enterprise.json
+
+---
+
+## Архитектура конфигурации
+
+```
+$HOME/.config/mini-ai-1c/
+├── settings.json                 # Основные настройки
+├── llm_profiles.json             # LLM-профили (API ключи зашифрованы AES-GCM)
+├── .key                          # Мастер-ключ шифрования (AES-256-GCM)
+├── bin/                          # EditorBridge.exe, BSL LS .jar
+├── bsl-workspace/                # Рабочая директория BSL Language Server
+├── search-index/                 # SQLite-индексы mcp-1c-search
+├── .agents/skills/               # Скиллы (категория/скилл/SKILL.md)
+│   ├── bsl/                      
+│   │   ├── common-module/SKILL.md
+│   │   └── managed-form/SKILL.md
+│   └── cc-1c/
+│       └── ...
+└── qwen-usage-*.json             # Счётчики использования Qwen CLI
+```
+
+---
+
+## Enterprise-архитектура (клиент-сервер)
+
+```
+┌────────────────────────────────┐
+│  Сервер (ai-1c-server, Rust)   │
+│  - MCP Gateway (HTTP→stdio)    │
+│  - BSL LS WebSocket            │
+│  - Config API                  │
+│  - Skills Registry             │
+│  - File Watcher + Indexer      │
+│  - Admin Dashboard (React SPA) │
+│  - Updater (версии клиента)    │
+└──────────────┬─────────────────┘
+               │ HTTP / WebSocket
+┌──────────────▼─────────────────┐
+│  Клиент (mini-ai-1c portable)  │
+│  - enterprise.json → настройки │
+│  - MCP через HTTP к серверу    │
+│  - BSL LS через WebSocket      │
+│  - EditorBridge локально       │
+│  - Авто-обновление с сервера   │
+└────────────────────────────────┘
+```
+
+---
+
+## Команды
+
+| Действие | Команда (из `tauri-app/`) |
+|----------|--------------------------|
+| Dev сервер | `npm run app:dev` |
 | Production build | `npm run app:build` |
-| Full rebuild | `npm run full:build` (release MCP search + app build) |
-| Build MCP servers only | `npm run build:mcp` (esbuild TS → .cjs) |
-| Build MCP search only | `npm run build:mcp-search` (Rust release + copy) |
-| TypeScript check | `npm run build` (runs `tsc` then `vite build`) |
-| Rust tests | `npm run test:rust` (cargo test in src-tauri) |
-| Diff tests | `npm run test:diff` (from any workspace-aware dir) |
+| Portable ZIP | `powershell -File scripts/build-portable.ps1` |
+| TypeScript check | `npx tsc --noEmit` |
+| Rust check | `cargo check` (из `src-tauri/`) |
+| Собрать MCP-серверы | `npm run build:mcp` |
+| Собрать mcp-1c-search | `npm run build:mcp-search` |
+| Скрипты из корня | `scripts/dev.ps1`, `scripts/build.ps1`, `scripts/portable.ps1` |
 
-## Dev server quirks
+---
 
-- Vite listens on **port 1440** (not 5173).
-- Two HTML entrypoints in Rollup config: `index.html` (main window) and `overlay.html` (overlay popup).
-- `tsc` type-checking is a separate step before Vite build.
+## Планы (ai-1c-server)
 
-## Rust architecture
+| Этап | Описание |
+|------|----------|
+| 1 | Каркас сервера: axum + SQLite + CLI args |
+| 2 | MCP Gateway: subprocess manager, HTTP→stdio proxy |
+| 3 | Config API: endpoint для клиентов |
+| 4 | File Watcher + интеграция mcp-1c-search |
+| 5 | Skills Registry: CRUD + API |
+| 6 | Admin Dashboard: React SPA |
+| 7 | Updater: версионирование, авто-обновление клиента |
+| 8 | Аутентификация: токены |
+| 9 | Linux systemd service + Windows service |
+| 10 | Документация |
 
-- `main.rs` is just `mini_ai_1c_lib::run()`.
-- Windows-only modules are gated with `#[cfg(windows)]` — `configurator`, `editor_bridge`, `mouse_hook`, `scintilla`.
-- `mcp-1c-search/` is a **separate** Rust binary (not a workspace member), built independently with `cargo build --release`.
-- `mcp-1c-tools/` — standalone Rust MCP server for 1C:Enterprise tools (build with `cargo build --release` from `tauri-app/mcp-1c-tools/`).
-- App data migrated to `$HOME/.config/mini-ai-1c/` on startup in `lib.rs` (from `%LOCALAPPDATA%\MiniAI1C`, `%APPDATA%\com.mini-ai-1c`, `%APPDATA%\mini-ai-1c`).
+---
 
 ## Git workflow
 
-- **После каждого изменения делай коммит** (даже если кажется мелким).
-- Перед коммитом: `git status`, `git diff`, проверить что не попали артефакты (target/, .exe, .pdb, node_modules, .env).
-- Формат сообщения: кратко, на русском, суть изменений.
+- **Коммитить после каждого изменения**, даже мелкого.
+- Перед коммитом: `git status`, `git diff`, проверить артефакты.
+- Формат сообщения: кратко, на русском, суть.
+- Ветка `main` — основная разработка.
+- Серверная часть — отдельный репозиторий `vitebc/ai-1c-server`.
 
-## Windows-only features
+---
 
-The app is designed for **Windows 10/11** with the 1C:Enterprise Configurator. Key Windows-specific components:
-- **EditorBridge** (.NET, named pipe `\\.\pipe\mini-ai-editor-bridge-<USERNAME>`)
-- **BSL Language Server** (requires Java 17+)
-- **Quick Actions** overlay via global mouse hook (`Ctrl + right-click` in Configurator)
-- WebView2 Runtime must be installed (Tauri 2 requirement on Windows)
+## Зависимости
 
-## Testing
-
-- `tests/` directory is in `.gitignore` — test sources are not committed.
-- `tests/scenarios/configurator_quick_actions_remaining.md` is the only tracked test-related file (scenario doc, not executable).
-- No CI workflows found (no `.github/`).
-
-## TypeScript path aliases
-
-`@/` and `@src/` both resolve to `tauri-app/src/`.
-
-## Git-ignored files to know about
-
-- `settings.json`, `llm_profiles.json`, `.env` — sensitive runtime config, never committed.
-- `tests/`, `docs/`, `temp/`, `artifacts/`, `backup/` — development artifacts.
-
-## Bundle & packaging
-
-- `tauri build` outputs to `src-tauri/target/release/bundle/`.
-- MCP server binaries are embedded via `include_bytes!` and auto-extracted on first run.
-- Prod installers are MSI/NSIS (`npm run repack:installers`).
+- **Rust**: Tauri 2, axum, tokio, rusqlite, reqwest, notify, aes-gcm
+- **Frontend**: React 19, TypeScript, Vite 7, Tailwind CSS v4, Monaco Editor, Radix UI, lucide-react
+- **MCP**: @modelcontextprotocol/sdk (TypeScript), tree-sitter-bsl (Rust)
+- **Системные**: Java 17+ (BSL LS), Node.js 18+ (MCP-серверы), WebView2 Runtime
+- **EditorBridge**: .NET 8 self-contained single-file EXE
