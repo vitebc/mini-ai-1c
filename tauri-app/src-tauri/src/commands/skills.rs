@@ -12,23 +12,8 @@ pub struct SkillFile {
 
 /// Resolve the skills directory path (same logic as in mcp_client)
 fn resolve_skills_dir() -> Option<PathBuf> {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let p = dir.join(".agents").join("skills");
-            if p.exists() && p.is_dir() {
-                return Some(p);
-            }
-        }
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        for ancestor in exe.ancestors() {
-            let p = ancestor.join(".agents").join("skills");
-            if p.exists() && p.is_dir() {
-                return Some(p);
-            }
-        }
-    }
-    None
+    let p = crate::settings::get_settings_dir().join(".agents").join("skills");
+    Some(p)
 }
 
 fn scan_skills_dir() -> Vec<SkillFile> {

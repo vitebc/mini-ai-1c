@@ -54,25 +54,8 @@ pub(crate) const SEARCH_INDEX_DIR_ENV: &str = "MINI_AI_1C_SEARCH_INDEX_DIR";
 const BUILTIN_MCP_SKILLS_SERVER_ID: &str = "builtin-mcp-skills";
 
 fn resolve_skills_dir() -> Option<String> {
-    // 1. Next to current exe
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let p = dir.join(".agents").join("skills");
-            if p.exists() && p.is_dir() {
-                return Some(p.to_string_lossy().to_string());
-            }
-        }
-    }
-    // 2. Development: walk up from target/<profile>/ to find .agents/skills/
-    if let Ok(exe) = std::env::current_exe() {
-        for ancestor in exe.ancestors() {
-            let p = ancestor.join(".agents").join("skills");
-            if p.exists() && p.is_dir() {
-                return Some(p.to_string_lossy().to_string());
-            }
-        }
-    }
-    None
+    let p = crate::settings::get_settings_dir().join(".agents").join("skills");
+    Some(p.to_string_lossy().to_string())
 }
 
 fn with_runtime_settings(mut config: McpServerConfig, settings: &AppSettings) -> McpServerConfig {
