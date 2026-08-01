@@ -1030,7 +1030,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
         <>
             <div
                 ref={wizardRef}
-                className={`absolute inset-0 z-[100] ${step === 'tour' ? 'bg-transparent pointer-events-none' : 'bg-[#1e1e1e] flex items-center justify-center p-6'} text-white font-sans transition-colors duration-700`}>
+                className={`absolute inset-0 z-[100] ${step === 'tour' ? 'bg-transparent pointer-events-none' : 'bg-[#222224] flex items-center justify-center p-6'} text-white font-sans transition-colors duration-700`}>
                 <div className={`w-full ${step === 'tour' ? 'h-full' : 'max-w-4xl'} relative transition-all duration-500`}>
                     {step === 'welcome' && renderWelcome()}
                     {step === 'environment' && renderEnvironment()}

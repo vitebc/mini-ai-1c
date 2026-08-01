@@ -58,8 +58,8 @@ export function SearchProfileBar() {
         <span className="text-[10px] text-zinc-600">конфигурация для поиска</span>
       </div>
       {isOpen && (
-        <div className="absolute bottom-full left-0 mb-1 w-56 bg-[#1f1f23] border border-[#27272a] rounded-lg shadow-2xl z-50 py-1 animate-in slide-in-from-bottom-2 duration-200">
-          <div className="px-3 py-1.5 border-b border-[#27272a] mb-1">
+        <div className="absolute bottom-full left-0 mb-1 w-56 bg-[#232325] border border-[#2a2a2c] rounded-lg shadow-2xl z-50 py-1 animate-in slide-in-from-bottom-2 duration-200">
+          <div className="px-3 py-1.5 border-b border-[#2a2a2c] mb-1">
             <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
               Профиль поиска
             </span>

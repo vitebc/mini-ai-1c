@@ -5,25 +5,25 @@
 :root {
     font-family: "Segoe WPC", "Segoe UI", sans-serif;
     font-size: 13px;
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
+    --background: 0 0% 7.5%;
+    --foreground: 0 0% 93%;
+    --card: 0 0% 7.5%;
+    --card-foreground: 0 0% 93%;
+    --popover: 0 0% 7.5%;
+    --popover-foreground: 0 0% 93%;
+    --primary: 0 0% 93%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 93%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 0 0% 12%;
+    --accent-foreground: 0 0% 93%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
+    --border: 0 0% 14%;
+    --input: 0 0% 14%;
+    --ring: 0 0% 64%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -31,21 +31,34 @@
     --chart-5: 340 75% 55%;
     --radius: 0.5rem;
 
+    /* Neutral grey zinc scale (no blue/purple tint) */
+    --color-zinc-50: oklch(0.97 0.001 0);
+    --color-zinc-100: oklch(0.92 0.001 0);
+    --color-zinc-200: oklch(0.87 0.001 0);
+    --color-zinc-300: oklch(0.74 0.001 0);
+    --color-zinc-400: oklch(0.55 0.001 0);
+    --color-zinc-500: oklch(0.45 0.001 0);
+    --color-zinc-600: oklch(0.37 0.001 0);
+    --color-zinc-700: oklch(0.27 0.001 0);
+    --color-zinc-800: oklch(0.20 0.001 0);
+    --color-zinc-900: oklch(0.145 0.001 0);
+    --color-zinc-950: oklch(0.085 0.001 0);
+
     /* VSCode Theme Variables Defaults (Dark) */
-    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-background: #1a1a1a;
     --vscode-editor-foreground: #d4d4d4;
     --vscode-button-background: #0e639c;
     --vscode-button-foreground: #ffffff;
     --vscode-button-hoverBackground: #1177bb;
-    --vscode-dropdown-background: #3c3c3c;
+    --vscode-dropdown-background: #2a2a2a;
     --vscode-dropdown-foreground: #f0f0f0;
-    --vscode-dropdown-border: #3c3c3c;
+    --vscode-dropdown-border: #2a2a2a;
     --vscode-list-activeSelectionBackground: #094771;
     --vscode-list-activeSelectionForeground: #ffffff;
-    --vscode-list-hoverBackground: #2a2d2e;
-    --vscode-input-background: #3c3c3c;
+    --vscode-list-hoverBackground: #2a2a2a;
+    --vscode-input-background: #2a2a2a;
     --vscode-input-foreground: #cccccc;
-    --vscode-input-border: #3c3c3c;
+    --vscode-input-border: #2a2a2a;
     --vscode-focusBorder: #007fd4;
 }
 
@@ -78,31 +91,31 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #424242;
+    background: #3a3a3a;
     border-radius: 5px;
     border: 2px solid transparent;
     background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background-color: #4f4f4f;
+    background-color: #4a4a4a;
 }
 
 /* ===== LIGHT THEME ===== */
 /* Tailwind v4 uses CSS variables for zinc colors — override them to flip dark→light */
 html.light {
-    /* Flip zinc scale: dark values → light equivalents */
-    --color-zinc-950: oklch(0.985 0 0);
-    --color-zinc-900: oklch(0.967 0.001 286.375);
-    --color-zinc-800: oklch(0.92 0.004 286.32);
-    --color-zinc-700: oklch(0.871 0.006 286.286);
-    --color-zinc-600: oklch(0.705 0.015 286.067);
-    --color-zinc-500: oklch(0.556 0.013 285.938);
-    --color-zinc-400: oklch(0.442 0.017 285.786);
-    --color-zinc-300: oklch(0.37 0.013 285.805);
-    --color-zinc-200: oklch(0.274 0.006 286.618);
-    --color-zinc-100: oklch(0.21 0.006 285);
-    --color-zinc-50: oklch(0.141 0.005 285.823);
+    /* Flip zinc scale: dark values → neutral light equivalents */
+    --color-zinc-950: oklch(0.985 0.001 0);
+    --color-zinc-900: oklch(0.965 0.001 0);
+    --color-zinc-800: oklch(0.925 0.001 0);
+    --color-zinc-700: oklch(0.87 0.001 0);
+    --color-zinc-600: oklch(0.70 0.001 0);
+    --color-zinc-500: oklch(0.55 0.001 0);
+    --color-zinc-400: oklch(0.44 0.001 0);
+    --color-zinc-300: oklch(0.37 0.001 0);
+    --color-zinc-200: oklch(0.27 0.001 0);
+    --color-zinc-100: oklch(0.21 0.001 0);
+    --color-zinc-50: oklch(0.14 0.001 0);
 
     /* HSL semantic vars used by shadcn/tailwind config */
     --background: 0 0% 100%;
@@ -144,28 +157,27 @@ html.light {
 }
 
 /* Override hardcoded hex colors used in components */
-html.light .bg-\[\#09090b\] { background-color: #ffffff !important; }
-html.light .bg-\[\#18181b\] { background-color: #f5f5f5 !important; }
-html.light .bg-\[\#18181b\]\/80 { background-color: rgb(248 248 248 / 0.95) !important; }
-html.light .border-\[\#3f3f46\]\/30 { border-color: rgb(200 200 200 / 0.6) !important; }
+html.light .bg-\[\#111113\] { background-color: #ffffff !important; }
+html.light .bg-\[\#1c1c1e\] { background-color: #f5f5f5 !important; }
+html.light .bg-\[\#1c1c1e\]\/80 { background-color: rgb(248 248 248 / 0.95) !important; }
+html.light .border-\[\#424244\]\/30 { border-color: rgb(200 200 200 / 0.6) !important; }
 
 /* Soften blue buttons in light theme — less jarring than vivid Tailwind blue-600 */
 html.light .bg-blue-600 { background-color: #0078d4 !important; }
 html.light .hover\:bg-blue-500:hover { background-color: #1184db !important; }
 html.light .hover\:bg-blue-700:hover { background-color: #006cbd !important; }
-html.light .bg-\[\#1b1b1f\] { background-color: #f0f0f0 !important; }
-html.light .bg-\[\#1e1e1e\] { background-color: #f3f3f3 !important; }
-html.light .bg-\[\#1e1e21\] { background-color: #f5f5f5 !important; }
-html.light .bg-\[\#1f1f23\] { background-color: #f0f0f2 !important; }
-html.light .bg-\[\#121214\] { background-color: #f8f8f8 !important; }
-html.light .bg-\[\#27272a\] { background-color: #e4e4e7 !important; }
-html.light .bg-\[\#3c3c3c\] { background-color: #f0f0f0 !important; }
-html.light .bg-\[\#3f3f46\] { background-color: #d4d4d8 !important; }
-html.light .border-\[\#27272a\] { border-color: #d4d4d8 !important; }
-html.light .hover\:bg-\[\#27272a\]:hover { background-color: #e9e9ec !important; }
-html.light .hover\:bg-\[\#323236\]:hover { background-color: #e0e0e7 !important; }
-html.light .bg-\[\#27272a\]\/50 { background-color: rgb(228 228 231 / 0.5) !important; }
-html.light .bg-\[\#09090b\]\/50 { background-color: rgb(255 255 255 / 0.5) !important; }
+html.light .bg-\[\#1f1f21\] { background-color: #f0f0f0 !important; }
+html.light .bg-\[\#222224\] { background-color: #f3f3f3 !important; }
+html.light .bg-\[\#232325\] { background-color: #f0f0f2 !important; }
+html.light .bg-\[\#171719\] { background-color: #f8f8f8 !important; }
+html.light .bg-\[\#2a2a2c\] { background-color: #e4e4e7 !important; }
+html.light .bg-\[\#3a3a3c\] { background-color: #f0f0f0 !important; }
+html.light .bg-\[\#424244\] { background-color: #d4d4d8 !important; }
+html.light .border-\[\#2a2a2c\] { border-color: #d4d4d8 !important; }
+html.light .hover\:bg-\[\#2a2a2c\]:hover { background-color: #e9e9ec !important; }
+html.light .hover\:bg-\[\#363638\]:hover { background-color: #e0e0e7 !important; }
+html.light .bg-\[\#2a2a2c\]\/50 { background-color: rgb(228 228 231 / 0.5) !important; }
+html.light .bg-\[\#111113\]\/50 { background-color: rgb(255 255 255 / 0.5) !important; }
 
 /* Light scrollbar */
 html.light ::-webkit-scrollbar-thumb { background: #c4c4c4; }
@@ -174,7 +186,7 @@ html.light ::-webkit-scrollbar-thumb:hover { background-color: #a8a8a8; }
 /* Light body */
 html.light body {
     background-color: #ffffff;
-    color: #18181b;
+    color: #1c1c1e;
 }
 
 /* Fix red/destructive colors in light theme (better contrast) */
@@ -212,21 +224,21 @@ html.light .qwen-paid-notice a:hover { color: #78350f !important; }
 html.light .qwen-paid-notice span { color: #d97706 !important; }
 
 /* Fix muted text that's too light in light theme */
-html.light .text-zinc-500 { color: #52525b !important; }
-html.light .text-zinc-600 { color: #3f3f46 !important; }
+html.light .text-zinc-500 { color: #6a6a6c !important; }
+html.light .text-zinc-600 { color: #424244 !important; }
 
 /* Override static white text (not on colored backgrounds) */
 html.light .text-white {
-    color: #18181b !important;
+    color: #1c1c1e !important;
 }
 html.light .text-white\/40 {
-    color: rgb(24 24 27 / 0.5) !important;
+    color: rgb(28 28 30 / 0.5) !important;
 }
 html.light .text-white\/60 {
-    color: rgb(24 24 27 / 0.7) !important;
+    color: rgb(28 28 30 / 0.7) !important;
 }
 html.light .text-white\/10 {
-    color: rgb(24 24 27 / 0.15) !important;
+    color: rgb(28 28 30 / 0.15) !important;
 }
 /* Restore white text on colored (non-zinc) backgrounds */
 html.light .bg-blue-600 .text-white,

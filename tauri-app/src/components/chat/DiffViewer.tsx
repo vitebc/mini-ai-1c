@@ -112,7 +112,7 @@ export function DiffViewer({ originalCode, diffContent, onApply, onCancel }: Dif
                             </div>
 
                             {/* Тело диффа */}
-                            <div className="relative bg-[#1e1e1e]">
+                            <div className="relative bg-[#222224]">
                                 {block.status === 'rejected' ? (
                                     <div className="p-4 text-center text-zinc-500 text-sm italic">
                                         Изменение отклонено

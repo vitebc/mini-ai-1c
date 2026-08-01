@@ -188,7 +188,7 @@ export function VoiceInputControl({
                     <Mic className={`w-4 h-4 ${isRecording ? 'animate-pulse' : ''}`} />
                     {isRecording && (
                         <span
-                            className={`absolute top-1 right-1 w-2 h-2 rounded-full border border-[#09090b] transition-colors ${hasMicSignal ? 'bg-emerald-300' : 'bg-amber-300'}`}
+                            className={`absolute top-1 right-1 w-2 h-2 rounded-full border border-[#111113] transition-colors ${hasMicSignal ? 'bg-emerald-300' : 'bg-amber-300'}`}
                             aria-hidden="true"
                         />
                     )}

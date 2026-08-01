@@ -192,7 +192,7 @@ export function Header({
     }, []);
 
     return (
-        <div className="flex items-center justify-between px-4 py-2 border-b border-[#27272a] bg-[#09090b]">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-[#2a2a2c] bg-[#111113]">
             <div className="flex items-center gap-3">
                 {/* Notifications shutter (MCP + updates) */}
                 {(notifications.length > 0 || updateNotif) && (
@@ -376,23 +376,23 @@ export function Header({
             <div className="flex items-center gap-2">
                 <button
                     onClick={snapToConfigurator}
-                    className="p-2 hover:bg-[#27272a] rounded-lg transition-colors text-zinc-400 group"
+                    className="p-2 hover:bg-[#2a2a2c] rounded-lg transition-colors text-zinc-400 group"
                     title="Привязать к окну Конфигуратора"
                 >
                     <Pin className="w-4 h-4 group-hover:text-blue-400 transition-colors" />
                 </button>
                 <button
                     onClick={toggleCompactMode}
-                    className="p-2 hover:bg-[#27272a] rounded-lg transition-colors text-zinc-400"
+                    className="p-2 hover:bg-[#2a2a2c] rounded-lg transition-colors text-zinc-400"
                     title={isCompact ? "Expand Window" : "Compact Window"}
                 >
                     {isCompact ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
                 </button>
-                <div className="w-px h-4 bg-[#27272a] mx-1" />
+                <div className="w-px h-4 bg-[#2a2a2c] mx-1" />
                 {false && (
                     <button
                         onClick={onExportChat}
-                        className="p-2 rounded-lg transition-colors text-zinc-400 hover:bg-[#27272a] hover:text-zinc-200"
+                        className="p-2 rounded-lg transition-colors text-zinc-400 hover:bg-[#2a2a2c] hover:text-zinc-200"
                         title="Экспорт диалога в файл"
                     >
                         <Download className="w-4 h-4" />
@@ -400,7 +400,7 @@ export function Header({
                 )}
                 <button
                     onClick={onNewChat}
-                    className="p-2 hover:bg-[#27272a] rounded-lg transition-colors text-zinc-400 hover:text-zinc-200"
+                    className="p-2 hover:bg-[#2a2a2c] rounded-lg transition-colors text-zinc-400 hover:text-zinc-200"
                     title="Новый чат"
                 >
                     <MessageSquarePlus className="w-4 h-4" />
@@ -412,7 +412,7 @@ export function Header({
                         className={`p-2 rounded-lg transition-colors ${
                             chatHistoryOpen
                                 ? 'bg-sky-500/10 text-sky-300'
-                                : 'text-zinc-400 hover:bg-[#27272a] hover:text-zinc-200'
+                                : 'text-zinc-400 hover:bg-[#2a2a2c] hover:text-zinc-200'
                         }`}
                         title="История чатов"
                     >
@@ -432,7 +432,7 @@ export function Header({
                 </div>
                 <button
                     onClick={() => settings && updateSettings({ ...settings, theme: settings.theme === 'light' ? 'dark' : 'light' })}
-                    className="p-2 hover:bg-[#27272a] rounded-lg transition-colors text-zinc-400 hover:text-zinc-200"
+                    className="p-2 hover:bg-[#2a2a2c] rounded-lg transition-colors text-zinc-400 hover:text-zinc-200"
                     title={settings?.theme === 'light' ? 'Тёмная тема' : 'Светлая тема'}
                 >
                     {settings?.theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
@@ -440,7 +440,7 @@ export function Header({
                 <button
                     data-testid="settings-button"
                     onClick={() => onOpenSettings()}
-                    className="p-2 hover:bg-[#27272a] rounded-lg transition-colors"
+                    className="p-2 hover:bg-[#2a2a2c] rounded-lg transition-colors"
                     title="Settings"
                 >
                     <Settings className="w-4 h-4 text-zinc-400" />

@@ -47,7 +47,7 @@ export function CodeSidePanel({
     const sideResizeGripClass = isLightTheme ? 'bg-zinc-400 group-hover:bg-blue-500' : 'bg-zinc-700 group-hover:bg-blue-400';
     const inlineToolbarClass = isLightTheme
         ? 'flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-[#d4d4d8] rounded-md shadow-sm p-0 pointer-events-auto leading-none'
-        : 'flex items-center gap-1 bg-[#18181b]/80 backdrop-blur-sm border border-[#3f3f46]/30 rounded-md shadow-sm p-0 pointer-events-auto leading-none';
+        : 'flex items-center gap-1 bg-[#1c1c1e]/80 backdrop-blur-sm border border-[#424244]/30 rounded-md shadow-sm p-0 pointer-events-auto leading-none';
     const inlineRevertButtonClass = isLightTheme
         ? 'px-1 py-0.5 text-[9px] font-bold text-zinc-600 hover:text-red-600 hover:bg-red-500/10 rounded-sm transition-all active:scale-95'
         : 'px-1 py-0.5 text-[9px] font-bold text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-sm transition-all active:scale-95';
@@ -432,7 +432,7 @@ export function CodeSidePanel({
             id="code-side-panel"
             style={{ width: isFullWidth ? '100%' : (isExpanded ? `${width}px` : '280px') }}
             className={`border-l flex flex-col h-full shadow-2xl transition-[width] duration-300 ease-in-out relative ${
-                isLightTheme ? 'border-[#d4d4d8] bg-[#fafafa]' : 'border-[#27272a] bg-[#09090b]'
+                isLightTheme ? 'border-[#d4d4d8] bg-[#fafafa]' : 'border-[#2a2a2c] bg-[#111113]'
             } ${isResizing || isFullWidth ? 'transition-none' : ''} ${isFullWidth ? 'w-full' : 'flex-shrink-0'}`}
         >
             {/* Resize Handle */}
@@ -732,7 +732,7 @@ export function CodeSidePanel({
                 className={`group h-2 flex-shrink-0 cursor-row-resize border-t transition-colors ${
                     isLightTheme
                         ? 'border-[#d4d4d8] bg-[#f4f4f5] hover:bg-blue-500/5'
-                        : 'border-[#27272a] bg-[#111114] hover:bg-blue-500/10'
+                        : 'border-[#2a2a2c] bg-[#111114] hover:bg-blue-500/10'
                 }`}
                 role="separator"
                 aria-label="Resize diagnostics panel"

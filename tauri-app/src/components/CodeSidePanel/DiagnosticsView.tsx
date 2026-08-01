@@ -25,26 +25,26 @@ export function DiagnosticsView({
     onSelectionChange,
 }: DiagnosticsViewProps) {
     const headerClass = isLightTheme
-        ? 'border-[#d4d4d8] text-[#3f3f46] bg-[#f4f4f5]'
-        : 'border-[#27272a]/50 text-zinc-500 bg-[#1f1f23]';
+        ? 'border-[#d4d4d8] text-[#424244] bg-[#f4f4f5]'
+        : 'border-[#2a2a2c]/50 text-zinc-500 bg-[#232325]';
     const countBadgeClass = isLightTheme
-        ? 'bg-[#e4e4e7] text-[#3f3f46]'
-        : 'bg-[#27272a] text-zinc-400';
-    const emptyStateClass = isLightTheme ? 'text-[#71717a]' : 'text-zinc-600';
+        ? 'bg-[#e4e4e7] text-[#424244]'
+        : 'bg-[#2a2a2c] text-zinc-400';
+    const emptyStateClass = isLightTheme ? 'text-[#6a6a6c]' : 'text-zinc-600';
     const tableHeaderClass = isLightTheme
         ? 'bg-[#f4f4f5] text-[#52525b]'
-        : 'bg-[#1f1f23] text-zinc-500';
+        : 'bg-[#232325] text-zinc-500';
     const rowClass = isLightTheme
         ? 'border-[#e4e4e7] hover:bg-[#f4f4f5]'
-        : 'border-[#27272a]/30 hover:bg-[#27272a]/50';
-    const messageClass = isLightTheme ? 'text-[#18181b]' : 'text-zinc-300';
+        : 'border-[#2a2a2c]/30 hover:bg-[#2a2a2c]/50';
+    const messageClass = isLightTheme ? 'text-[#1c1c1e]' : 'text-zinc-300';
     const sourceClass = isLightTheme ? 'text-[#52525b]' : 'text-zinc-500';
     const bulkButtonClass = isLightTheme
-        ? 'text-[#52525b] hover:text-[#18181b] hover:bg-[#e4e4e7]'
-        : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#27272a]';
+        ? 'text-[#52525b] hover:text-[#1c1c1e] hover:bg-[#e4e4e7]'
+        : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#2a2a2c]';
     const activeBulkButtonClass = isLightTheme
-        ? 'bg-[#e4e4e7] text-[#18181b]'
-        : 'bg-[#27272a] text-zinc-200';
+        ? 'bg-[#e4e4e7] text-[#1c1c1e]'
+        : 'bg-[#2a2a2c] text-zinc-200';
 
     const selectedCount = diagnostics.filter((diagnostic) => selectedKeys.has(diagnosticKey(diagnostic))).length;
     const allSelected = diagnostics.length > 0 && selectedCount === diagnostics.length;
@@ -77,7 +77,7 @@ export function DiagnosticsView({
                     ? 'border-blue-500/70 shadow-[inset_0_1px_0_rgba(59,130,246,0.45)]'
                     : isLightTheme
                         ? 'border-[#d4d4d8] bg-[#fafafa]'
-                        : 'border-[#27272a] bg-[#18181b]'
+                        : 'border-[#2a2a2c] bg-[#1c1c1e]'
             }`}
         >
             <div className={`px-3 py-1.5 border-b flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider ${headerClass}`}>
@@ -146,7 +146,7 @@ export function DiagnosticsView({
                                                 type="button"
                                                 onClick={() => toggleOne(diagnostic)}
                                                 className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${
-                                                    isLightTheme ? 'text-[#52525b] hover:text-[#18181b]' : 'text-zinc-500 hover:text-zinc-300'
+                                                    isLightTheme ? 'text-[#52525b] hover:text-[#1c1c1e]' : 'text-zinc-500 hover:text-zinc-300'
                                                 }`}
                                                 title={checked ? 'Снять отметку' : 'Отметить'}
                                             >

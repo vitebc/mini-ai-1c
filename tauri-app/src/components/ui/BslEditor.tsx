@@ -32,14 +32,14 @@ export function BslEditor({ code, height = '200px', readOnly = true, loading, cl
     }, [monacoTheme]);
 
     const defaultLoading = (
-        <pre className="bg-[#1e1e1e] p-4 text-zinc-300 text-[13px] font-mono whitespace-pre opacity-50">
+        <pre className="bg-[#222224] p-4 text-zinc-300 text-[13px] font-mono whitespace-pre opacity-50">
             {code}
         </pre>
     );
 
     return (
         <div
-            className={`overflow-hidden transition-all duration-300 ${!hideBorder ? 'rounded-b-lg border border-[#27272a] border-t-0' : ''} ${className || ''}`}
+            className={`overflow-hidden transition-all duration-300 ${!hideBorder ? 'rounded-b-lg border border-[#2a2a2c] border-t-0' : ''} ${className || ''}`}
             style={{ height: typeof height === 'number' ? `${height}px` : height }}
         >
             <Editor

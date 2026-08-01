@@ -494,7 +494,7 @@ export function MainLayout() {
         <div className="flex flex-col h-screen bg-transparent relative overflow-hidden">
             <SettingsPanel isOpen={showSettings} onClose={() => setShowSettings(false)} initialTab={settingsTab as any} />
 
-            <div className="relative h-10 bg-[#09090b] flex items-center justify-between px-4 border-b border-[#27272a] select-none z-50">
+            <div className="relative h-10 bg-[#111113] flex items-center justify-between px-4 border-b border-[#2a2a2c] select-none z-50">
                 <div data-tauri-drag-region className="absolute inset-0 z-0" />
                 <div className="relative z-10 flex items-center gap-2 pointer-events-none">
                     <img src={logo} alt="Logo" className="w-5 h-5" />
@@ -523,7 +523,7 @@ export function MainLayout() {
                     onOpenSettings={(tab) => { if (tab) setSettingsTab(tab as any); setShowSettings(true); }}
                 />
 
-                <div className="flex flex-1 overflow-hidden bg-[#09090b] relative">
+                <div className="flex flex-1 overflow-hidden bg-[#111113] relative">
                     <SessionsPanel />
                     <div className={`flex flex-1 overflow-hidden transition-all duration-300 ${viewMode === 'code' ? 'hidden' : 'opacity-100'}`}>
                         <ChatArea

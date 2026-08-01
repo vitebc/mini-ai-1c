@@ -47,25 +47,25 @@ export function Header({
 
     const shellClass = isLightTheme
         ? 'border-[#d4d4d8] bg-[#f4f4f5]'
-        : 'border-[#27272a] bg-[#18181b]';
+        : 'border-[#2a2a2c] bg-[#1c1c1e]';
     const badgeClass = isLightTheme
         ? 'bg-[#e4e4e7] border-[#d4d4d8]'
-        : 'bg-[#27272a] border-zinc-700';
-    const toggleShellClass = isLightTheme ? 'bg-[#e4e4e7]' : 'bg-[#27272a]';
-    const activeTabClass = isLightTheme ? 'bg-white text-[#18181b] shadow-sm' : 'bg-[#3f3f46] text-white shadow-sm';
+        : 'bg-[#2a2a2c] border-zinc-700';
+    const toggleShellClass = isLightTheme ? 'bg-[#e4e4e7]' : 'bg-[#2a2a2c]';
+    const activeTabClass = isLightTheme ? 'bg-white text-[#1c1c1e] shadow-sm' : 'bg-[#424244] text-white shadow-sm';
     const inactiveTabClass = isLightTheme
-        ? 'text-[#52525b] hover:text-[#18181b] hover:bg-white/80'
+        ? 'text-[#52525b] hover:text-[#1c1c1e] hover:bg-white/80'
         : 'text-zinc-500 hover:text-zinc-300';
-    const diffShellClass = isLightTheme ? 'bg-[#e4e4e7]' : 'bg-[#27272a]/50';
+    const diffShellClass = isLightTheme ? 'bg-[#e4e4e7]' : 'bg-[#2a2a2c]/50';
     const diffDividerClass = isLightTheme ? 'border-zinc-300' : 'border-zinc-700/50';
     const subtleButtonClass = isLightTheme
-        ? 'text-[#52525b] hover:text-[#18181b] hover:bg-[#d4d4d8]'
+        ? 'text-[#52525b] hover:text-[#1c1c1e] hover:bg-[#d4d4d8]'
         : 'text-zinc-400 hover:text-white hover:bg-zinc-800';
-    const toolbarIconClass = isLightTheme ? 'text-[#52525b] hover:text-[#18181b]' : 'text-zinc-500 hover:text-zinc-300';
+    const toolbarIconClass = isLightTheme ? 'text-[#52525b] hover:text-[#1c1c1e]' : 'text-zinc-500 hover:text-zinc-300';
     const rejectClass = isLightTheme
         ? 'text-[#52525b] hover:text-[#dc2626] hover:bg-[#d4d4d8]'
         : 'text-zinc-400 hover:text-red-400 hover:bg-zinc-800';
-    const validatingClass = isLightTheme ? 'bg-[#e4e4e7] text-[#52525b]' : 'bg-[#27272a]/50 text-zinc-500';
+    const validatingClass = isLightTheme ? 'bg-[#e4e4e7] text-[#52525b]' : 'bg-[#2a2a2c]/50 text-zinc-500';
     const diffCounterClass = isLightTheme ? 'text-[#52525b]' : 'text-zinc-500';
     const errorBadgeTextClass = isLightTheme ? 'text-[#dc2626]' : 'text-red-400';
     const warningBadgeTextClass = isLightTheme ? 'text-[#b45309]' : 'text-yellow-500';

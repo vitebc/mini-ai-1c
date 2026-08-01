@@ -1168,7 +1168,7 @@ export const ChatArea = memo(function ChatArea({
             <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className={`flex-1 ${messages.length === 0 ? 'overflow-hidden' : 'overflow-y-auto scrollbar-thin scrollbar-thumb-white/10'} bg-[#09090b]`}
+                className={`flex-1 ${messages.length === 0 ? 'overflow-hidden' : 'overflow-y-auto scrollbar-thin scrollbar-thumb-white/10'} bg-[#111113]`}
             >
                 {messages.length === 0 && (
                     <div className="flex-1 flex flex-col items-center justify-center p-4 max-w-3xl mx-auto w-full h-full">
@@ -1300,7 +1300,7 @@ export const ChatArea = memo(function ChatArea({
                                     </div>
                                 )
                             ) : (
-                                <div className={`p-4 rounded-xl border text-[13px] leading-relaxed group ${msg.role === 'user' ? 'bg-[#1b1b1f] border-zinc-800/80 text-zinc-300 max-w-[90%]' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-300 shadow-sm w-full max-w-full'}`}>
+                                <div className={`p-4 rounded-xl border text-[13px] leading-relaxed group ${msg.role === 'user' ? 'bg-[#1f1f21] border-zinc-800/80 text-zinc-300 max-w-[90%]' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-300 shadow-sm w-full max-w-full'}`}>
                                     <div className="min-w-0 flex flex-col gap-3">
                                         {/* Message Header with Actions */}
                                         <div className="flex items-start justify-end gap-2 mb-2">
@@ -1678,7 +1678,7 @@ export const ChatArea = memo(function ChatArea({
             </div>
 
             {/* Input Area */}
-            <div className="px-6 pb-6 pt-4 bg-[#09090b] border-t border-[#27272a] shadow-2xl z-10">
+            <div className="px-6 pb-6 pt-4 bg-[#111113] border-t border-[#2a2a2c] shadow-2xl z-10">
                 {/* Context Stats Overlay */}
                 <div className="max-w-4xl mx-auto mb-3 flex items-center justify-between px-1">
                     {messages.length === 0 ? (
@@ -1722,7 +1722,7 @@ export const ChatArea = memo(function ChatArea({
                     isLoading={isLoading}
                 />
                 <SearchProfileBar />
-                <div className="relative bg-[#18181b] border border-[#27272a] rounded-xl focus-within:ring-1 focus-within:ring-blue-500/50 transition-all min-h-[120px] flex flex-col max-w-4xl mx-auto">
+                <div className="relative bg-[#1c1c1e] border border-[#2a2a2c] rounded-xl focus-within:ring-1 focus-within:ring-blue-500/50 transition-all min-h-[120px] flex flex-col max-w-4xl mx-auto">
 
                     <textarea
                         ref={inputRef}
@@ -1764,11 +1764,11 @@ export const ChatArea = memo(function ChatArea({
                                 </button>
 
                                 {showModelDropdown && (
-                                    <div className="absolute bottom-full left-0 mb-2 w-64 bg-[#09090b] border border-[#27272a] rounded-xl shadow-2xl z-50 overflow-hidden py-1 animate-in slide-in-from-bottom-2 duration-200">
+                                    <div className="absolute bottom-full left-0 mb-2 w-64 bg-[#111113] border border-[#2a2a2c] rounded-xl shadow-2xl z-50 overflow-hidden py-1 animate-in slide-in-from-bottom-2 duration-200">
                                         {/* Behavior Preset Toggle (Перенесено в меню) */}
                                         {settings?.code_generation && (
                                             <>
-                                                <div className="px-3 py-1.5 border-b border-[#27272a] mb-1">
+                                                <div className="px-3 py-1.5 border-b border-[#2a2a2c] mb-1">
                                                     <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Режим генерации</span>
                                                 </div>
                                                 <div className="px-3 py-1 flex gap-2">
@@ -1810,13 +1810,13 @@ export const ChatArea = memo(function ChatArea({
                                             </>
                                         )}
 
-                                        <div className="px-3 py-1.5 border-b border-[#27272a] mb-1 mt-1">
+                                        <div className="px-3 py-1.5 border-b border-[#2a2a2c] mb-1 mt-1">
                                             <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Ваши профили</span>
                                         </div>
                                         <div className="max-h-[250px] overflow-y-auto custom-scrollbar">
                                             {profiles.filter(p => getCliProviderType(p.provider) === null && p.provider !== 'OneCNaparnik' && !isOllamaCloudProfile(p)).length > 0 && (
                                                 <>
-                                                    <div className="px-3 py-1.5 border-b border-[#27272a] mb-1 sticky top-0 bg-[#09090b] z-10">
+                                                    <div className="px-3 py-1.5 border-b border-[#2a2a2c] mb-1 sticky top-0 bg-[#111113] z-10">
                                                         <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Стандартные ассистенты</span>
                                                     </div>
                                                     {profiles.filter(p => getCliProviderType(p.provider) === null && p.provider !== 'OneCNaparnik' && !isOllamaCloudProfile(p)).map(p => (
@@ -1841,7 +1841,7 @@ export const ChatArea = memo(function ChatArea({
                                             )}
                                             {profiles.filter(p => getCliProviderType(p.provider) !== null).length > 0 && (
                                                 <>
-                                                    <div className="px-3 py-1.5 border-b border-[#27272a] mt-1 mb-1 sticky top-0 bg-[#09090b] z-10">
+                                                    <div className="px-3 py-1.5 border-b border-[#2a2a2c] mt-1 mb-1 sticky top-0 bg-[#111113] z-10">
                                                         <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">CLI Провайдеры</span>
                                                     </div>
                                                     {profiles.filter(p => getCliProviderType(p.provider) !== null).map(p => {
@@ -1894,7 +1894,7 @@ export const ChatArea = memo(function ChatArea({
                                             )}
                                             {profiles.filter(p => p.provider === 'OneCNaparnik').length > 0 && (
                                                 <>
-                                                    <div className="px-3 py-1.5 border-b border-[#27272a] mt-1 mb-1 sticky top-0 bg-[#09090b] z-10">
+                                                    <div className="px-3 py-1.5 border-b border-[#2a2a2c] mt-1 mb-1 sticky top-0 bg-[#111113] z-10">
                                                         <span className="text-[10px] font-bold text-orange-500/70 uppercase tracking-wider">1С:Напарник</span>
                                                     </div>
                                                     {profiles.filter(p => p.provider === 'OneCNaparnik').map(p => (
@@ -1919,7 +1919,7 @@ export const ChatArea = memo(function ChatArea({
                                             )}
                                             {profiles.filter(isOllamaCloudProfile).length > 0 && (
                                                 <>
-                                                    <div className="px-3 py-1.5 border-b border-[#27272a] mt-1 mb-1 sticky top-0 bg-[#09090b] z-10">
+                                                    <div className="px-3 py-1.5 border-b border-[#2a2a2c] mt-1 mb-1 sticky top-0 bg-[#111113] z-10">
                                                         <span className="text-[10px] font-bold text-cyan-500/70 uppercase tracking-wider">Ollama Cloud</span>
                                                     </div>
                                                     {profiles.filter(isOllamaCloudProfile).map(p => (
@@ -1943,7 +1943,7 @@ export const ChatArea = memo(function ChatArea({
                                                 </>
                                             )}
                                         </div>
-                                        <div className="p-2 border-t border-[#27272a] mt-1">
+                                        <div className="p-2 border-t border-[#2a2a2c] mt-1">
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -1996,21 +1996,21 @@ export const ChatArea = memo(function ChatArea({
                                 </button>
 
                                 {showConfigDropdown && (
-                                    <div className="absolute bottom-full left-0 mb-2 w-72 bg-[#1f1f23] border border-[#27272a] rounded-xl shadow-2xl z-30 ring-1 ring-black/20 flex flex-col overflow-hidden animate-in slide-in-from-bottom-2 duration-200">
+                                    <div className="absolute bottom-full left-0 mb-2 w-72 bg-[#232325] border border-[#2a2a2c] rounded-xl shadow-2xl z-30 ring-1 ring-black/20 flex flex-col overflow-hidden animate-in slide-in-from-bottom-2 duration-200">
 
                                         {/* Секция выбора окон */}
-                                        <div className="px-3 py-2 border-b border-[#27272a] bg-[#09090b]">
+                                        <div className="px-3 py-2 border-b border-[#2a2a2c] bg-[#111113]">
                                             <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5"><Monitor className="w-3 h-3" /> Окна конфигуратора</span>
                                         </div>
                                         {bindingMessage && (
-                                            <div className={`px-3 py-2 text-[11px] border-b border-[#27272a] ${bindingStatus === 'missing' || bindingStatus === 'ambiguous' ? 'text-amber-300 bg-amber-500/10' : 'text-zinc-400 bg-[#18181b]'}`}>
+                                            <div className={`px-3 py-2 text-[11px] border-b border-[#2a2a2c] ${bindingStatus === 'missing' || bindingStatus === 'ambiguous' ? 'text-amber-300 bg-amber-500/10' : 'text-zinc-400 bg-[#1c1c1e]'}`}>
                                                 {bindingMessage}
                                             </div>
                                         )}
                                         <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-1">
                                             {detectedWindows.length > 0 ? detectedWindows.map(w => (
                                                 <button key={w.hwnd} onClick={() => { selectWindow(w); setShowConfigDropdown(false); }}
-                                                    className={`w-full text-left px-3 py-2 rounded-md text-[13px] truncate transition-colors ${selectedHwnd === w.hwnd ? 'bg-emerald-500/10 text-emerald-400 font-medium' : 'text-zinc-400 hover:bg-[#27272a] hover:text-zinc-200'}`}
+                                                    className={`w-full text-left px-3 py-2 rounded-md text-[13px] truncate transition-colors ${selectedHwnd === w.hwnd ? 'bg-emerald-500/10 text-emerald-400 font-medium' : 'text-zinc-400 hover:bg-[#2a2a2c] hover:text-zinc-200'}`}
                                                     title={w.title}
                                                 >
                                                     {parseConfiguratorTitle(w.title)}
@@ -2093,7 +2093,7 @@ export const ChatArea = memo(function ChatArea({
                                 data-testid="send-stop-button"
                                 onClick={isLoading ? stopChat : () => handleSendMessage()}
                                 disabled={!isLoading && !input.trim()}
-                                className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors flex-shrink-0 ${isLoading ? 'bg-red-500/10 text-red-400' : input.trim() ? 'bg-blue-600 text-white' : 'bg-[#27272a] text-zinc-600'}`}
+                                className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors flex-shrink-0 ${isLoading ? 'bg-red-500/10 text-red-400' : input.trim() ? 'bg-blue-600 text-white' : 'bg-[#2a2a2c] text-zinc-600'}`}
                             >
                                 {isLoading ? <Square className="w-4 h-4 fill-current" /> : <ArrowUp className="w-4 h-4" strokeWidth={2.5} />}
                             </button>

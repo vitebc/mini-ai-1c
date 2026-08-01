@@ -721,7 +721,7 @@ export function MCPSettings({
 
                                         <button
                                             onClick={() => handleUpdateServer(server.id, { enabled: !server.enabled })}
-                                            className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors focus:outline-none ${server.enabled ? 'bg-blue-600' : 'bg-[#71717a]'}`}
+                                            className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors focus:outline-none ${server.enabled ? 'bg-blue-600' : 'bg-[#6a6a6c]'}`}
                                         >
                                             <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform ${server.enabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
                                         </button>

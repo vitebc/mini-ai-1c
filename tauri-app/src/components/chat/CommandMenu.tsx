@@ -49,13 +49,13 @@ export function CommandMenu({ commands, onSelect, onClose, anchorRect }: Command
     return (
         <div
             ref={menuRef}
-            className="absolute bottom-full left-0 mb-2 w-full max-w-[580px] bg-[#1f1f23] border border-[#27272a] rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200 ring-1 ring-black/50"
+            className="absolute bottom-full left-0 mb-2 w-full max-w-[580px] bg-[#232325] border border-[#2a2a2c] rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200 ring-1 ring-black/50"
             style={{
                 maxHeight: '300px',
                 overflowY: 'auto'
             }}
         >
-            <div className="flex items-center gap-2 px-3 py-2 bg-[#27272a]/50 border-b border-[#27272a] text-[10px] text-zinc-500 uppercase tracking-wider font-bold">
+            <div className="flex items-center gap-2 px-3 py-2 bg-[#2a2a2c]/50 border-b border-[#2a2a2c] text-[10px] text-zinc-500 uppercase tracking-wider font-bold">
                 <Terminal size={12} className="text-blue-500" />
                 Быстрые команды
             </div>
@@ -67,7 +67,7 @@ export function CommandMenu({ commands, onSelect, onClose, anchorRect }: Command
                         onSelect(cmd);
                     }}
                     onMouseEnter={() => setSelectedIndex(index)}
-                    className={`px-4 py-3 cursor-pointer transition-all flex items-start gap-4 ${index === selectedIndex ? 'bg-blue-600/10 border-l-2 border-blue-500' : 'hover:bg-[#27272a] border-l-2 border-transparent'
+                    className={`px-4 py-3 cursor-pointer transition-all flex items-start gap-4 ${index === selectedIndex ? 'bg-blue-600/10 border-l-2 border-blue-500' : 'hover:bg-[#2a2a2c] border-l-2 border-transparent'
                         }`}
                 >
                     <div className={`p-2 rounded-lg transition-colors ${index === selectedIndex ? 'bg-blue-500/20 text-blue-400' : 'bg-zinc-800 text-zinc-500'}`}>
