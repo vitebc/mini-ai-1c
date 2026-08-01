@@ -7,7 +7,13 @@ export interface WindowInfo {
 export interface BslStatus {
     installed: boolean;
     java_info: string;
+    runtime_info: string;
+    server_version: string;
+    server_path: string;
+    workspace_path: string;
+    active_port: number;
     connected: boolean;
+    mcp_available: boolean;
 }
 
 // Режим генерации кода
@@ -151,6 +157,9 @@ export interface AppSettings {
         editor_bridge_exe_path: string;
     };
     bsl_server: {
+        executable_path: string;
+        installed_version: string;
+        workspace_path: string;
         jar_path: string;
         websocket_port: number;
         enabled: boolean;

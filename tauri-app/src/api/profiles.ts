@@ -11,7 +11,7 @@ export interface LLMProfile {
     max_tokens: number;
     temperature: number;
     context_window_override?: number;
-    reasoning_effort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh';
+    reasoning_effort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
     enable_thinking?: boolean;
     disable_streaming?: boolean;
     stream_timeout_secs?: number;

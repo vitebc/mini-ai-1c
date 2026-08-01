@@ -53,6 +53,15 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
     const [bslDownloadError, setBslDownloadError] = useState<string | null>(null);
     const [bslDownloadSuccess, setBslDownloadSuccess] = useState(false);
     const [diagnosing, setDiagnosing] = useState(false);
+    const [reconnectingBsl, setReconnectingBsl] = useState(false);
+
+    const reconnectBsl = () => {
+        setReconnectingBsl(true);
+        invoke('reconnect_bsl_ls_cmd')
+            .then(() => { setTimeout(refreshBslStatus, 1000); })
+            .catch(e => console.warn('[Settings] reconnect failed:', e))
+            .finally(() => setReconnectingBsl(false));
+    };
     const [diagReport, setDiagReport] = useState<BslDiagnosticItem[] | null>(null);
     const [showResetConfirm, setShowResetConfirm] = useState(false);
 
@@ -347,6 +356,8 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
                             diagReport={diagReport}
                             setDiagReport={setDiagReport}
                             runDiagnostics={runDiagnostics}
+                            reconnectBsl={reconnectBsl}
+                            reconnecting={reconnectingBsl}
                         />
                     )}
 

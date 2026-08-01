@@ -9,16 +9,24 @@ import { CodexAuthModal } from './CodexAuthModal';
 import { CliStatus, CliUsageWindow } from '../../types/settings';
 
 import { LLMProfile, ProfileStore } from '../../contexts/ProfileContext';
-import { applyFetchedModelMetadata, applySelectedModelMetadata } from '../../utils/llmProfileModelMetadata';
+import {
+    applyFetchedModelMetadata,
+    applySelectedModelMetadata,
+    type ModelMetadata,
+} from '../../utils/llmProfileModelMetadata';
 import { isOllamaCloudProfile } from '../../utils/profileHelpers';
 import { shouldResetApiKeyDraft } from '../../utils/profileSecretDraft';
+import {
+    MINIMAX_PROVIDER_DEFINITION,
+    type ProviderDefinition,
+} from './providerCatalog';
 
 interface LLMSettingsProps {
     profiles: ProfileStore;
     onUpdate: () => void;
 }
 
-const PROVIDERS = [
+const PROVIDERS: ProviderDefinition[] = [
     { value: 'OpenAI', label: 'OpenAI', defaultModel: 'gpt-4o', defaultUrl: 'https://api.openai.com/v1', type: 'standard' },
     { value: 'Anthropic', label: 'Anthropic', defaultModel: 'claude-3-5-sonnet-latest', defaultUrl: 'https://api.anthropic.com/v1', type: 'standard' },
     { value: 'Google', label: 'Google Gemini', defaultModel: 'gemini-1.5-pro', defaultUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', type: 'standard' },
@@ -33,21 +41,39 @@ const PROVIDERS = [
     { value: 'OllamaCloud', label: 'Ollama Cloud', defaultModel: 'qwen3-coder:480b', defaultUrl: 'https://ollama.com/v1', type: 'ollama-cloud' },
     { value: 'LMStudio', label: 'LM Studio (Local)', defaultModel: '', defaultUrl: 'http://localhost:1234/v1', type: 'standard' },
     { value: 'QwenCli', label: 'Qwen Code (CLI)', defaultModel: 'coder-model', defaultUrl: 'https://portal.qwen.ai/v1', type: 'cli' },
-    { value: 'CodexCli', label: 'OpenAI Codex (CLI)', defaultModel: 'gpt-5.5', defaultUrl: 'https://chatgpt.com/backend-api/codex', type: 'cli' },
-    { value: 'MiniMax', label: 'MiniMax', defaultModel: 'MiniMax-M2.7', defaultUrl: 'https://api.minimax.io/v1', type: 'standard' },
+    { value: 'CodexCli', label: 'OpenAI Codex (CLI)', defaultModel: 'gpt-5.6-sol', defaultUrl: 'https://chatgpt.com/backend-api/codex', type: 'cli' },
+    MINIMAX_PROVIDER_DEFINITION,
     { value: 'Custom', label: 'Custom / Other', defaultModel: '', defaultUrl: '', type: 'standard' },
     { value: 'OneCNaparnik', label: '1С:Напарник', defaultModel: 'naparnik', defaultUrl: 'https://code.1c.ai', type: 'naparnik' },
 ];
 
-const CODEX_REASONING_EFFORTS = [
-    { value: 'none', label: 'None' },
-    { value: 'low', label: 'Low' },
-    { value: 'medium', label: 'Medium' },
-    { value: 'high', label: 'High' },
-    { value: 'xhigh', label: 'Extra High' },
-] as const;
+interface ProviderModel extends ModelMetadata {
+    name?: string;
+    description?: string | null;
+    priority?: number | null;
+    supported_in_api?: boolean | null;
+}
 
-const sortModels = (models: any[]) => [...models].sort((a, b) => a.id.localeCompare(b.id));
+const CODEX_REASONING_LABELS: Record<string, string> = {
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    xhigh: 'Extra High',
+    max: 'Max',
+};
+
+const codexReasoningOptions = (model?: ProviderModel) => {
+    const efforts = model?.supported_reasoning_efforts ?? Object.keys(CODEX_REASONING_LABELS);
+    return efforts
+        .filter(effort => effort in CODEX_REASONING_LABELS)
+        .map(effort => ({ value: effort, label: CODEX_REASONING_LABELS[effort] }));
+};
+
+const sortModels = (models: ProviderModel[]) => [...models].sort((a, b) => {
+    const priorityDifference =
+        (a.priority ?? Number.MAX_SAFE_INTEGER) - (b.priority ?? Number.MAX_SAFE_INTEGER);
+    return priorityDifference || a.id.localeCompare(b.id);
+});
 
 const formatProfileSummary = (profile: Pick<LLMProfile, 'provider' | 'model' | 'reasoning_effort'>) => {
     const parts = [profile.provider, profile.model];
@@ -79,7 +105,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
     const [editForm, setEditForm] = useState<LLMProfile | null>(null);
     const [newApiKey, setNewApiKey] = useState('');
     const apiKeyInputRef = useRef<HTMLInputElement | null>(null);
-    const [modelList, setModelList] = useState<any[]>([]);
+    const [modelList, setModelList] = useState<ProviderModel[]>([]);
     const [loadingModels, setLoadingModels] = useState(false);
     const [connectionTest, setConnectionTest] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
@@ -125,15 +151,24 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                 if (PROVIDERS.find(prov => prov.value === p.provider)?.type === 'cli') {
                     setLoadingModels(true);
                     const fetchPromise = p.provider === 'CodexCli'
-                        ? invoke<any[]>('fetch_models_for_profile', { profileId: p.id })
-                        : invoke<any[]>('fetch_models_from_provider', {
+                        ? invoke<ProviderModel[]>('fetch_models_for_profile', { profileId: p.id })
+                        : invoke<ProviderModel[]>('fetch_models_from_provider', {
                             providerId: p.provider,
                             baseUrl: p.base_url || PROVIDERS.find(prov => prov.value === p.provider)?.defaultUrl || '',
                             apiKey: ''
                         });
 
                     fetchPromise.then(res => {
-                        setModelList(sortModels(res));
+                        const sorted = sortModels(res);
+                        setModelList(sorted);
+                        const currentModel = sorted.find(model => model.id === p.model);
+                        if (currentModel) {
+                            setEditForm(prev =>
+                                prev?.id === p.id
+                                    ? applyFetchedModelMetadata(prev, currentModel)
+                                    : prev,
+                            );
+                        }
                     }).catch(e => {
                         console.error('[LLMSettings] Failed to auto-fetch CLI models:', e);
                     }).finally(() => {
@@ -142,7 +177,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                 } else if (p.provider === 'MiniMax' && isNewProfile) {
                     // MiniMax: auto-fetch static list once on profile switch (no key needed)
                     setLoadingModels(true);
-                    invoke<any[]>('fetch_models_from_provider', {
+                    invoke<ProviderModel[]>('fetch_models_from_provider', {
                         providerId: p.provider,
                         baseUrl: p.base_url || 'https://api.minimax.io/v1',
                         apiKey: ''
@@ -162,7 +197,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                 } else if (p.provider === 'LMStudio' || p.provider === 'Ollama') {
                     // Auto-fetch to get real context_window for local providers
                     setLoadingModels(true);
-                    invoke<any[]>('fetch_models_from_provider', {
+                    invoke<ProviderModel[]>('fetch_models_from_provider', {
                         providerId: p.provider,
                         baseUrl: p.base_url || PROVIDERS.find(prov => prov.value === p.provider)?.defaultUrl || '',
                         apiKey: ''
@@ -182,10 +217,10 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                     // Cloud Ollama: use profile-based fetch so backend decrypts the API key.
                     // /api/show needs auth on ollama.com, so apiKey: '' would fail.
                     setLoadingModels(true);
-                    invoke<any[]>('fetch_models_for_profile', { profileId: p.id }).then(res => {
+                    invoke<ProviderModel[]>('fetch_models_for_profile', { profileId: p.id }).then(res => {
                         const sorted = sortModels(res);
                         setModelList(sorted);
-                        const currentModel = sorted.find((m: any) => m.id === p.model);
+                        const currentModel = sorted.find(m => m.id === p.model);
                         if (currentModel?.context_window) {
                             setEditForm(prev => prev?.id === p.id ? applyFetchedModelMetadata(prev, currentModel) : prev);
                         }
@@ -289,20 +324,20 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
         if (!editForm) return;
         setLoadingModels(true);
         try {
-            let res: any[] = [];
+            let res: ProviderModel[] = [];
             if (editForm.provider === 'CodexCli') {
-                res = await invoke<any[]>('fetch_models_for_profile', { profileId: editForm.id });
+                res = await invoke<ProviderModel[]>('fetch_models_for_profile', { profileId: editForm.id });
             } else if (newApiKey) {
-                res = await invoke<any[]>('fetch_models_from_provider', {
+                res = await invoke<ProviderModel[]>('fetch_models_from_provider', {
                     providerId: editForm.provider,
                     baseUrl: editForm.base_url || PROVIDERS.find(p => p.value === editForm.provider)?.defaultUrl || '',
                     apiKey: newApiKey
                 });
             } else if (editForm.api_key_encrypted) {
                 await invoke('save_profile', { profile: editForm, apiKey: null });
-                res = await invoke<any[]>('fetch_models_for_profile', { profileId: editForm.id });
+                res = await invoke<ProviderModel[]>('fetch_models_for_profile', { profileId: editForm.id });
             } else {
-                res = await invoke<any[]>('fetch_models_from_provider', {
+                res = await invoke<ProviderModel[]>('fetch_models_from_provider', {
                     providerId: editForm.provider,
                     baseUrl: editForm.base_url || PROVIDERS.find(p => p.value === editForm.provider)?.defaultUrl || '',
                     apiKey: ''
@@ -329,6 +364,11 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
         await invoke('set_active_profile', { profileId: id });
         await onUpdate();
     };
+
+    const selectedModel = editForm
+        ? modelList.find(model => model.id === editForm.model)
+        : undefined;
+    const availableCodexReasoningOptions = codexReasoningOptions(selectedModel);
 
     return (
         <div className="flex h-full w-full">
@@ -995,7 +1035,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                                 <SelectValue placeholder="Select effort" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {CODEX_REASONING_EFFORTS.map(option => (
+                                                {codexReasoningOptions(modelList.find(m => m.id === editForm.model)).map(option => (
                                                     <SelectItem key={option.value} value={option.value}>
                                                         {option.label}
                                                     </SelectItem>

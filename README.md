@@ -10,15 +10,15 @@
 <!-- news:end -->
 
 <!-- release-news:start -->
-> **📋 Последний релиз: версия 1.2.10** — 3 июня 2026
+> **📋 Последний релиз: версия 1.2.11** — 29 июля 2026
 >
-> - **Счётчик токенов MCP**: видно, сколько токенов контекста добавляет каждый подключённый MCP-сервер и его инструменты ([#173](https://github.com/hawkxtreme/mini-ai-1c/issues/173))
-> - **Блоки кода в чате**: больше не исчезают после завершения ответа модели ([#184](https://github.com/hawkxtreme/mini-ai-1c/issues/184))
-> - **Чистый Markdown**: вывод модели очищается от необработанных служебных тегов ([#179](https://github.com/hawkxtreme/mini-ai-1c/issues/179), [#187](https://github.com/hawkxtreme/mini-ai-1c/issues/187))
-> - **Путь к search-index**: каталог индекса поиска можно разместить в произвольном месте ([#178](https://github.com/hawkxtreme/mini-ai-1c/issues/178))
-> - **Контекст и параметры команд**: исправлено отображение длины контекста ([#182](https://github.com/hawkxtreme/mini-ai-1c/issues/182)) и применение доп. параметров ([#186](https://github.com/hawkxtreme/mini-ai-1c/issues/186))
+> - **BSL Language Server**: официальный Windows-пакет со встроенным runtime и MCP; отдельная установка Java/JRE/JDK больше не нужна ([#208](https://github.com/hawkxtreme/mini-ai-1c/issues/208))
+> - **OpenAI Codex**: актуальные GPT-модели, восстановленная OAuth-авторизация и корректное отображение лимитов
+> - **MiniMax**: добавлена MiniMax-M3, обновлены модели M2.x, окна контекста и стоимость
+> - **Применение изменений**: выполненное замечание сразу удаляется из списка непринятых
+> - **Надёжность BSL**: повторное подключение после сбоев, увеличенный тайм-аут диагностики и автоматический служебный workspace
 >
-> [Подробнее о релизе →](https://github.com/hawkxtreme/mini-ai-1c/releases/tag/v1.2.10) · [Все релизы →](https://github.com/hawkxtreme/mini-ai-1c/releases)
+> [Подробнее о релизе →](https://github.com/hawkxtreme/mini-ai-1c/releases/tag/v1.2.11) · [Все релизы →](https://github.com/hawkxtreme/mini-ai-1c/releases)
 <!-- release-news:end -->
 
 > 🐛 **Нашли баг или есть вопрос?** Прочитайте [как правильно сообщить о проблеме →](how-to-report-an-issue.md) — там пошагово: что написать, как снять логи приложения и MCP-логи, и готовый шаблон issue.
