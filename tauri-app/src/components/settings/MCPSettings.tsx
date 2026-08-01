@@ -210,6 +210,7 @@ export function MCPSettings({
     const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string }>>({});
     const [statuses, setStatuses] = useState<Record<string, McpServerStatus>>({});
     const [viewingLogsId, setViewingLogsId] = useState<string | null>(null);
+    const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
     const [viewingToolsId, setViewingToolsId] = useState<string | null>(null);
     const [logs, setLogs] = useState<string[]>([]);
     const [isLoadingLogs, setIsLoadingLogs] = useState(false);
@@ -624,38 +625,97 @@ export function MCPSettings({
 
     const isInternal = (transport: string) => transport.toLowerCase() === 'internal';
 
+    const selectedServer = sortedServers.find(s => s.id === selectedServerId) || sortedServers[0] || null;
+
     return (
-        <div className="space-y-6 relative">
-            <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium flex items-center gap-2">
-                    <Globe className="w-5 h-5 text-blue-500" />
-                    MCP Servers
-                </h3>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => { setShowJsonImport(true); setJsonImportText(''); setJsonImportError(null); }}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded-lg text-sm font-medium transition"
-                        title="Добавить сервер из JSON-конфига (формат Claude Desktop)"
-                    >
-                        <Code className="w-4 h-4" /> Импорт из JSON
-                    </button>
-                    <button
-                        onClick={handleAddServer}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition"
-                    >
-                        <Plus className="w-4 h-4" /> Добавить сервер
-                    </button>
+        <div className="flex h-full bg-zinc-950">
+            {/* ─── Left Sidebar — Server List ─── */}
+            <div className="w-64 shrink-0 border-r border-zinc-800 flex flex-col bg-zinc-900/50">
+                <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800">
+                    <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5" /> MCP
+                    </span>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => { setShowJsonImport(true); setJsonImportText(''); setJsonImportError(null); }}
+                            className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
+                            title="Импорт из JSON"
+                        >
+                            <Code className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                            onClick={() => {
+                                handleAddServer();
+                                // Auto-select last server after adding
+                                setTimeout(() => {
+                                    const lastId = servers[servers.length - 1]?.id;
+                                    if (lastId) setSelectedServerId(lastId);
+                                }, 100);
+                            }}
+                            className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
+                            title="Добавить сервер"
+                        >
+                            <Plus className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto custom-scrollbar py-1">
+                    {sortedServers.length === 0 && (
+                        <div className="px-3 py-6 text-center text-xs text-zinc-600">Нет серверов</div>
+                    )}
+                    {sortedServers.map((server) => {
+                        const status = statuses[server.id];
+                        const effectiveStatus = status?.status;
+                        const isConnected = effectiveStatus === 'connected';
+                        const isUnknown = effectiveStatus === 'unknown';
+                        const isError = effectiveStatus === 'error';
+                        const isStopped = effectiveStatus === 'stopped';
+                        const isBuiltin = server.id === BUILTIN_1C_SERVER_ID || server.id === BUILTIN_1C_METADATA_ID || server.id === BUILTIN_BSL_LS_ID || server.id === BUILTIN_1C_HELP_ID || server.id === BUILTIN_1C_SEARCH_ID || server.id === BUILTIN_MCP_SKILLS_ID || server.id === BUILTIN_1C_FILESYSTEM_ID || server.id === BUILTIN_1C_ENV_ID;
+
+                        return (
+                            <div
+                                key={server.id}
+                                onClick={() => setSelectedServerId(server.id)}
+                                className={`group flex items-center gap-2 px-3 py-2 mx-1 rounded-md cursor-pointer text-sm transition-colors ${
+                                    selectedServer?.id === server.id
+                                        ? 'bg-blue-500/10 text-blue-400'
+                                        : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+                                }`}
+                            >
+                                <div className={`w-2 h-2 rounded-full shrink-0 ${
+                                    !server.enabled ? 'bg-zinc-600'
+                                        : isConnected ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.4)]'
+                                        : isUnknown ? 'bg-amber-500'
+                                        : 'bg-red-500'
+                                }`} title={effectiveStatus || 'unknown'} />
+                                <div className="flex-1 min-w-0">
+                                    <div className="truncate text-xs font-medium">{server.name}</div>
+                                    {server.enabled && (
+                                        <div className={`text-[10px] ${
+                                            isConnected ? 'text-green-500/70' : isUnknown ? 'text-amber-500/70' : isError ? 'text-red-500/70' : 'text-zinc-600'
+                                        }`}>
+                                            {isConnected ? 'LIVE' : isUnknown ? 'UNVERIFIED' : isStopped ? 'STOPPED' : 'OFFLINE'}
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleUpdateServer(server.id, { enabled: !server.enabled }); }}
+                                    className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors shrink-0 ${server.enabled ? 'bg-blue-600' : 'bg-[#505050]'}`}
+                                >
+                                    <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform ${server.enabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                                </button>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 
-            {servers.length === 0 ? (
-                <div className="text-center py-12 bg-zinc-800/30 border border-zinc-700/50 border-dashed rounded-xl">
-                    <Database className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
-                    <p className="text-zinc-500 text-sm">Список серверов пуст. Добавьте первый сервер для начала работы.</p>
-                </div>
-            ) : (
-                <div className="space-y-4">
-                    {sortedServers.map((server) => {
+            {/* ─── Right Panel — Server Configuration ─── */}
+            <div className="flex-1 flex flex-col min-w-0">
+                {selectedServer ? (
+                    (() => {
+                        const server = selectedServer;
                         const status = statuses[server.id];
                         const isMetadata = server.id === BUILTIN_1C_METADATA_ID;
                         const isBslLs = server.id === BUILTIN_BSL_LS_ID;
@@ -679,62 +739,22 @@ export function MCPSettings({
                         const isError = effectiveStatus === 'error';
                         const isStopped = effectiveStatus === 'stopped';
                         const lastChecked = status?.last_checked || 0;
-                        const toolsDisabledReason = isSearchUnavailable
-                            ? (status?.index_message || 'Укажите корректный путь к выгрузке конфигурации 1С, затем повторите проверку.')
-                            : 'Показать инструменты MCP';
 
                         return (
-                            <div
-                                key={server.id}
-                                className={`
-                                    rounded-xl overflow-hidden shadow-sm border transition-all duration-300
-                                    ${isBuiltin
-                                        ? `bg-gradient-to-br from-zinc-800/80 to-yellow-900/10 border-yellow-500/30 shadow-[0_0_15px_rgba(234,179,8,0.05)]`
-                                        : 'bg-zinc-800/50 border-zinc-700'
-                                    }
-                                `}
-                            >
-                                {/* Server Header */}
-                                <div className={`
-                                    px-4 py-3 border-b flex items-center justify-between gap-3 flex-wrap
-                                    ${isBuiltin
-                                        ? 'bg-yellow-500/5 border-yellow-500/20'
-                                        : 'bg-zinc-800/80 border-zinc-700'
-                                    }
-                                `}>
+                            <div className="flex-1 flex flex-col min-h-0">
+                                {/* Server Header Bar */}
+                                <div className={`px-5 py-3 border-b flex items-center justify-between shrink-0 ${isBuiltin ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-zinc-900/50 border-zinc-800'}`}>
                                     <div className="flex items-center gap-3 min-w-0">
-                                        <div
-                                            className={`w-2 h-2 rounded-full shrink-0 transition-all duration-300 ${
-                                                !server.enabled
-                                                    ? 'bg-zinc-600'
-                                                    : isConnected
-                                                        ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'
-                                                        : isUnknown
-                                                            ? 'bg-amber-500'
-                                                            : 'bg-red-500 animate-pulse'
-                                            }`}
-                                            title={
-                                                !server.enabled
-                                                    ? "Disabled"
-                                                    : isConnected
-                                                        ? "Connected"
-                                                        : isUnknown
-                                                            ? "Not checked yet"
-                                                            : isOffline
-                                                                ? "Offline"
-                                                                : isError
-                                                                    ? "Error"
-                                                                    : "Stopped"
-                                            }
-                                        />
-
+                                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                                            !server.enabled ? 'bg-zinc-600'
+                                                : isConnected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'
+                                                : isUnknown ? 'bg-amber-500'
+                                                : 'bg-red-500 animate-pulse'
+                                        }`} />
                                         {isBuiltin ? (
                                             <div className="flex items-center gap-2 min-w-0">
-                                                {isMetadata ? <Database className="w-4 h-4 text-yellow-500 shrink-0" /> : isBslLs ? <Cpu className="w-4 h-4 text-yellow-500 shrink-0" /> : isHelp ? <FileText className="w-4 h-4 text-yellow-500 shrink-0" /> : isSearch ? <Terminal className="w-4 h-4 text-yellow-500 shrink-0" /> : <Sparkles className="w-4 h-4 text-yellow-500 shrink-0" />}
                                                 <span className="text-zinc-100 font-medium text-sm truncate">{server.name}</span>
-                                                <span className="text-[10px] px-1.5 py-0.5 rounded border bg-yellow-500/10 text-yellow-400 border-yellow-500/20 whitespace-nowrap shrink-0">
-                                                    PRE-INSTALLED
-                                                </span>
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded border bg-yellow-500/10 text-yellow-400 border-yellow-500/20 whitespace-nowrap shrink-0">PRE-INSTALLED</span>
                                             </div>
                                         ) : (
                                             <input
@@ -745,74 +765,36 @@ export function MCPSettings({
                                                 placeholder="Название сервера"
                                             />
                                         )}
-
                                         {server.enabled && (
-                                            <span
-                                                className={`text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap shrink-0 ${
-                                                    isConnected
-                                                        ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                                                        : isUnknown
-                                                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                                            : 'bg-red-500/10 text-red-400 border-red-500/20'
-                                                }`}
-                                                title={lastChecked > 0 ? `Checked: ${new Date(lastChecked * 1000).toLocaleString()}` : 'Not checked yet'}
-                                            >
-                                                {isConnected
-                                                    ? 'LIVE'
-                                                    : isUnknown
-                                                        ? 'UNVERIFIED'
-                                                        : isOffline
-                                                            ? 'OFFLINE'
-                                                            : isError
-                                                                ? 'ERROR'
-                                                                : isStopped
-                                                                    ? 'STOPPED'
-                                                                    : 'OFFLINE'}
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap shrink-0 ${
+                                                isConnected ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                                                    : isUnknown ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                    : 'bg-red-500/10 text-red-400 border-red-500/20'
+                                            }`}>
+                                                {isConnected ? 'LIVE' : isUnknown ? 'UNVERIFIED' : isOffline ? 'OFFLINE' : isError ? 'ERROR' : isStopped ? 'STOPPED' : 'OFFLINE'}
                                             </span>
                                         )}
                                     </div>
-
                                     <div className="flex items-center gap-3 ml-auto">
                                         {!isBuiltin && (
                                             <div className="flex bg-zinc-900 rounded-lg p-0.5 border border-zinc-700">
-                                                <button
-                                                    onClick={() => handleUpdateServer(server.id, { transport: 'http' })}
-                                                    className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold transition ${server.transport === 'http' ? 'bg-zinc-700 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}
-                                                    title="HTTP Transport"
-                                                >
-                                                    HTTP
-                                                </button>
-                                                <button
-                                                    onClick={() => handleUpdateServer(server.id, { transport: 'stdio' })}
-                                                    className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold transition ${server.transport === 'stdio' ? 'bg-zinc-700 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}
-                                                    title="Stdio (Local command)"
-                                                >
-                                                    Stdio
-                                                </button>
+                                                <button onClick={() => handleUpdateServer(server.id, { transport: 'http' })} className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold transition ${server.transport === 'http' ? 'bg-zinc-700 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}>HTTP</button>
+                                                <button onClick={() => handleUpdateServer(server.id, { transport: 'stdio' })} className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold transition ${server.transport === 'stdio' ? 'bg-zinc-700 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}>Stdio</button>
                                             </div>
                                         )}
-
-                                        <button
-                                            onClick={() => handleUpdateServer(server.id, { enabled: !server.enabled })}
-                                            className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors focus:outline-none ${server.enabled ? 'bg-blue-600' : 'bg-[#747476]'}`}
-                                        >
+                                        <button onClick={() => handleUpdateServer(server.id, { enabled: !server.enabled })} className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors focus:outline-none ${server.enabled ? 'bg-blue-600' : 'bg-[#505050]'}`}>
                                             <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform ${server.enabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
                                         </button>
-
                                         {!isBuiltin && (
-                                            <button
-                                                onClick={() => handleRemoveServer(server.id)}
-                                                className="p-1 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded transition"
-                                                title="Удалить"
-                                            >
+                                            <button onClick={() => handleRemoveServer(server.id)} className="p-1 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded transition" title="Удалить">
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* Server Settings */}
-                                <div className={`p-4 space-y-4 transition-opacity ${!server.enabled ? 'opacity-60' : ''}`}>
+                                {/* Server Settings Body */}
+                                <div className={`flex-1 overflow-y-auto custom-scrollbar p-5 space-y-4 transition-opacity ${!server.enabled ? 'opacity-60' : ''}`}>
                                     {isBuiltin ? (
                                         <div className="mt-0 space-y-4">
                                             {server.id === BUILTIN_1C_SERVER_ID ? (
@@ -1743,7 +1725,7 @@ export function MCPSettings({
                                             <button
                                                 onClick={() => setViewingToolsId(server.id)}
                                                 disabled={!server.enabled || isSearchUnavailable}
-                                                title={toolsDisabledReason}
+                                                title={isSearchUnavailable ? (status?.index_message || 'Укажите путь к выгрузке 1С') : 'Показать инструменты MCP'}
                                                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 <Wrench className="w-3.5 h-3.5" />
@@ -1769,9 +1751,9 @@ export function MCPSettings({
                                 </div>
                             </div>
                         );
-                    })}
-                </div>
-            )}
+                    })()
+                ) : null}
+            </div>
             {/* Tools Modal */}
             {viewingToolsId && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
