@@ -51,6 +51,15 @@ fn format_unix_msk(unix: u64) -> String {
 pub(crate) const BUILTIN_1C_SEARCH_SERVER_ID: &str = "builtin-1c-search";
 pub(crate) const SEARCH_INDEX_DIR_ENV: &str = "MINI_AI_1C_SEARCH_INDEX_DIR";
 
+/// Platform-appropriate name for the mcp-1c-search binary.
+pub(crate) fn search_binary_name() -> &'static str {
+    if cfg!(windows) {
+        "mcp-1c-search.exe"
+    } else {
+        "mcp-1c-search"
+    }
+}
+
 const BUILTIN_MCP_SKILLS_SERVER_ID: &str = "builtin-mcp-skills";
 
 fn resolve_skills_dir() -> Option<String> {
@@ -815,7 +824,10 @@ impl McpSession {
             "1c-metadata.cjs" => Some(include_bytes!("../mcp-servers/1c-metadata.cjs")),
             "1c-naparnik.cjs" => Some(include_bytes!("../mcp-servers/1c-naparnik.cjs")),
             "mcp-skills.cjs" => Some(include_bytes!("../mcp-servers/mcp-skills.cjs")),
+            #[cfg(windows)]
             "mcp-1c-search.exe" => Some(include_bytes!("../mcp-servers/mcp-1c-search.exe")),
+            #[cfg(not(windows))]
+            "mcp-1c-search" => Some(include_bytes!("../mcp-servers/mcp-1c-search")),
             _ => None,
         }
     }
@@ -1229,8 +1241,13 @@ impl McpSession {
                 }
             }
 
-            // .exe binary resolution
-            let is_stdio_exe = cmd_lower.ends_with(".exe") && !is_stdio_node_launcher;
+            // Direct-binary MCP launcher resolution
+            let is_stdio_exe = !is_stdio_node_launcher
+                && if cfg!(windows) {
+                    cmd_lower.ends_with(".exe")
+                } else {
+                    cmd_lower.ends_with(".exe") || cmd_lower == "mcp-1c-search"
+                };
             if is_stdio_exe {
                 let exe_filename = command.clone();
                 let exe_subpath = format!("mcp-servers/{}", exe_filename);

@@ -777,11 +777,13 @@ fn migrate_builtin_mcp_launchers(settings: &mut AppSettings) -> bool {
             }
         } else if server.id == "builtin-1c-search" {
             let current_cmd = server.command.as_deref().unwrap_or("");
-            if current_cmd != "mcp-1c-search.exe" && !current_cmd.ends_with("mcp-1c-search.exe") {
+            let search_bin = crate::mcp_client::search_binary_name();
+            if current_cmd != search_bin && !current_cmd.ends_with(search_bin) {
                 crate::app_log!(
-                    "[SETTINGS] Migrating builtin-1c-search command to 'mcp-1c-search.exe'"
+                    "[SETTINGS] Migrating builtin-1c-search command to '{}'",
+                    search_bin
                 );
-                server.command = Some("mcp-1c-search.exe".to_string());
+                server.command = Some(search_bin.to_string());
                 server.args = None;
                 modified = true;
             }

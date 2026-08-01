@@ -1,6 +1,25 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
+/// EditorContext — Windows-only тип из `crate::editor_bridge`.
+/// На Linux не существует, поэтому для сигнатур Tauri-команд используется
+/// платформозависимый алиас: на Windows это реальный тип, на Linux — заглушка,
+/// которая никогда не конструируется (команды возвращают ошибку).
+#[cfg(windows)]
+pub(crate) type EditorContextPayload = crate::editor_bridge::EditorContext;
+
+#[cfg(not(windows))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct EditorContextPayload {}
+
+/// EditorWriteResult — аналогичная заглушка для Windows-типа из `crate::editor_bridge`.
+#[cfg(windows)]
+pub(crate) type EditorWriteResultPayload = crate::editor_bridge::EditorWriteResult;
+
+#[cfg(not(windows))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct EditorWriteResultPayload {}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowInfo {
     pub hwnd: isize,
@@ -67,7 +86,7 @@ pub fn get_editor_context_cmd(
     app_handle: AppHandle,
     hwnd: isize,
     skip_focus_restore: Option<bool>,
-) -> Result<crate::editor_bridge::EditorContext, String> {
+) -> Result<EditorContextPayload, String> {
     #[cfg(windows)]
     {
         let mut ctx = match crate::editor_bridge::get_editor_context_with_read_preferences(
@@ -1862,9 +1881,12 @@ pub struct EditorBridgeStatus {
 /// EditorBridge is a self-contained single-file exe — no .NET installation required.
 #[tauri::command]
 pub fn check_editor_bridge_status<R: Runtime>(_app: AppHandle<R>) -> EditorBridgeStatus {
+    #[cfg(windows)]
     let bridge = crate::editor_bridge::find_exe()
         .map(|path| path.exists())
         .unwrap_or(false);
+    #[cfg(not(windows))]
+    let bridge = false;
 
     EditorBridgeStatus { bridge }
 }
@@ -1885,7 +1907,15 @@ pub fn restart_editor_bridge_cmd() -> Result<(), String> {
 /// Returns absolute path to the downloaded exe.
 #[tauri::command]
 pub async fn install_editor_bridge_cmd(app: tauri::AppHandle) -> Result<String, String> {
-    crate::editor_bridge_installer::download_editor_bridge(app).await
+    #[cfg(windows)]
+    {
+        crate::editor_bridge_installer::download_editor_bridge(app).await
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        Err("Configurator integration is only available on Windows".to_string())
+    }
 }
 
 /// Feature #6: Return BSL insertion context at the current cursor position.
@@ -1908,7 +1938,7 @@ pub fn insert_at_line_cmd(
     hwnd: isize,
     line: i64,
     text: String,
-) -> Result<crate::editor_bridge::EditorWriteResult, String> {
+) -> Result<EditorWriteResultPayload, String> {
     #[cfg(windows)]
     {
         crate::editor_bridge::insert_at_line(hwnd, line, &text)
@@ -1925,7 +1955,7 @@ pub fn insert_at_line_cmd(
 pub fn append_to_module_cmd(
     hwnd: isize,
     text: String,
-) -> Result<crate::editor_bridge::EditorWriteResult, String> {
+) -> Result<EditorWriteResultPayload, String> {
     #[cfg(windows)]
     {
         crate::editor_bridge::append_to_module(hwnd, &text)
@@ -1961,7 +1991,6 @@ mod tests {
         build_legacy_semantic_clipboard_module, choose_bridge_paste_target,
         legacy_apply_support_for_intent, BridgePasteTarget,
     };
-    #[cfg(windows)]
     use super::{
         resolve_quick_action_apply_policy, should_retry_clipboard_capture_as_full_module,
         should_try_scintilla_fallback, QuickActionApplyPolicy,
