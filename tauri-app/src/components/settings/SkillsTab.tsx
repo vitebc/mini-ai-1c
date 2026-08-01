@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Brain, Trash2, FileText, Plus, Save, X, ChevronRight } from 'lucide-react';
+import { Brain, Trash2, FileText, Plus, Save, X, ChevronRight, Eye, Pencil, AlertTriangle } from 'lucide-react';
 import { listSkills, getSkill, saveSkill, deleteSkill, SkillFile } from '../../api/skills';
+
+type SkillMode = 'view' | 'edit';
 
 export function SkillsTab() {
     const [skills, setSkills] = useState<SkillFile[]>([]);
@@ -10,6 +12,8 @@ export function SkillsTab() {
     const [saving, setSaving] = useState(false);
     const [creating, setCreating] = useState(false);
     const [newId, setNewId] = useState('');
+    const [mode, setMode] = useState<SkillMode>('view');
+    const [confirmDelete, setConfirmDelete] = useState<SkillFile | null>(null);
 
     const load = useCallback(async () => {
         const items = await listSkills();
@@ -41,13 +45,14 @@ export function SkillsTab() {
         }
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm(`Удалить скилл "${id}"?`)) return;
+    const performDelete = async (id: string) => {
         await deleteSkill(id);
         if (selected?.id === id) {
             setSelected(null);
             setEditingContent('');
+            setMode('view');
         }
+        setConfirmDelete(null);
         await load();
     };
 
@@ -61,6 +66,7 @@ export function SkillsTab() {
         const created = await getSkill(newId.trim());
         setSelected(created);
         setEditingContent(created.content);
+        setMode('edit');
     };
 
     return (
@@ -72,7 +78,7 @@ export function SkillsTab() {
                         <Brain className="w-3.5 h-3.5" /> Скиллы
                     </span>
                     <button
-                        onClick={() => { setCreating(true); setSelected(null); }}
+                        onClick={() => { setCreating(true); setSelected(null); setMode('edit'); }}
                         className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
                         title="Новый скилл"
                     >
@@ -117,7 +123,7 @@ export function SkillsTab() {
                                 {s.name && <div className="truncate text-[10px] text-zinc-600">{s.id}</div>}
                             </div>
                             <button
-                                onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }}
+                                onClick={(e) => { e.stopPropagation(); setConfirmDelete(s); }}
                                 className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition-all"
                                 title="Удалить"
                             >
@@ -139,34 +145,68 @@ export function SkillsTab() {
                                 {selected?.name || newId || 'Новый скилл'}
                                 {dirty && <span className="text-[10px] text-amber-400">* изменено</span>}
                             </div>
-                            {selected && (
-                                <button
-                                    onClick={handleSave}
-                                    disabled={saving || !dirty}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                                        dirty
-                                            ? 'bg-blue-600 text-white hover:bg-blue-500'
-                                            : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
-                                    }`}
-                                >
-                                    <Save className="w-3.5 h-3.5" />
-                                    {saving ? 'Сохранение...' : 'Сохранить'}
-                                </button>
-                            )}
+                            <div className="flex items-center gap-2">
+                                <div className="flex items-center rounded-lg bg-zinc-800 p-0.5">
+                                    <button
+                                        onClick={() => setMode('view')}
+                                        className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                                            mode === 'view'
+                                                ? 'bg-zinc-700 text-zinc-100 shadow'
+                                                : 'text-zinc-400 hover:text-zinc-200'
+                                        }`}
+                                        title="Просмотр"
+                                    >
+                                        <Eye className="w-3.5 h-3.5" />
+                                        Просмотр
+                                    </button>
+                                    <button
+                                        onClick={() => setMode('edit')}
+                                        className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                                            mode === 'edit'
+                                                ? 'bg-zinc-700 text-zinc-100 shadow'
+                                                : 'text-zinc-400 hover:text-zinc-200'
+                                        }`}
+                                        title="Редактор"
+                                    >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                        Редактор
+                                    </button>
+                                </div>
+                                {selected && mode === 'edit' && (
+                                    <button
+                                        onClick={handleSave}
+                                        disabled={saving || !dirty}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                                            dirty
+                                                ? 'bg-blue-600 text-white hover:bg-blue-500'
+                                                : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        <Save className="w-3.5 h-3.5" />
+                                        {saving ? 'Сохранение...' : 'Сохранить'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         {/* Editor + Preview */}
-                        <div className="flex-1 flex min-h-0">
-                            <textarea
-                                value={editingContent}
-                                onChange={e => { setEditingContent(e.target.value); setDirty(true); }}
-                                className="flex-1 p-4 text-sm font-mono bg-zinc-950 text-zinc-300 border-r border-zinc-800 resize-none focus:outline-none custom-scrollbar"
-                                spellCheck={false}
-                            />
-                            <div className="flex-1 p-4 overflow-y-auto custom-scrollbar bg-zinc-950">
+                        {mode === 'edit' ? (
+                            <div className="flex-1 flex min-h-0">
+                                <textarea
+                                    value={editingContent}
+                                    onChange={e => { setEditingContent(e.target.value); setDirty(true); }}
+                                    className="flex-1 p-4 text-sm font-mono bg-zinc-950 text-zinc-300 border-r border-zinc-800 resize-none focus:outline-none custom-scrollbar"
+                                    spellCheck={false}
+                                />
+                                <div className="flex-1 p-4 overflow-y-auto custom-scrollbar bg-zinc-950">
+                                    <MarkdownPreview markdown={editingContent} />
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex-1 p-6 overflow-y-auto custom-scrollbar bg-zinc-950">
                                 <MarkdownPreview markdown={editingContent} />
                             </div>
-                        </div>
+                        )}
                     </>
                 ) : (
                     <div className="flex-1 flex items-center justify-center">
@@ -178,6 +218,37 @@ export function SkillsTab() {
                     </div>
                 )}
             </div>
+
+            {confirmDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="w-80 rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl">
+                        <div className="flex items-center gap-2 mb-3">
+                            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                            <span className="text-sm font-semibold text-zinc-100">Удалить скилл</span>
+                        </div>
+                        <p className="text-xs text-zinc-400 leading-relaxed mb-5">
+                            Вы уверены, что хотите удалить скилл{' '}
+                            <span className="text-zinc-200 font-medium">"{confirmDelete.name || confirmDelete.id}"</span>?
+                            Это действие необратимо.
+                        </p>
+                        <div className="flex justify-end gap-2">
+                            <button
+                                onClick={() => setConfirmDelete(null)}
+                                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                            >
+                                Отмена
+                            </button>
+                            <button
+                                onClick={() => performDelete(confirmDelete.id)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                Удалить
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "Mini AI 1C Agent",
-        "width": 540,
-        "height": 900,
-        "minWidth": 450,
-        "minHeight": 600,
+        "width": 760,
+        "height": 1080,
+        "minWidth": 560,
+        "minHeight": 720,
         "decorations": false,
         "transparent": true
       }
