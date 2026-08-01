@@ -1,20 +1,8 @@
-#!/usr/bin/env node
-// ─── JVV-1C MCP Server ─────────────────────────────────────────
-// MCP-сервер для определения платформы 1С и списка баз.
-// Использует @modelcontextprotocol/sdk (единообразно с другими серверами mini-ai-1c).
-//
-// Внутри mini-ai-1c: node jvv-1c.cjs (stdio, по умолчанию)
-// Внешние агенты:     npm run build:jvv-1c → dist/jvv-1c.cjs (zero-dep standalone)
-
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
-import { join } from 'path';
-import { homedir } from 'os';
-import { createServer, IncomingMessage, ServerResponse } from 'http';
-import { randomUUID } from 'crypto';
+import { join, resolve } from 'path';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -34,46 +22,17 @@ interface PlatformInfo {
     exists: boolean;
 }
 
-// ─── CLI Args ────────────────────────────────────────────────────
-
-function parseArgs(): { mode: 'stdio' | 'http'; port: number } {
-    const args = process.argv.slice(2);
-    let mode: 'stdio' | 'http' = 'stdio';
-    let port = 3000;
-
-    for (let i = 0; i < args.length; i++) {
-        switch (args[i]) {
-            case '--stdio': mode = 'stdio'; break;
-            case '--http': mode = 'http'; break;
-            case '--port': case '-p':
-                port = parseInt(args[i + 1], 10) || 3000;
-                i++;
-                break;
-            case '--help': case '-h':
-                console.error('JVV-1C MCP Server v1.0.0');
-                console.error('Usage: node jvv-1c.cjs [--stdio] [--http] [--port N]');
-                process.exit(0);
-        }
-    }
-    return { mode, port };
-}
-
 // ─── ibases.v8i Parser ───────────────────────────────────────────
 
-const V8I_PATHS: string[] = (() => {
-    const home = homedir();
+const DEFAULT_V8I_PATHS: string[] = (() => {
+    const home = process.env.USERPROFILE || process.env.HOME || '';
     const progData = process.env.ProgramData || '';
     const paths: string[] = [];
 
     if (home) {
-        const appData = process.env.APPDATA || join(home, 'AppData', 'Roaming');
         paths.push(
-            join(appData, '1C', '1CEStart', 'ibases.v8i'),
-            join(appData, '1C', '1cv8', 'ibases.v8i'),
-        );
-        paths.push(
-            join(home, '.1cv8', 'ibases.v8i'),
-            join(home, '.1C', '1CEStart', 'ibases.v8i'),
+            join(home, 'AppData', 'Roaming', '1C', '1CEStart', 'ibases.v8i'),
+            join(home, 'AppData', 'Roaming', '1C', '1cv8', 'ibases.v8i'),
         );
     }
     if (progData) {
@@ -88,6 +47,7 @@ const V8I_PATHS: string[] = (() => {
 function parseConnectionString(connect: string): { connection: string; type: 'file' | 'server' } | null {
     const lower = connect.toLowerCase();
 
+    // File="..."
     if (lower.includes('file=')) {
         const idx = lower.indexOf('file=');
         const rest = connect.slice(idx);
@@ -101,10 +61,12 @@ function parseConnectionString(connect: string): { connection: string; type: 'fi
         }
     }
 
+    // Srvr="...";Ref="..."
     if (lower.includes('srvr=') && lower.includes('ref=')) {
         return { connection: connect, type: 'server' };
     }
 
+    // S="server/db"
     if (lower.startsWith('s=')) {
         return { connection: connect, type: 'server' };
     }
@@ -123,12 +85,20 @@ function parseV8iContent(content: string): InfobaseInfo[] {
 
     for (const line of text.split('\n')) {
         const trimmed = line.trim();
+
+        // Section header [Name]
         const sectionMatch = trimmed.match(/^\[(.+)\]$/);
         if (sectionMatch) {
             if (currentName && currentConnect) {
                 const parsed = parseConnectionString(currentConnect);
                 if (parsed) {
-                    bases.push({ name: currentName, connection: parsed.connection, type: parsed.type, id: currentId || null, folder: currentFolder || null });
+                    bases.push({
+                        name: currentName,
+                        connection: parsed.connection,
+                        type: parsed.type,
+                        id: currentId || null,
+                        folder: currentFolder || null,
+                    });
                 }
             }
             currentName = sectionMatch[1];
@@ -138,6 +108,7 @@ function parseV8iContent(content: string): InfobaseInfo[] {
             continue;
         }
 
+        // Key=Value
         const eqIdx = trimmed.indexOf('=');
         if (eqIdx !== -1) {
             const key = trimmed.slice(0, eqIdx).trim().toLowerCase();
@@ -150,10 +121,17 @@ function parseV8iContent(content: string): InfobaseInfo[] {
         }
     }
 
+    // Save last
     if (currentName && currentConnect) {
         const parsed = parseConnectionString(currentConnect);
         if (parsed) {
-            bases.push({ name: currentName, connection: parsed.connection, type: parsed.type, id: currentId || null, folder: currentFolder || null });
+            bases.push({
+                name: currentName,
+                connection: parsed.connection,
+                type: parsed.type,
+                id: currentId || null,
+                folder: currentFolder || null,
+            });
         }
     }
 
@@ -161,7 +139,8 @@ function parseV8iContent(content: string): InfobaseInfo[] {
 }
 
 function parseV8iFile(v8iPath?: string): InfobaseInfo[] {
-    const searchPaths = v8iPath ? [v8iPath] : V8I_PATHS;
+    const searchPaths = v8iPath ? [v8iPath] : DEFAULT_V8I_PATHS;
+
     for (const p of searchPaths) {
         if (!existsSync(p)) continue;
         try {
@@ -174,7 +153,7 @@ function parseV8iFile(v8iPath?: string): InfobaseInfo[] {
 }
 
 function findV8iPath(): string | null {
-    for (const p of V8I_PATHS) {
+    for (const p of DEFAULT_V8I_PATHS) {
         if (existsSync(p)) return p;
     }
     return null;
@@ -183,43 +162,44 @@ function findV8iPath(): string | null {
 // ─── Platform Scanner ────────────────────────────────────────────
 
 function findPlatform(): PlatformInfo[] {
-    const searchPaths: string[] = [];
-    const pf = process.env['PROGRAMFILES'] || 'C:\\Program Files';
-    const pf86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
-    searchPaths.push(join(pf, '1cv8'), join(pf86, '1cv8'));
-
-    const home = homedir();
-    searchPaths.push('/opt/1cv8', '/opt/1C/v8.3', join(home, '1cv8'));
+    const programFiles = [
+        process.env['PROGRAMFILES'] || 'C:\\Program Files',
+        process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)',
+    ];
 
     const platforms: PlatformInfo[] = [];
 
-    for (const cv8Dir of searchPaths) {
+    for (const base of programFiles) {
+        const cv8Dir = join(base, '1cv8');
         if (!existsSync(cv8Dir)) continue;
+
         try {
             const entries = readdirSync(cv8Dir);
             for (const entry of entries) {
+                // Version folders: "8.3.27.1989" (exactly 3 dots)
                 if (!/^\d+\.\d+\.\d+\.\d+$/.test(entry)) continue;
+
                 const versionDir = join(cv8Dir, entry);
-                try {
-                    if (!statSync(versionDir).isDirectory()) continue;
-                } catch { continue; }
+                if (!statSync(versionDir).isDirectory()) continue;
 
                 const binDir = join(versionDir, 'bin');
-                const winExe = join(binDir, '1cv8.exe');
-                const unixExe = join(binDir, '1cv8');
-                const winIbcmd = join(binDir, 'ibcmd.exe');
-                const unixIbcmd = join(binDir, 'ibcmd');
-
-                const exePath = existsSync(winExe) ? winExe : existsSync(unixExe) ? unixExe : winExe;
-                const ibcmdPath = existsSync(winIbcmd) ? winIbcmd : existsSync(unixIbcmd) ? unixIbcmd : winIbcmd;
+                const exePath = join(binDir, '1cv8.exe');
+                const ibcmdPath = join(binDir, 'ibcmd.exe');
 
                 if (existsSync(exePath)) {
-                    platforms.push({ version: entry, bin_path: binDir, exe_path: exePath, ibcmd_path: ibcmdPath, exists: true });
+                    platforms.push({
+                        version: entry,
+                        bin_path: binDir,
+                        exe_path: exePath,
+                        ibcmd_path: ibcmdPath,
+                        exists: true,
+                    });
                 }
             }
         } catch { /* skip */ }
     }
 
+    // Sort by semantic version descending
     platforms.sort((a, b) => {
         const va = a.version.split('.').map(Number);
         const vb = b.version.split('.').map(Number);
@@ -233,8 +213,13 @@ function findPlatform(): PlatformInfo[] {
     return platforms;
 }
 
+// ─── Combined Environment ────────────────────────────────────────
+
 function getEnvironment() {
-    return { platforms: findPlatform(), infobases: parseV8iFile(), v8i_path: findV8iPath() };
+    const platforms = findPlatform();
+    const infobases = parseV8iFile();
+    const v8iPath = findV8iPath();
+    return { platforms, infobases, v8i_path: v8iPath };
 }
 
 // ─── Status ──────────────────────────────────────────────────────
@@ -252,162 +237,135 @@ function reportStatus() {
     }
 }
 
-// ─── MCP Server (SDK-based, like other mini-ai-1c servers) ──────
+// ─── MCP Server ──────────────────────────────────────────────────
 
-function createServerInstance(): Server {
-    const server = new Server(
-        { name: 'jvv-1c', version: '1.0.0' },
-        { capabilities: { tools: {} } },
-    );
+const server = new Server(
+    { name: 'jvv-1c', version: '1.0.0' },
+    { capabilities: { tools: {} } },
+);
 
-    server.setRequestHandler(ListToolsRequestSchema, async () => ({
-        tools: [
-            {
-                name: 'list_infobases',
-                description: 'Список информационных баз 1С из ibases.v8i. Возвращает все зарегистрированные базы: имя, строку соединения, тип (файловая/серверная), ID и папку.',
-                inputSchema: {
-                    type: 'object',
-                    properties: {
-                        v8i_path: { type: 'string', description: 'Путь к ibases.v8i (автоопределение по умолчанию)' },
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [
+        {
+            name: 'list_infobases',
+            description: 'Список информационных баз 1С из ibases.v8i. Возвращает все зарегистрированные базы: имя, строку соединения, тип (файловая/серверная), ID и папку.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    v8i_path: {
+                        type: 'string',
+                        description: 'Путь к ibases.v8i (по умолчанию — стандартные расположения %APPDATA%\\1C\\1CEStart)',
                     },
                 },
             },
-            {
-                name: 'find_platform',
-                description: 'Поиск установленных версий 1С:Предприятие (1cv8.exe). Сканирует Program Files и Program Files (x86). Возвращает список версий по убыванию с путями к 1cv8.exe и ibcmd.exe.',
-                inputSchema: { type: 'object', properties: {} },
+        },
+        {
+            name: 'find_platform',
+            description: 'Поиск установленных версий 1С:Предприятие (1cv8.exe). Сканирует Program Files и Program Files (x86). Возвращает список версий по убыванию с путями к 1cv8.exe и ibcmd.exe.',
+            inputSchema: {
+                type: 'object',
+                properties: {},
             },
-            {
-                name: 'get_1c_environment',
-                description: 'Комбинированная информация: установленные платформы + список баз 1С + путь к ibases.v8i. Один вызов — вся картина.',
-                inputSchema: { type: 'object', properties: {} },
+        },
+        {
+            name: 'get_1c_environment',
+            description: 'Комбинированная информация: установленные платформы + список баз 1С + путь к ibases.v8i. Один вызов — вся картина.',
+            inputSchema: {
+                type: 'object',
+                properties: {},
             },
-        ],
-    }));
+        },
+    ],
+}));
 
-    server.setRequestHandler(CallToolRequestSchema, async (request) => {
-        const { name, arguments: args } = request.params;
-        try {
-            switch (name) {
-                case 'list_infobases': {
-                    const v8iPath = (args as any)?.v8i_path as string | undefined;
-                    const bases = parseV8iFile(v8iPath);
-                    return {
-                        content: [{
-                            type: 'text' as const,
-                            text: JSON.stringify({
-                                count: bases.length,
-                                v8i_path: v8iPath || findV8iPath(),
-                                bases: bases.map(b => ({ name: b.name, connection: b.connection, type: b.type, id: b.id, folder: b.folder })),
-                            }, null, 2),
-                        }],
-                    };
-                }
-                case 'find_platform': {
-                    const platforms = findPlatform();
-                    return {
-                        content: [{
-                            type: 'text' as const,
-                            text: JSON.stringify({
-                                count: platforms.length,
-                                latest: platforms[0] || null,
-                                platforms: platforms.map(p => ({ version: p.version, bin_path: p.bin_path, exe_path: p.exe_path, ibcmd_path: p.ibcmd_path })),
-                            }, null, 2),
-                        }],
-                    };
-                }
-                case 'get_1c_environment': {
-                    const env = getEnvironment();
-                    return {
-                        content: [{
-                            type: 'text' as const,
-                            text: JSON.stringify({
-                                platforms: { count: env.platforms.length, latest_version: env.platforms[0]?.version || null, items: env.platforms.map(p => ({ version: p.version, exe_path: p.exe_path, ibcmd_path: p.ibcmd_path })) },
-                                infobases: { count: env.infobases.length, v8i_path: env.v8i_path, items: env.infobases.map(b => ({ name: b.name, connection: b.connection, type: b.type })) },
-                            }, null, 2),
-                        }],
-                    };
-                }
-                default:
-                    throw new Error(`Unknown tool: ${name}`);
-            }
-        } catch (e: any) {
-            return { content: [{ type: 'text' as const, text: `Error: ${e.message || String(e)}` }], isError: true };
-        }
-    });
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
 
-    return server;
-}
-
-// ─── Stdio Mode ──────────────────────────────────────────────────
-
-async function startStdio() {
-    const server = createServerInstance();
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-}
-
-// ─── HTTP Mode (Streamable HTTP) ─────────────────────────────────
-
-async function startHttp(port: number) {
-    const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, mcp-session-id');
-
-        if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
-
-        const url = new URL(req.url || '/', `http://localhost:${port}`);
-
-        if (req.method === 'GET' && url.pathname === '/health') {
-            const env = getEnvironment();
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ status: 'ok', name: 'jvv-1c', version: '1.0.0', platforms: env.platforms.length, bases: env.infobases.length }));
-            return;
-        }
-
-        if (req.method === 'GET' && url.pathname === '/') {
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end(`<!DOCTYPE html><html><body><h2>JVV-1C MCP Server v1.0.0</h2>
-<p>Tools: list_infobases, find_platform, get_1c_environment</p>
-<p>POST <a href="/">/</a> — Streamable HTTP (MCP)</p>
-<p>GET /health — Health check</p></body></html>`);
-            return;
-        }
-
-        if (req.method === 'POST') {
-            let body = '';
-            for await (const chunk of req) body += chunk;
-            try {
-                const parsedBody = JSON.parse(body);
-                const server = createServerInstance();
-                const transport = new StreamableHTTPServerTransport({
-                    sessionIdGenerator: () => randomUUID(),
+    try {
+        switch (name) {
+            case 'list_infobases': {
+                const v8iPath = (args as any)?.v8i_path as string | undefined;
+                const bases = parseV8iFile(v8iPath);
+                return ok({
+                    count: bases.length,
+                    v8i_path: v8iPath || findV8iPath(),
+                    bases: bases.map(b => ({
+                        name: b.name,
+                        connection: b.connection,
+                        type: b.type,
+                        id: b.id,
+                        folder: b.folder,
+                    })),
                 });
-                await server.connect(transport);
-                await transport.handleRequest(req as any, res, parsedBody);
-            } catch (e: any) {
-                res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32603, message: e.message || String(e) } }));
             }
-            return;
+
+            case 'find_platform': {
+                const platforms = findPlatform();
+                return ok({
+                    count: platforms.length,
+                    latest: platforms[0] || null,
+                    platforms: platforms.map(p => ({
+                        version: p.version,
+                        bin_path: p.bin_path,
+                        exe_path: p.exe_path,
+                        ibcmd_path: p.ibcmd_path,
+                    })),
+                });
+            }
+
+            case 'get_1c_environment': {
+                const env = getEnvironment();
+                return ok({
+                    platforms: {
+                        count: env.platforms.length,
+                        latest_version: env.platforms[0]?.version || null,
+                        items: env.platforms.map(p => ({
+                            version: p.version,
+                            exe_path: p.exe_path,
+                            ibcmd_path: p.ibcmd_path,
+                        })),
+                    },
+                    infobases: {
+                        count: env.infobases.length,
+                        v8i_path: env.v8i_path,
+                        items: env.infobases.map(b => ({
+                            name: b.name,
+                            connection: b.connection,
+                            type: b.type,
+                        })),
+                    },
+                });
+            }
+
+            default:
+                throw new Error(`Unknown tool: ${name}`);
         }
+    } catch (e: any) {
+        return err(e.message || String(e));
+    }
+});
 
-        res.writeHead(404);
-        res.end('Not found');
-    });
+// ─── Helpers ─────────────────────────────────────────────────────
 
-    httpServer.listen(port, () => {
-        process.stderr.write(`[jvv-1c] HTTP server on http://localhost:${port}\n`);
-    });
+function ok(data: any) {
+    return {
+        content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
+    };
 }
 
-// ─── Entry ───────────────────────────────────────────────────────
+function err(msg: string) {
+    return {
+        content: [{ type: 'text' as const, text: `Error: ${msg}` }],
+        isError: true,
+    };
+}
+
+// ─── Startup ─────────────────────────────────────────────────────
 
 async function main() {
     reportStatus();
-    const { mode, port } = parseArgs();
-    if (mode === 'stdio') { await startStdio(); } else { await startHttp(port); }
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
 }
 
 main().catch((e) => {
