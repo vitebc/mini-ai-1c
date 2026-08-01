@@ -708,6 +708,50 @@ fn ensure_default_custom_prompt_templates(settings: &mut AppSettings) -> bool {
     true
 }
 
+/// Ensure all built-in MCP servers are present in settings.
+/// Called on every settings load; idempotent.
+pub fn ensure_builtin_mcp_servers(settings: &mut AppSettings) -> bool {
+    let node_path = normalize_node_path(&settings.node_path);
+    let mut modified = false;
+
+    // builtin-mcp-skills (enabled by default — agent should see skills)
+    if !settings.mcp_servers.iter().any(|s| s.id == "builtin-mcp-skills") {
+        crate::app_log!("[SETTINGS] Adding builtin-mcp-skills server");
+        settings.mcp_servers.push(McpServerConfig {
+            id: "builtin-mcp-skills".to_string(),
+            name: "Скиллы".to_string(),
+            enabled: true,
+            transport: McpTransport::Stdio,
+            command: Some(node_path.clone()),
+            args: Some(vec!["mcp-servers/mcp-skills.cjs".to_string()]),
+            env: None,
+            ..Default::default()
+        });
+        modified = true;
+    }
+
+    // builtin-1c-filesystem (disabled by default — user configures sandbox)
+    if !settings.mcp_servers.iter().any(|s| s.id == "builtin-1c-filesystem") {
+        crate::app_log!("[SETTINGS] Adding builtin-1c-filesystem server");
+        settings.mcp_servers.push(McpServerConfig {
+            id: "builtin-1c-filesystem".to_string(),
+            name: "Файловая система (Sandbox)".to_string(),
+            enabled: false,
+            transport: McpTransport::Stdio,
+            command: Some(node_path.clone()),
+            args: Some(vec!["mcp-servers/1c-filesystem.cjs".to_string()]),
+            env: Some(std::collections::HashMap::from([(
+                "MINI_AI_1C_SANDBOX_PATH".to_string(),
+                String::new(),
+            )])),
+            ..Default::default()
+        });
+        modified = true;
+    }
+
+    modified
+}
+
 pub fn clear_runtime_only_settings(settings: &mut AppSettings) -> bool {
     let had_binding = settings.configurator.selected_window_hwnd.is_some()
         || settings.configurator.selected_window_pid.is_some()
@@ -725,7 +769,7 @@ pub fn clear_runtime_only_settings(settings: &mut AppSettings) -> bool {
 fn is_builtin_node_mcp_server(server_id: &str) -> bool {
     matches!(
         server_id,
-        "builtin-1c-naparnik" | "builtin-1c-metadata" | "builtin-1c-help" | "builtin-mcp-skills"
+        "builtin-1c-naparnik" | "builtin-1c-metadata" | "builtin-1c-help" | "builtin-mcp-skills" | "builtin-1c-filesystem"
     )
 }
 
@@ -904,6 +948,11 @@ pub fn load_settings() -> AppSettings {
 
     // Migration: ensure default custom prompt templates exist
     if ensure_default_custom_prompt_templates(&mut settings) {
+        modified = true;
+    }
+
+    // Migration: ensure all built-in MCP servers are present
+    if ensure_builtin_mcp_servers(&mut settings) {
         modified = true;
     }
 

@@ -150,6 +150,8 @@ pub fn build_enterprise_mcp_configs(
         "builtin-1c-help",
         "builtin-1c-naparnik",
         "builtin-1c-metadata",
+        "builtin-mcp-skills",
+        "builtin-1c-filesystem",
     ];
 
     server_ids

@@ -191,6 +191,8 @@ const BUILTIN_1C_SERVER_ID = 'builtin-1c-naparnik';
 const BUILTIN_1C_METADATA_ID = 'builtin-1c-metadata';
 const BUILTIN_BSL_LS_ID = 'bsl-ls';
 const BUILTIN_1C_HELP_ID = 'builtin-1c-help';
+const BUILTIN_MCP_SKILLS_ID = 'builtin-mcp-skills';
+const BUILTIN_1C_FILESYSTEM_ID = 'builtin-1c-filesystem';
 
 const makeProfileId = (prefix: string) =>
     `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -359,6 +361,49 @@ export function MCPSettings({
             }
         }
 
+        // Check Скиллы
+        const skillsIndex = updatedServers.findIndex(s => s.id === BUILTIN_MCP_SKILLS_ID);
+        if (skillsIndex === -1) {
+            updatedServers.push({
+                id: BUILTIN_MCP_SKILLS_ID,
+                name: 'Скиллы',
+                enabled: true,
+                transport: 'stdio',
+                command: effectiveNodePath,
+                args: ['mcp-servers/mcp-skills.cjs'],
+            });
+            needsUpdate = true;
+        } else {
+            const srv = updatedServers[skillsIndex];
+            const isSupportedCmd = isBuiltinNodeLauncher(srv.command, effectiveNodePath);
+            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(['mcp-servers/mcp-skills.cjs'])) {
+                updatedServers[skillsIndex] = { ...srv, command: effectiveNodePath, args: ['mcp-servers/mcp-skills.cjs'] };
+                needsUpdate = true;
+            }
+        }
+
+        // Check Файловая система (Sandbox)
+        const fsIndex = updatedServers.findIndex(s => s.id === BUILTIN_1C_FILESYSTEM_ID);
+        if (fsIndex === -1) {
+            updatedServers.push({
+                id: BUILTIN_1C_FILESYSTEM_ID,
+                name: 'Файловая система (Sandbox)',
+                enabled: false,
+                transport: 'stdio',
+                command: effectiveNodePath,
+                args: ['mcp-servers/1c-filesystem.cjs'],
+                env: { 'MINI_AI_1C_SANDBOX_PATH': '' },
+            });
+            needsUpdate = true;
+        } else {
+            const srv = updatedServers[fsIndex];
+            const isSupportedCmd = isBuiltinNodeLauncher(srv.command, effectiveNodePath);
+            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(['mcp-servers/1c-filesystem.cjs'])) {
+                updatedServers[fsIndex] = { ...srv, command: effectiveNodePath, args: ['mcp-servers/1c-filesystem.cjs'] };
+                needsUpdate = true;
+            }
+        }
+
         // Сортируем серверы по нужному порядку карточек
         const ORDER: Record<string, number> = {
             [BUILTIN_BSL_LS_ID]: 0,
@@ -366,6 +411,8 @@ export function MCPSettings({
             [BUILTIN_1C_SEARCH_ID]: 2,
             [BUILTIN_1C_SERVER_ID]: 3,
             [BUILTIN_1C_METADATA_ID]: 4,
+            [BUILTIN_MCP_SKILLS_ID]: 5,
+            [BUILTIN_1C_FILESYSTEM_ID]: 6,
         };
 
         const originalIds = servers.map(s => s.id).join(',');
@@ -542,7 +589,7 @@ export function MCPSettings({
     };
 
     const sortedServers = [...servers].sort((a, b) => {
-        const builtinIds = [BUILTIN_BSL_LS_ID, BUILTIN_1C_HELP_ID, BUILTIN_1C_SEARCH_ID, BUILTIN_1C_SERVER_ID, BUILTIN_1C_METADATA_ID];
+        const builtinIds = [BUILTIN_BSL_LS_ID, BUILTIN_1C_HELP_ID, BUILTIN_1C_SEARCH_ID, BUILTIN_1C_SERVER_ID, BUILTIN_1C_METADATA_ID, BUILTIN_MCP_SKILLS_ID, BUILTIN_1C_FILESYSTEM_ID];
         const aIdx = builtinIds.indexOf(a.id);
         const bIdx = builtinIds.indexOf(b.id);
 
@@ -591,7 +638,9 @@ export function MCPSettings({
                         const isBslLs = server.id === BUILTIN_BSL_LS_ID;
                         const isHelp = server.id === BUILTIN_1C_HELP_ID;
                         const isSearch = server.id === BUILTIN_1C_SEARCH_ID;
-                        const isBuiltin = server.id === BUILTIN_1C_SERVER_ID || isMetadata || isBslLs || isHelp || isSearch;
+                        const isSkills = server.id === BUILTIN_MCP_SKILLS_ID;
+                        const isFilesystem = server.id === BUILTIN_1C_FILESYSTEM_ID;
+                        const isBuiltin = server.id === BUILTIN_1C_SERVER_ID || isMetadata || isBslLs || isHelp || isSearch || isSkills || isFilesystem;
                         const searchProfileState = isSearch ? normalizeSearchProfiles(server) : null;
                         const searchActiveProfile = searchProfileState
                             ? (searchProfileState.profiles.find(p => p.id === searchProfileState.activeId) || searchProfileState.profiles[0])
@@ -1393,6 +1442,67 @@ export function MCPSettings({
                                                                 <div className="bg-zinc-900/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400 italic">
                                                                     Быстрый поиск и символьный индекс процедур/функций конфигурации 1С (BSL файлы).
                                                                     Поддерживает поиск по коду и навигацию к определениям.
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()
+                                            ) : isSkills ? (
+                                                <div className="bg-zinc-900/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400">
+                                                    Сервис скиллов — наборов знаний и инструкций для AI-агента.
+                                                    Скиллы хранятся в папке <code className="bg-zinc-800 text-zinc-300 px-1 rounded">~/.config/mini-ai-1c/.agents/skills/</code>.
+                                                    Положите туда папки с файлами SKILL.md.
+                                                </div>
+                                            ) : isFilesystem ? (
+                                                (() => {
+                                                    const sandboxPath = server.env?.['MINI_AI_1C_SANDBOX_PATH'] || '';
+                                                    const fsStatus = statuses[server.id]?.status || '';
+                                                    const isReady = fsStatus === 'connected';
+                                                    const browseSandboxDir = async () => {
+                                                        try {
+                                                            const { open } = await import('@tauri-apps/plugin-dialog');
+                                                            const dir = await open({ directory: true, multiple: false, title: 'Выберите sandbox-папку для файловых операций' });
+                                                            if (dir && typeof dir === 'string') {
+                                                                const newEnv = { ...(server.env || {}), 'MINI_AI_1C_SANDBOX_PATH': dir };
+                                                                handleUpdateServer(server.id, { env: newEnv });
+                                                            }
+                                                        } catch (e) {
+                                                            console.error('Failed to open directory dialog:', e);
+                                                        }
+                                                    };
+                                                    return (
+                                                        <div className="space-y-3">
+                                                            <div className="bg-zinc-900/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400">
+                                                                Агент сможет читать и изменять файлы только внутри указанной папки.
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">
+                                                                    Sandbox-папка
+                                                                </label>
+                                                                <div className="flex gap-1.5 mt-1">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={sandboxPath}
+                                                                        onChange={(e) => {
+                                                                            const newEnv = { ...(server.env || {}), 'MINI_AI_1C_SANDBOX_PATH': e.target.value };
+                                                                            handleUpdateServer(server.id, { env: newEnv });
+                                                                        }}
+                                                                        placeholder="Укажите путь к папке..."
+                                                                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 font-mono min-w-0"
+                                                                    />
+                                                                    <button
+                                                                        onClick={() => void browseSandboxDir()}
+                                                                        className="px-2.5 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg text-xs transition shrink-0"
+                                                                        title="Выбрать папку"
+                                                                    >
+                                                                        <FolderOpen className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            {sandboxPath && (
+                                                                <div className={`flex items-center gap-2 text-xs ${isReady ? 'text-green-400' : 'text-zinc-500'}`}>
+                                                                    <div className={`w-1.5 h-1.5 rounded-full ${isReady ? 'bg-green-500' : 'bg-zinc-600'}`} />
+                                                                    {isReady ? 'Готово — sandbox доступен' : 'Не подключён — включите сервер и проверьте статус'}
                                                                 </div>
                                                             )}
                                                         </div>

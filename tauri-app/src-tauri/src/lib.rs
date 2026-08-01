@@ -310,6 +310,13 @@ pub fn run() {
                     let _ = std::fs::remove_file(history);
                 }
             }
+
+            // Ensure skills directory exists
+            let skills_dir = settings_dir.join(".agents").join("skills");
+            if !skills_dir.exists() {
+                let _ = std::fs::create_dir_all(&skills_dir);
+                crate::app_log!("[SETUP] Created skills directory: {:?}", skills_dir);
+            }
             // Start settings watcher for reactive MCP
             crate::mcp_client::start_settings_watcher(app.handle().clone());
 

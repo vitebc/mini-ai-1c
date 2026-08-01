@@ -29,6 +29,11 @@ const PRESET_MCP_NOTIFICATIONS = [
         name: '1C:Метаданные',
         description: 'Структура метаданных конфигурации: справочники, реквизиты, ТЧ. AI видит схему базы и генерирует точный код.',
     },
+    {
+        id: 'builtin-mcp-skills',
+        name: 'Скиллы',
+        description: 'Наборы знаний и инструкций для AI-агента — Rust, TypeScript, дизайн UI и др.',
+    },
 ];
 
 interface HeaderProps {

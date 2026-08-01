@@ -45,7 +45,12 @@ interface SkillContent {
 
 // ─── Skills index ────────────────────────────────────────────────
 
-let skillsCache: SkillInfo[] | null = null;
+function isValidSkillId(id: string): boolean {
+    if (!id) return false;
+    if (id.startsWith('/') || id.startsWith('\\')) return false;
+    if (id.includes('..')) return false;
+    return true;
+}
 
 function parseSkillFrontmatter(content: string): { metadata: Record<string, unknown>; body: string } {
     const metadata: Record<string, unknown> = {};
@@ -71,10 +76,8 @@ function parseSkillFrontmatter(content: string): { metadata: Record<string, unkn
 }
 
 function scanSkills(): SkillInfo[] {
-    if (skillsCache) return skillsCache;
     if (!SKILLS_DIR) {
-        skillsCache = [];
-        return skillsCache;
+        return [];
     }
 
     const skills: SkillInfo[] = [];
@@ -114,19 +117,21 @@ function scanSkills(): SkillInfo[] {
     } catch { /* no skills dir */ }
 
     skills.sort((a, b) => a.name.localeCompare(b.name));
-    skillsCache = skills;
     return skills;
 }
 
-function skillDirFromId(id: string): string {
-    return join(SKILLS_DIR, id.replace('/', '/'));
+function skillDirFromId(id: string): string | null {
+    if (!isValidSkillId(id)) return null;
+    return join(SKILLS_DIR, id);
 }
 
 function getSkillFiles(skillId: string): string[] {
     if (!SKILLS_DIR) return [];
     const skillDir = skillDirFromId(skillId);
+    if (!skillDir) return [];
     if (!existsSync(skillDir)) return [];
 
+    const sd = skillDir;
     const files: string[] = [];
     function walk(dir: string) {
         try {
@@ -136,18 +141,20 @@ function getSkillFiles(skillId: string): string[] {
                 if (e.isDirectory()) {
                     if (e.name !== 'node_modules' && !e.name.startsWith('.')) walk(full);
                 } else {
-                    files.push(relative(skillDir, full));
+                    files.push(relative(sd, full));
                 }
             }
         } catch { /* skip */ }
     }
-    walk(skillDir);
+    walk(sd);
     return files.sort();
 }
 
 function readSkillFile(skillId: string, filePath: string): string {
+    const skillDir = skillDirFromId(skillId);
+    if (!skillDir) return '';
     try {
-        return readFileSync(join(skillDirFromId(skillId), filePath), 'utf-8');
+        return readFileSync(join(skillDir, filePath), 'utf-8');
     } catch {
         return '';
     }
@@ -235,12 +242,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         case 'get_skill': {
             const id = (args as any)?.id as string;
             if (!id) throw new Error('Parameter "id" is required');
+            if (!isValidSkillId(id)) throw new Error('Invalid skill id');
 
             const all = scanSkills();
             const info = all.find(s => s.id === id);
             if (!info) throw new Error(`Skill "${id}" not found`);
 
             const skillDir = skillDirFromId(id);
+            if (!skillDir) throw new Error('Invalid skill path');
             const skillPath = join(skillDir, 'SKILL.md');
             const raw = readFileSync(skillPath, 'utf-8');
             const { metadata, body } = parseSkillFrontmatter(raw);

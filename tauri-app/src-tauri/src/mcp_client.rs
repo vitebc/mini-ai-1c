@@ -84,7 +84,7 @@ fn with_runtime_settings(mut config: McpServerConfig, settings: &AppSettings) ->
                 env.insert("SKILLS_DIR".to_string(), skills_dir);
             }
         }
-        _ => return config,
+        _ => {}
     }
 
     config.env = if env.is_empty() { None } else { Some(env) };
@@ -824,6 +824,7 @@ impl McpSession {
             "1c-metadata.cjs" => Some(include_bytes!("../mcp-servers/1c-metadata.cjs")),
             "1c-naparnik.cjs" => Some(include_bytes!("../mcp-servers/1c-naparnik.cjs")),
             "mcp-skills.cjs" => Some(include_bytes!("../mcp-servers/mcp-skills.cjs")),
+            "1c-filesystem.cjs" => Some(include_bytes!("../mcp-servers/1c-filesystem.cjs")),
             #[cfg(windows)]
             "mcp-1c-search.exe" => Some(include_bytes!("../mcp-servers/mcp-1c-search.exe")),
             #[cfg(not(windows))]
