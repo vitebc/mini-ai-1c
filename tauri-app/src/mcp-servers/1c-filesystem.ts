@@ -13,6 +13,7 @@ import {
     renameSync,
 } from 'fs';
 import { resolve, relative, join, basename, dirname } from 'path';
+import { execSync } from 'child_process';
 
 // ─── Config ──────────────────────────────────────────────────────
 
@@ -167,6 +168,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                 required: ['source', 'destination'],
             },
         },
+        {
+            name: 'run_command',
+            description: 'Execute a shell command (PowerShell/bash). Working directory is inside sandbox. Returns stdout, stderr, exit_code.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    command: { type: 'string', description: 'Command to execute (e.g. "node", "powershell", "cargo build")' },
+                    args: { type: 'array', items: { type: 'string' }, description: 'Arguments (optional)' },
+                    cwd: { type: 'string', description: 'Working directory relative to sandbox root (default: sandbox root)' },
+                    timeout_ms: { type: 'number', description: 'Timeout in milliseconds (default: 30000, max: 300000)' },
+                },
+                required: ['command'],
+            },
+        },
     ],
 }));
 
@@ -314,6 +329,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 mkdirSync(dirname(dst), { recursive: true });
                 renameSync(src, dst);
                 return ok({ success: true });
+            }
+
+            case 'run_command': {
+                const cwd = a.cwd ? resolveSandboxPath(a.cwd) : SANDBOX;
+                if (!cwd) return err('Working directory escapes sandbox');
+                if (!existsSync(cwd)) return err('Working directory not found');
+
+                const fullCommand = [a.command, ...(a.args || [])].join(' ');
+                const timeout = Math.min(Math.max(a.timeout_ms || 30000, 1000), 300000);
+
+                try {
+                    const stdout = execSync(fullCommand, {
+                        cwd,
+                        timeout,
+                        encoding: 'utf-8',
+                        maxBuffer: 10 * 1024 * 1024, // 10 MB
+                        stdio: ['pipe', 'pipe', 'pipe'],
+                    });
+                    return ok({ stdout, stderr: '', exit_code: 0 });
+                } catch (e: any) {
+                    return ok({
+                        stdout: e.stdout || '',
+                        stderr: e.stderr || e.message || String(e),
+                        exit_code: e.status || 1,
+                    });
+                }
             }
 
             default:
