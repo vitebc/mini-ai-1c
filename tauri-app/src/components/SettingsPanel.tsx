@@ -368,9 +368,8 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
                     )}
 
                     {tab === 'mcp' && settings && (
-                        <div className="p-4 sm:p-8 w-full h-full overflow-y-auto scrollbar-thin">
-                            <div className="max-w-2xl mx-auto">
-                                <MCPSettings
+                        <div className="w-full h-full overflow-hidden">
+                            <MCPSettings
                                     servers={settings.mcp_servers}
                                     nodePath={settings.node_path}
                                     searchIndexDir={settings.search_index_dir || ''}
@@ -380,7 +379,6 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
                                         setSettings({ ...settings, search_index_dir: searchIndexDir })
                                     }
                                 />
-                            </div>
                         </div>
                     )}
 
