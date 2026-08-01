@@ -116,9 +116,9 @@ export function QwenAuthModal({ isOpen, onClose, onSuccess }: QwenAuthModalProps
 
     return (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
-            <div className="bg-[#1c1c1e] border border-[#2a2a2c] rounded-xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col">
+            <div className="bg-[#2b2b2b] border border-[#3b3b3b] rounded-xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col">
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a2a2c]">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-[#3b3b3b]">
                     <h3 className="text-lg font-semibold text-zinc-100">Вход в Qwen Code</h3>
                     <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200 p-1">
                         <X className="w-5 h-5" />
@@ -144,13 +144,13 @@ export function QwenAuthModal({ isOpen, onClose, onSuccess }: QwenAuthModalProps
                                 href={authData.verification_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-center justify-between p-3 bg-[#2a2a2c] hover:bg-[#363638] rounded-lg text-blue-400 transition-colors group"
+                                className="flex items-center justify-between p-3 bg-[#3b3b3b] hover:bg-[#414141] rounded-lg text-blue-400 transition-colors group"
                             >
                                 <span className="truncate text-sm font-medium">{authData.verification_url}</span>
                                 <ExternalLink className="w-4 h-4 shrink-0 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                             </a>
 
-                            <div className="flex flex-col items-center gap-3 pt-2 border-t border-[#2a2a2c]">
+                            <div className="flex flex-col items-center gap-3 pt-2 border-t border-[#3b3b3b]">
                                 <div className="flex items-center gap-2.5">
                                     <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
                                     <span className="text-zinc-400 text-sm">Ожидание подтверждения...</span>
@@ -190,7 +190,7 @@ export function QwenAuthModal({ isOpen, onClose, onSuccess }: QwenAuthModalProps
                 </div>
 
                 {/* Footer */}
-                <div className="px-6 py-4 bg-[#111113]/50 border-t border-[#2a2a2c] flex justify-end">
+                <div className="px-6 py-4 bg-[#2b2b2b]/50 border-t border-[#3b3b3b] flex justify-end">
                     <button
                         onClick={onClose}
                         className="px-4 py-2 text-zinc-400 hover:text-zinc-200 text-sm font-medium transition-colors"

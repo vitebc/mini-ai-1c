@@ -158,6 +158,16 @@ fn build_lightweight_system_prompt_with_custom_prompts(
         }
     }
 
+    // Auto-inject skills for lightweight prompt too
+    let skills_list = crate::commands::skills::list_skills();
+    if !skills_list.is_empty() {
+        prompt.push_str("\nДоступные скиллы (вызови get_skill для получения):\n");
+        for s in &skills_list {
+            let short = if s.description.len() > 60 { &s.description[..60] } else { &s.description };
+            prompt.push_str(&format!("- `{}`: {}\n", s.id, short));
+        }
+    }
+
     append_custom_prompt_settings(&mut prompt, custom_prompts);
 
     prompt
@@ -197,6 +207,21 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
 
     let mut prompt = String::new();
     let target_lang = detect_target_lang(messages);
+
+    // Auto-inject available skills list
+    let skills_list = crate::commands::skills::list_skills();
+    if !skills_list.is_empty() {
+        prompt.push_str("=== ДОСТУПНЫЕ СКИЛЛЫ (автообновляемый список) ===\n");
+        prompt.push_str("У тебя есть база знаний — скиллы по технологиям (Rust, TypeScript, Tauri, MCP, UI/UX и др.).\n");
+        prompt.push_str("Список ниже обновляется автоматически. Для получения полного содержимого скилла — вызови `get_skill(id=\"...\")`.\n\n");
+        for s in &skills_list {
+            let desc = if s.description.is_empty() { "" } else { &s.description };
+            let cat = if s.category.is_empty() { String::new() } else { format!(" [{}]", s.category) };
+            prompt.push_str(&format!("- `{}`{}: {}\n", s.id, cat, desc));
+        }
+        prompt.push_str("\n⚠️ ОБЯЗАТЕЛЬНО: При начале каждого диалога — СНАЧАЛА изучи доступные скиллы выше.\n");
+        prompt.push_str("Если задача соответствует скиллу — получи его через `get_skill(id)` и СЛЕДУЙ инструкциям из SKILL.md.\n\n");
+    }
 
     match code_gen.behavior_preset {
         PromptBehaviorPreset::Project => {
@@ -565,18 +590,15 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
 === СКИЛЛЫ (builtin-mcp-skills) ===
 
 У тебя есть доступ к базе знаний — скиллам (инструкциям и паттернам по технологиям).
-Скиллы содержат готовые решения, паттерны и лучшие практики по Rust, TypeScript, Tauri, MCP, UI/UX и другим технологиям.
-
-⚠️ ОБЯЗАТЕЛЬНО: При начале каждого нового диалога или при получении задачи по незнакомой технологии —
-ВЫЗВАЙ `search_skills` или `list_skills` для поиска релевантных скиллов.
-Если нашёл подходящий скилл — получи его содержимое через `get_skill` и СЛЕДУЙ инструкциям из него.
+Список доступных скиллов СОДЕРЖИТСЯ ВЫШЕ в этом промпте (раздел "ДОСТУПНЫЕ СКИЛЛЫ").
 
 Как использовать:
 1. Определи технологию/задачу (например: "Tauri", "React", "MCP сервер", "BSL")
-2. search_skills(query="Tauri") или list_skills() — найди подходящий скилл
-3. get_skill(id="desktop-framework-tauri") — получи полное содержимое
+2. Найди подходящий скилл в списке выше
+3. get_skill(id="desktop-framework-tauri") — получи полное содержимое SKILL.md
 4. Следуй инструкциям из SKILL.md при решении задачи
 
+Если нужен поиск по ключевому слову — используй search_skills(query="...").
 "#);
         }
     }

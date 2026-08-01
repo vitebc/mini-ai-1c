@@ -204,6 +204,11 @@ pub fn run() {
 
             // Handle window close: hide tray icon then exit cleanly
             if let Some(main_window) = app.get_webview_window("main") {
+                // Force window size from tauri.conf.json (overrides saved window-state)
+                use tauri::LogicalSize;
+                let _ = main_window.set_size(LogicalSize::new(760.0, 1080.0));
+                let _ = main_window.set_min_size(Some(LogicalSize::new(560.0, 720.0)));
+
                 let app_handle = app.handle().clone();
                 main_window.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { .. } = event {

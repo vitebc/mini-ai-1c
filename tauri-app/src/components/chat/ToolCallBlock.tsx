@@ -90,7 +90,7 @@ const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCall }) => {
             {isExpanded && hasContent && (
                 <div className="ml-6 mr-4 mt-1 flex flex-col gap-1.5">
                     {hasArgs && (
-                        <div className="p-2.5 rounded border border-zinc-800/50 bg-[#171719] overflow-x-auto shadow-inner">
+                        <div className="p-2.5 rounded border border-zinc-800/50 bg-[#242426] overflow-x-auto shadow-inner">
                             <div className="text-[9px] text-zinc-600 uppercase tracking-wider mb-1 font-semibold">Аргументы</div>
                             <pre className="font-mono text-[10px] text-zinc-400 whitespace-pre-wrap break-words">
                                 {formatJSON(toolCall.arguments)}
@@ -98,7 +98,7 @@ const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCall }) => {
                         </div>
                     )}
                     {hasResult && (
-                        <div className="p-2.5 rounded border border-zinc-800/50 bg-[#171719] overflow-x-auto shadow-inner">
+                        <div className="p-2.5 rounded border border-zinc-800/50 bg-[#242426] overflow-x-auto shadow-inner">
                             <div className="text-[9px] text-zinc-600 uppercase tracking-wider mb-1 font-semibold">Результат</div>
                             <pre className="font-mono text-[10px] text-zinc-400 whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto">
                                 {formatJSON(toolCall.result!)}

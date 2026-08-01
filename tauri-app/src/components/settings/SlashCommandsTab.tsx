@@ -175,7 +175,7 @@ export function SlashCommandsTab({ settings, onSettingsChange, onSave, saving }:
                             <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
                                 <div
                                     onClick={() => updateCommand(index, { is_enabled: !cmd.is_enabled })}
-                                    className={`w-8 h-4 rounded-full relative transition-colors duration-200 cursor-pointer ${cmd.is_enabled ? 'bg-blue-600' : 'bg-[#6a6a6c]'}`}
+                                    className={`w-8 h-4 rounded-full relative transition-colors duration-200 cursor-pointer ${cmd.is_enabled ? 'bg-blue-600' : 'bg-[#747476]'}`}
                                 >
                                     <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all duration-200 shadow-sm ${cmd.is_enabled ? 'left-[15px]' : 'left-0.5'}`} />
                                 </div>
@@ -214,7 +214,7 @@ export function SlashCommandsTab({ settings, onSettingsChange, onSave, saving }:
                                             type="text"
                                             value={cmd.command}
                                             onChange={e => updateCommand(index, { command: e.target.value })}
-                                            className="w-full bg-[#222224] border border-white/[0.05] rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50 transition-colors"
+                                            className="w-full bg-[#3f3f3f] border border-white/[0.05] rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50 transition-colors"
                                             placeholder="например: исправить"
                                         />
                                     </div>
@@ -227,7 +227,7 @@ export function SlashCommandsTab({ settings, onSettingsChange, onSave, saving }:
                                             type="text"
                                             value={cmd.name}
                                             onChange={e => updateCommand(index, { name: e.target.value })}
-                                            className="w-full bg-[#222224] border border-white/[0.05] rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50 transition-colors"
+                                            className="w-full bg-[#3f3f3f] border border-white/[0.05] rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50 transition-colors"
                                         />
                                     </div>
                                 </div>
@@ -238,7 +238,7 @@ export function SlashCommandsTab({ settings, onSettingsChange, onSave, saving }:
                                         type="text"
                                         value={cmd.description}
                                         onChange={e => updateCommand(index, { description: e.target.value })}
-                                        className="w-full bg-[#222224] border border-white/[0.05] rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50 transition-colors"
+                                        className="w-full bg-[#3f3f3f] border border-white/[0.05] rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50 transition-colors"
                                     />
                                 </div>
 
@@ -252,7 +252,7 @@ export function SlashCommandsTab({ settings, onSettingsChange, onSave, saving }:
                                         }}
                                         value={cmd.template}
                                         onChange={e => updateCommand(index, { template: e.target.value })}
-                                        className="w-full h-32 bg-[#222224] border border-white/[0.05] rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50 transition-colors resize-none font-mono leading-relaxed shadow-inner"
+                                        className="w-full h-32 bg-[#3f3f3f] border border-white/[0.05] rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50 transition-colors resize-none font-mono leading-relaxed shadow-inner"
                                         placeholder="Введите текст промпта с использованием плейсхолдеров..."
                                     />
                                     <div className="flex flex-wrap gap-x-4 gap-y-2 px-1 pt-1">

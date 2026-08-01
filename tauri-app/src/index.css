@@ -157,27 +157,27 @@ html.light {
 }
 
 /* Override hardcoded hex colors used in components */
-html.light .bg-\[\#111113\] { background-color: #ffffff !important; }
-html.light .bg-\[\#1c1c1e\] { background-color: #fafafa !important; }
-html.light .bg-\[\#1c1c1e\]\/80 { background-color: rgb(250 250 250 / 0.95) !important; }
-html.light .border-\[\#424244\]\/30 { border-color: rgb(210 210 210 / 0.6) !important; }
+html.light .bg-\[\#1c1c1e\] { background-color: #ffffff !important; }
+html.light .bg-\[\#2b2b2b\] { background-color: #fafafa !important; }
+html.light .bg-\[\#2b2b2b\]\/80 { background-color: rgb(250 250 250 / 0.95) !important; }
+html.light .border-\[\#505050\]\/30 { border-color: rgb(210 210 210 / 0.6) !important; }
 
 /* Soften blue buttons in light theme — less jarring than vivid Tailwind blue-600 */
 html.light .bg-blue-600 { background-color: #0078d4 !important; }
 html.light .hover\:bg-blue-500:hover { background-color: #1184db !important; }
 html.light .hover\:bg-blue-700:hover { background-color: #006cbd !important; }
-html.light .bg-\[\#1f1f21\] { background-color: #f7f7f7 !important; }
-html.light .bg-\[\#222224\] { background-color: #fafafa !important; }
-html.light .bg-\[\#232325\] { background-color: #f7f7f9 !important; }
-html.light .bg-\[\#171719\] { background-color: #fcfcfc !important; }
-html.light .bg-\[\#2a2a2c\] { background-color: #ececec !important; }
-html.light .bg-\[\#3a3a3c\] { background-color: #f7f7f7 !important; }
-html.light .bg-\[\#424244\] { background-color: #dedede !important; }
-html.light .border-\[\#2a2a2c\] { border-color: #dedede !important; }
-html.light .hover\:bg-\[\#2a2a2c\]:hover { background-color: #f0f0f0 !important; }
-html.light .hover\:bg-\[\#363638\]:hover { background-color: #eaeaea !important; }
-html.light .bg-\[\#2a2a2c\]\/50 { background-color: rgb(236 236 236 / 0.5) !important; }
-html.light .bg-\[\#111113\]\/50 { background-color: rgb(255 255 255 / 0.5) !important; }
+html.light .bg-\[\#2e2e2e\] { background-color: #f7f7f7 !important; }
+html.light .bg-\[\#343434\] { background-color: #fafafa !important; }
+html.light .bg-\[\#353535\] { background-color: #f7f7f9 !important; }
+html.light .bg-\[\#242426\] { background-color: #fcfcfc !important; }
+html.light .bg-\[\#3b3b3b\] { background-color: #ececec !important; }
+html.light .bg-\[\#454545\] { background-color: #f7f7f7 !important; }
+html.light .bg-\[\#505050\] { background-color: #dedede !important; }
+html.light .border-\[\#3b3b3b\] { border-color: #dedede !important; }
+html.light .hover\:bg-\[\#3b3b3b\]:hover { background-color: #f0f0f0 !important; }
+html.light .hover\:bg-\[\#414141\]:hover { background-color: #eaeaea !important; }
+html.light .bg-\[\#3b3b3b\]\/50 { background-color: rgb(236 236 236 / 0.5) !important; }
+html.light .bg-\[\#1c1c1e\]\/50 { background-color: rgb(255 255 255 / 0.5) !important; }
 
 /* Light scrollbar */
 html.light ::-webkit-scrollbar-thumb { background: #d0d0d0; }
@@ -224,8 +224,8 @@ html.light .qwen-paid-notice a:hover { color: #78350f !important; }
 html.light .qwen-paid-notice span { color: #d97706 !important; }
 
 /* Fix muted text that's too light in light theme */
-html.light .text-zinc-500 { color: #6a6a6c !important; }
-html.light .text-zinc-600 { color: #424244 !important; }
+html.light .text-zinc-500 { color: #747476 !important; }
+html.light .text-zinc-600 { color: #505050 !important; }
 
 /* Override static white text (not on colored backgrounds) */
 html.light .text-white {
