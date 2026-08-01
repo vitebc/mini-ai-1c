@@ -255,6 +255,12 @@ impl Default for ConfiguratorSettings {
 /// Settings for BSL Language Server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BSLServerSettings {
+    #[serde(default)]
+    pub executable_path: String,
+    #[serde(default)]
+    pub installed_version: String,
+    #[serde(default)]
+    pub workspace_path: String,
     pub jar_path: String,
     pub auto_download: bool,
     pub websocket_port: u16,
@@ -269,6 +275,9 @@ pub struct BSLServerSettings {
 impl Default for BSLServerSettings {
     fn default() -> Self {
         Self {
+            executable_path: String::new(),
+            installed_version: String::new(),
+            workspace_path: String::new(),
             jar_path: String::new(),
             auto_download: true,
             websocket_port: 8025,
@@ -1181,6 +1190,25 @@ mod tests {
             serde_json::from_value(json).expect("legacy settings should deserialize");
 
         assert_eq!(settings.search_index_dir, "");
+    }
+
+    #[test]
+    fn legacy_bsl_settings_deserialize_with_native_defaults() {
+        let mut json = serde_json::to_value(AppSettings::default())
+            .expect("default settings should serialize to json");
+        let bsl = json["bsl_server"]
+            .as_object_mut()
+            .expect("bsl_server section should exist");
+        bsl.remove("executable_path");
+        bsl.remove("installed_version");
+        bsl.remove("workspace_path");
+
+        let settings: AppSettings =
+            serde_json::from_value(json).expect("legacy BSL settings should deserialize");
+
+        assert_eq!(settings.bsl_server.executable_path, "");
+        assert_eq!(settings.bsl_server.installed_version, "");
+        assert_eq!(settings.bsl_server.workspace_path, "");
     }
 
     #[test]

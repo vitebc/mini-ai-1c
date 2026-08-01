@@ -18,6 +18,12 @@ pub struct BslStatus {
     pub installed: bool,
     pub java_info: String,
     pub connected: bool,
+    pub runtime_info: String,
+    pub server_version: String,
+    pub server_path: String,
+    pub workspace_path: String,
+    pub active_port: u16,
+    pub mcp_available: bool,
 }
 
 /// Analyze BSL code
@@ -33,11 +39,7 @@ pub async fn analyze_bsl(
         let _ = client.connect().await;
     }
 
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let uri = format!("file:///temp_{}.bsl", timestamp);
+    let uri = client.temporary_document_uri("analyze");
 
     let diagnostics = client.analyze_code(&code, &uri).await?;
 
@@ -72,7 +74,8 @@ pub async fn format_bsl(
         let _ = client.connect().await;
     }
 
-    client.format_code(&code, "file:///temp.bsl").await
+    let uri = client.temporary_document_uri("format");
+    client.format_code(&code, &uri).await
 }
 
 /// Check BSL LS status
@@ -83,27 +86,56 @@ pub async fn check_bsl_status_cmd(
     use crate::bsl_client::BSLClient;
     let settings = settings::load_settings();
 
-    let connected = if let Ok(client) = state.inner().try_lock() {
-        client.is_connected()
+    let native_path = settings.bsl_server.executable_path.trim();
+    let native_installed = !native_path.is_empty() && std::path::Path::new(native_path).is_file();
+    let legacy_installed = BSLClient::check_install(&settings.bsl_server.jar_path);
+    let installed = native_installed || legacy_installed;
+    let java_info = if native_installed {
+        "Bundled runtime".to_string()
     } else {
-        false
+        BSLClient::check_java(&settings.bsl_server.java_path)
+    };
+    let runtime_info = if native_installed {
+        "Встроенный runtime официального Windows-пакета".to_string()
+    } else {
+        java_info.clone()
+    };
+    let server_path = if native_installed {
+        native_path.to_string()
+    } else {
+        settings.bsl_server.jar_path.clone()
+    };
+    let workspace_path = if settings.bsl_server.workspace_path.trim().is_empty() {
+        settings::get_settings_dir()
+            .join("bsl-workspace")
+            .to_string_lossy()
+            .to_string()
+    } else {
+        settings.bsl_server.workspace_path.clone()
     };
 
-    if settings.bsl_server.is_remote() {
-        return Ok(BslStatus {
-            installed: true,
-            java_info: "Remote (server-side)".to_string(),
-            connected,
-        });
-    }
-
-    let installed = BSLClient::check_install(&settings.bsl_server.jar_path);
-    let java_info = BSLClient::check_java(&settings.bsl_server.java_path);
+    let (connected, mcp_available, active_port) = if let Ok(client) = state.inner().try_lock() {
+        (
+            client.is_connected(),
+            client.is_official_mcp_available(),
+            client
+                .active_port()
+                .unwrap_or(settings.bsl_server.websocket_port),
+        )
+    } else {
+        (false, false, settings.bsl_server.websocket_port)
+    };
 
     Ok(BslStatus {
         installed,
         java_info,
+        runtime_info,
+        server_version: settings.bsl_server.installed_version,
+        server_path,
+        workspace_path,
+        active_port,
         connected,
+        mcp_available,
     })
 }
 
@@ -118,30 +150,21 @@ pub async fn install_bsl_ls_cmd(app: tauri::AppHandle) -> Result<String, String>
 pub async fn reconnect_bsl_ls_cmd(
     state: tauri::State<'_, Arc<tokio::sync::Mutex<crate::bsl_client::BSLClient>>>,
 ) -> Result<(), String> {
-    let is_remote = {
-        let settings = settings::load_settings();
-        settings.bsl_server.is_remote()
-    };
-
     {
         let mut client = state.inner().lock().await;
         client.stop();
     }
 
-    if !is_remote {
-        // Wait for the old Java process to fully release the port before checking is_port_listening
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    }
+    // Wait for the old Java process to fully release the port before checking is_port_listening
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     {
         let mut client = state.inner().lock().await;
         client.start_server()?;
     }
 
-    if !is_remote {
-        // Wait for BSL LS to initialize (Spring Boot takes ~4-5 seconds)
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-    }
+    // Wait for BSL LS to initialize (Spring Boot takes ~4-5 seconds)
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
     let mut client = state.inner().lock().await;
     client.connect().await?;
@@ -157,57 +180,143 @@ pub struct BslDiagnosticItem {
     pub suggestion: Option<String>,
 }
 
+fn extract_server_version_line(output: &str) -> String {
+    output
+        .lines()
+        .map(str::trim)
+        .find(|line| line.to_ascii_lowercase().starts_with("version:"))
+        .unwrap_or("version unknown")
+        .to_string()
+}
+
+fn is_expected_mcp_probe_status(status: reqwest::StatusCode) -> bool {
+    status.is_success() || status == reqwest::StatusCode::BAD_REQUEST
+}
+
 #[tauri::command]
-pub async fn diagnose_bsl_ls_cmd() -> Vec<BslDiagnosticItem> {
+pub async fn diagnose_bsl_ls_cmd(
+    state: tauri::State<'_, Arc<tokio::sync::Mutex<crate::bsl_client::BSLClient>>>,
+) -> Result<Vec<BslDiagnosticItem>, String> {
     let settings = settings::load_settings();
     let mut report = Vec::new();
+    let active_port = state
+        .inner()
+        .try_lock()
+        .ok()
+        .and_then(|client| client.active_port())
+        .unwrap_or(settings.bsl_server.websocket_port);
 
-    // --- Remote mode: skip local Java/JAR checks, only test WebSocket ---
-    if settings.bsl_server.is_remote() {
-        let remote_url = &settings.bsl_server.remote_url;
-        report.push(BslDiagnosticItem {
-            status: "ok".to_string(),
-            title: "Режим работы".to_string(),
-            message: format!("Используется удалённый сервер: {}", remote_url),
-            suggestion: None,
-        });
+    let native_path = std::path::Path::new(&settings.bsl_server.executable_path);
+    if !settings.bsl_server.executable_path.trim().is_empty() && native_path.is_file() {
+        let mut version_command = std::process::Command::new(native_path);
+        version_command.arg("version");
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            version_command.creation_flags(0x08000000);
+        }
 
-        match tokio::time::timeout(Duration::from_secs(5), connect_async(remote_url)).await {
-            Ok(Ok(_)) => {
+        match version_command.output() {
+            Ok(output) if output.status.success() => {
+                let output_text = format!(
+                    "{} {}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
                 report.push(BslDiagnosticItem {
                     status: "ok".to_string(),
-                    title: "WebSocket соединение".to_string(),
-                    message: "Удалённый сервер доступен, WebSocket рукопожатие прошло успешно."
-                        .to_string(),
+                    title: "BSL Language Server".to_string(),
+                    message: format!(
+                        "Нативный сервер успешно запущен: {}",
+                        extract_server_version_line(&output_text)
+                    ),
                     suggestion: None,
                 });
             }
-            Ok(Err(e)) => {
-                report.push(BslDiagnosticItem {
-                    status: "error".to_string(),
-                    title: "Ошибка WebSocket".to_string(),
-                    message: format!("Не удалось подключиться к удалённому серверу: {}", e),
-                    suggestion: Some(
-                        "Проверьте доступность хоста, порт и брандмауэр на сервере.".to_string(),
-                    ),
-                });
-            }
-            Err(_) => {
-                report.push(BslDiagnosticItem {
-                    status: "error".to_string(),
-                    title: "Таймаут подключения".to_string(),
-                    message: "Удалённый сервер не отвечает в течение 5 секунд.".to_string(),
-                    suggestion: Some(
-                        "Проверьте правильность URL и доступность сервера.".to_string(),
-                    ),
-                });
-            }
+            Ok(output) => report.push(BslDiagnosticItem {
+                status: "error".to_string(),
+                title: "Ошибка запуска BSL Language Server".to_string(),
+                message: format!("Команда version завершилась со статусом {}.", output.status),
+                suggestion: Some(
+                    "Переустановите официальный Windows-пакет кнопкой Download.".to_string(),
+                ),
+            }),
+            Err(error) => report.push(BslDiagnosticItem {
+                status: "error".to_string(),
+                title: "Ошибка запуска BSL Language Server".to_string(),
+                message: error.to_string(),
+                suggestion: Some(
+                    "Переустановите официальный Windows-пакет кнопкой Download.".to_string(),
+                ),
+            }),
         }
 
-        return report;
-    }
+        report.push(BslDiagnosticItem {
+            status: "ok".to_string(),
+            title: "Runtime".to_string(),
+            message: "Используется встроенный runtime официального Windows-пакета; внешняя Java не требуется.".to_string(),
+            suggestion: None,
+        });
 
-    // --- Local mode ---
+        let port = active_port;
+        let ws_url = format!("ws://127.0.0.1:{port}/lsp");
+        match tokio::time::timeout(Duration::from_secs(3), connect_async(&ws_url)).await {
+            Ok(Ok(_)) => report.push(BslDiagnosticItem {
+                status: "ok".to_string(),
+                title: "LSP WebSocket".to_string(),
+                message: format!("Соединение с {ws_url} установлено."),
+                suggestion: None,
+            }),
+            Ok(Err(error)) => report.push(BslDiagnosticItem {
+                status: "warn".to_string(),
+                title: "LSP WebSocket недоступен".to_string(),
+                message: error.to_string(),
+                suggestion: Some("Нажмите Reconnect и повторите диагностику.".to_string()),
+            }),
+            Err(_) => report.push(BslDiagnosticItem {
+                status: "error".to_string(),
+                title: "Таймаут LSP WebSocket".to_string(),
+                message: "Сервер не ответил за 3 секунды.".to_string(),
+                suggestion: Some("Нажмите Reconnect и повторите диагностику.".to_string()),
+            }),
+        }
+
+        let mcp_url = format!("http://127.0.0.1:{port}/mcp");
+        let http_client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .unwrap_or_default();
+        match http_client.get(&mcp_url).send().await {
+            Ok(response) if is_expected_mcp_probe_status(response.status()) => {
+                report.push(BslDiagnosticItem {
+                    status: "ok".to_string(),
+                    title: "Official MCP".to_string(),
+                    message: format!(
+                    "Endpoint {mcp_url} доступен; запрос без MCP-сессии ожидаемо вернул HTTP {}.",
+                    response.status()
+                ),
+                    suggestion: None,
+                })
+            }
+            Ok(response) => report.push(BslDiagnosticItem {
+                status: "warn".to_string(),
+                title: "Official MCP вернул ошибку".to_string(),
+                message: format!("Endpoint {mcp_url} вернул HTTP {}.", response.status()),
+                suggestion: Some("Нажмите Reconnect и повторите диагностику.".to_string()),
+            }),
+            Err(error) => report.push(BslDiagnosticItem {
+                status: "warn".to_string(),
+                title: "Official MCP недоступен".to_string(),
+                message: error.to_string(),
+                suggestion: Some(
+                    "Убедитесь, что установлен BSL Language Server 1.x и выполнен Reconnect."
+                        .to_string(),
+                ),
+            }),
+        }
+
+        return Ok(report);
+    }
 
     let mut java_cmd = std::process::Command::new(&settings.bsl_server.java_path);
     java_cmd.arg("-version");
@@ -447,7 +556,7 @@ pub async fn diagnose_bsl_ls_cmd() -> Vec<BslDiagnosticItem> {
         }
     }
 
-    report
+    Ok(report)
 }
 
 fn parse_java_major_version(version_output: &str) -> Option<u32> {
@@ -463,4 +572,30 @@ fn parse_java_major_version(version_output: &str) -> Option<u32> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_version_diagnostics_omit_runtime_warnings() {
+        let output = "version: 1.0.5\nWARNING: A terminally deprecated method was called";
+
+        assert_eq!(extract_server_version_line(output), "version: 1.0.5");
+    }
+
+    #[test]
+    fn mcp_probe_accepts_only_success_or_missing_session_response() {
+        assert!(is_expected_mcp_probe_status(reqwest::StatusCode::OK));
+        assert!(is_expected_mcp_probe_status(
+            reqwest::StatusCode::BAD_REQUEST
+        ));
+        assert!(!is_expected_mcp_probe_status(
+            reqwest::StatusCode::NOT_FOUND
+        ));
+        assert!(!is_expected_mcp_probe_status(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR
+        ));
+    }
 }

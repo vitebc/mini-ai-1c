@@ -14,8 +14,8 @@ use tauri::Emitter;
 
 use super::models::{ApiMessage, Tool, ToolCall, ToolCallFunction};
 use crate::llm_profiles::{
-    get_active_profile, normalize_codex_reasoning_effort, DEFAULT_CODEX_REASONING_EFFORT,
-    DEFAULT_CODEX_STREAM_TIMEOUT_SECS,
+    get_active_profile, normalize_codex_model, normalize_codex_reasoning_effort,
+    DEFAULT_CODEX_REASONING_EFFORT, DEFAULT_CODEX_STREAM_TIMEOUT_SECS,
 };
 
 const CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
@@ -364,22 +364,7 @@ fn resolve_codex_reasoning_effort(profile: &crate::llm_profiles::LLMProfile) -> 
 }
 
 fn resolve_codex_model(profile: &crate::llm_profiles::LLMProfile) -> String {
-    if profile.model.trim().is_empty()
-        || matches!(
-            profile.model.as_str(),
-            "codex-cli"
-                | "codex-mini-latest"
-                | "o4-mini"
-                | "o3"
-                | "gpt-5-3"
-                | "gpt-5-3-instant"
-                | "gpt-5.4"
-        )
-    {
-        "gpt-5.5".to_string()
-    } else {
-        profile.model.clone()
-    }
+    normalize_codex_model(&profile.model)
 }
 
 fn safe_api_error_summary(status: reqwest::StatusCode, body: &str) -> String {
@@ -429,7 +414,9 @@ async fn resolve_codex_access_token(profile_id: &str) -> Result<(String, Option<
         if let Some(rt) = refresh_token.as_deref() {
             crate::app_log!(force: true, "[Codex] Token expired, attempting refresh...");
             match crate::llm::cli_providers::codex::CodexCliProvider::refresh_access_token(
-                profile_id, rt,
+                profile_id,
+                &access_token,
+                rt,
             )
             .await
             {
@@ -614,6 +601,7 @@ pub async fn stream_codex_completion(
             let _ = app_handle.emit("chat-status", "Обновляю токен Codex...");
             match crate::llm::cli_providers::codex::CodexCliProvider::refresh_access_token(
                 &profile_id,
+                &access_token,
                 rt,
             )
             .await
@@ -644,22 +632,7 @@ pub async fn stream_codex_completion(
         Some(tools_to_codex(&tools))
     };
 
-    // Build model name
-    let model = if profile.model.trim().is_empty()
-        || matches!(
-            profile.model.as_str(),
-            "codex-cli"
-                | "codex-mini-latest"
-                | "o4-mini"
-                | "o3"
-                | "gpt-5-3"
-                | "gpt-5-3-instant"
-                | "gpt-5.4"
-        ) {
-        "gpt-5.5".to_string()
-    } else {
-        profile.model.clone()
-    };
+    let model = resolve_codex_model(&profile);
     let reasoning_effort = resolve_codex_reasoning_effort(&profile);
 
     // Build request
@@ -1158,7 +1131,16 @@ mod tests {
         profile.provider = LLMProvider::CodexCli;
         profile.model = "codex-mini-latest".to_string();
 
-        assert_eq!(resolve_codex_model(&profile), "gpt-5.5");
+        assert_eq!(resolve_codex_model(&profile), "gpt-5.6-sol");
+    }
+
+    #[test]
+    fn resolve_codex_model_preserves_current_catalog_model() {
+        let mut profile = LLMProfile::default_profile();
+        profile.provider = LLMProvider::CodexCli;
+        profile.model = "gpt-5.4".to_string();
+
+        assert_eq!(resolve_codex_model(&profile), "gpt-5.4");
     }
 
     #[test]
@@ -1177,7 +1159,7 @@ mod tests {
 
         let request = build_codex_request(&profile, &messages, None, true);
 
-        assert_eq!(request.model, "gpt-5.5");
+        assert_eq!(request.model, "gpt-5.6-sol");
         assert_eq!(request.reasoning.effort, DEFAULT_CODEX_REASONING_EFFORT);
         assert!(request.stream);
         assert!(request.tools.is_none());

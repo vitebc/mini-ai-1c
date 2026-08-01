@@ -3,7 +3,13 @@ import { invoke } from '@tauri-apps/api/core';
 export interface BslStatus {
     installed: boolean;
     java_info: string;
+    runtime_info: string;
+    server_version: string;
+    server_path: string;
+    workspace_path: string;
+    active_port: number;
     connected: boolean;
+    mcp_available: boolean;
 }
 
 export interface BslDiagnostic {
@@ -11,6 +17,13 @@ export interface BslDiagnostic {
     character: number;
     message: string;
     severity: string;
+}
+
+export interface BslDiagnosticItem {
+    status: 'ok' | 'warn' | 'error';
+    title: string;
+    message: string;
+    suggestion?: string | null;
 }
 
 /**
@@ -51,6 +64,6 @@ export async function formatBsl(code: string): Promise<string> {
 /**
  * Diagnose BSL LS launch issues
  */
-export async function diagnoseBslLs(): Promise<string> {
-    return await invoke<string>('diagnose_bsl_ls_cmd');
+export async function diagnoseBslLs(): Promise<BslDiagnosticItem[]> {
+    return await invoke<BslDiagnosticItem[]>('diagnose_bsl_ls_cmd');
 }

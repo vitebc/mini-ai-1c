@@ -42,12 +42,37 @@ impl std::fmt::Display for LLMProvider {
 }
 
 pub const DEFAULT_CODEX_REASONING_EFFORT: &str = "medium";
+pub const DEFAULT_CODEX_MODEL: &str = "gpt-5.6-sol";
 pub const DEFAULT_CODEX_STREAM_TIMEOUT_SECS: u32 = 120;
+
+pub fn normalize_codex_model(value: &str) -> String {
+    if value.trim().is_empty()
+        || matches!(
+            value,
+            "codex-cli"
+                | "codex-mini-latest"
+                | "o4-mini"
+                | "o3"
+                | "gpt-5-3"
+                | "gpt-5-3-instant"
+                | "gpt-5.5-mini"
+                | "gpt-5.3-codex"
+                | "gpt-5.2-codex"
+                | "gpt-5.2"
+                | "gpt-5.1-codex-max"
+                | "gpt-5.1-codex-mini"
+        )
+    {
+        DEFAULT_CODEX_MODEL.to_string()
+    } else {
+        value.to_string()
+    }
+}
 
 pub fn normalize_codex_reasoning_effort(value: Option<&str>) -> Option<String> {
     let normalized = value?.trim().to_ascii_lowercase();
     match normalized.as_str() {
-        "none" | "low" | "medium" | "high" | "xhigh" => Some(normalized),
+        "none" | "low" | "medium" | "high" | "xhigh" | "max" => Some(normalized),
         _ => None,
     }
 }
@@ -195,6 +220,19 @@ pub fn load_profiles() -> ProfileStore {
                         }
 
                         if matches!(profile.provider, LLMProvider::CodexCli) {
+                            let normalized_model = normalize_codex_model(&profile.model);
+                            if profile.model != normalized_model {
+                                crate::app_log!(
+                                    force: true,
+                                    "[LLM Profiles] Migrating CodexCli profile '{}' model to '{}'",
+                                    profile.name,
+                                    normalized_model
+                                );
+                                profile.model = normalized_model;
+                                changed = true;
+                            }
+
+
                             let normalized_effort = normalize_codex_reasoning_effort(
                                 profile.reasoning_effort.as_deref(),
                             )
@@ -288,4 +326,24 @@ pub fn get_active_profile() -> Option<LLMProfile> {
         .profiles
         .into_iter()
         .find(|p| p.id == store.active_profile_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_codex_model, normalize_codex_reasoning_effort, DEFAULT_CODEX_MODEL};
+
+    #[test]
+    fn normalize_codex_model_migrates_removed_alias_and_preserves_current_model() {
+        assert_eq!(normalize_codex_model("gpt-5.3-codex"), DEFAULT_CODEX_MODEL);
+        assert_eq!(normalize_codex_model("gpt-5.4"), "gpt-5.4");
+    }
+
+    #[test]
+    fn normalize_codex_reasoning_effort_accepts_max() {
+        assert_eq!(
+            normalize_codex_reasoning_effort(Some("MAX")),
+            Some("max".to_string())
+        );
+        assert_eq!(normalize_codex_reasoning_effort(Some("ultra")), None);
+    }
 }

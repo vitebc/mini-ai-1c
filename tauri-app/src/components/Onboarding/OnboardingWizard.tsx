@@ -48,6 +48,8 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
     const [tourStep, setTourStep] = useState(0);
     const [showAbortConfirm, setShowAbortConfirm] = useState(false);
     const [downloadedJarPath, setDownloadedJarPath] = useState<string | null>(null);
+    const [downloadedServerPath, setDownloadedServerPath] = useState<string | null>(null);
+    const [downloadedServerVersion, setDownloadedServerVersion] = useState<string | null>(null);
 
     useEffect(() => {
         if (step === 'environment') {
@@ -124,11 +126,13 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                 },
                 bsl_server: {
                     enabled: false,
+                    executable_path: "",
+                    installed_version: "",
+                    workspace_path: "",
                     jar_path: "",
                     websocket_port: 9225,
                     java_path: "",
-                    auto_download: true,
-                    remote_url: ""
+                    auto_download: true
                 },
                 node_path: "node",
                 search_index_dir: "",
@@ -145,7 +149,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
             const updatedServers = [...(currentSettings.mcp_servers || [])];
 
             // 1. BSL Language Server
-            const bslEnvOk = javaStatus === 'ok' && bslStatus === 'ok';
+            const bslEnvOk = bslStatus === 'ok';
             const bslIndex = updatedServers.findIndex(s => s.id === 'bsl-ls');
             if (bslIndex !== -1) {
                 if (bslEnvOk && !updatedServers[bslIndex].enabled) {
@@ -194,7 +198,10 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                     ...currentSettings.bsl_server,
                     enabled: bslEnvOk ? true : currentSettings.bsl_server.enabled,
                     jar_path: downloadedJarPath || currentSettings.bsl_server.jar_path || "",
-                    java_path: currentSettings.bsl_server.java_path || "java"
+                    executable_path: downloadedServerPath || currentSettings.bsl_server.executable_path || "",
+                    installed_version: downloadedServerVersion || currentSettings.bsl_server.installed_version || "",
+                    java_path: currentSettings.bsl_server.java_path || "java",
+                    remote_url: (currentSettings.bsl_server as any).remote_url || "",
                 },
                 slash_commands: currentSettings.slash_commands || DEFAULT_SLASH_COMMANDS
             };
@@ -204,7 +211,10 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
             // Если BSL настроен и JAR скачан — запустить BSL сразу.
             // При первом запуске приложения jar_path был пустой, поэтому auto-start провалился.
             // Теперь JAR есть — вызываем reconnect чтобы BSL заработал без ручного вмешательства.
-            if (newSettings.bsl_server.enabled && newSettings.bsl_server.jar_path) {
+            if (
+                newSettings.bsl_server.enabled
+                && (newSettings.bsl_server.executable_path || newSettings.bsl_server.jar_path)
+            ) {
                 try {
                     await invoke('reconnect_bsl_ls_cmd');
                 } catch (e) {
@@ -353,8 +363,8 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                             <Server className="w-6 h-6 text-orange-400" />
                         </div>
                         <div>
-                            <h3 className="font-medium text-zinc-100">Java Runtime</h3>
-                            <p className="text-xs text-zinc-500">Для запуска BSL LS</p>
+                            <h3 className="font-medium text-zinc-100">External Java</h3>
+                            <p className="text-xs text-zinc-500">Только для legacy JAR (необязательно)</p>
                         </div>
                     </div>
                     <div>

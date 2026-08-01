@@ -12,6 +12,11 @@ import logo from '../../assets/logo.png';
 import ToolCallBlock from './ToolCallBlock';
 import { MessageActions } from './MessageActions';
 import { applyDiffWithDiagnostics, formatDiffErrorMessage, parseDiffBlocks, getApplicableDiffContent, hasBlockingIncompleteDiffBlocks } from '../../utils/diffViewer';
+import {
+    type DiffPreviewSource,
+    resolveDiffPreviewTransition,
+    shouldOpenUnseenDiffPreview,
+} from '../../utils/diffSession';
 import { isOllamaCloudProfile } from '../../utils/profileHelpers';
 import { FileDiff, Plus, Minus, Edit2, PanelRight } from 'lucide-react';
 import { CommandMenu } from './CommandMenu';
@@ -379,6 +384,8 @@ export const ChatArea = memo(function ChatArea({
     const [dismissedDiffMessages, setDismissedDiffMessages] = useState<Set<string>>(new Set());
     const [diffActions, setDiffActions] = useState<Map<string, 'accepted' | 'rejected'>>(new Map());
     const [validatingDiffMessageKey, setValidatingDiffMessageKey] = useState<string | null>(null);
+    const activePreviewSourceRef = useRef<DiffPreviewSource | null>(null);
+    const previousActiveDiffContentRef = useRef(activeDiffContent || '');
     const [input, setInput] = useState('');
     const [showModelDropdown, setShowModelDropdown] = useState(false);
     const [showConfigDropdown, setShowConfigDropdown] = useState(false);
@@ -880,15 +887,38 @@ export const ChatArea = memo(function ChatArea({
             // Открываем боковую панель только если есть базовый код для сравнения.
             // Если код не был загружен из Конфигуратора — панель не открываем.
             const hasBaseCode = !!currentDiffBaseCode;
-            if (hasBaseCode && onActiveDiffChange && !isLargeDiffContent(applicableDiffContent)) {
+            const shouldOpenPreview = shouldOpenUnseenDiffPreview({
+                hasBaseCode,
+                isLargeDiff: isLargeDiffContent(applicableDiffContent),
+                alreadyShown: appliedDiffMessages.has(msgKey),
+            });
+            if (shouldOpenPreview && onActiveDiffChange) {
+                activePreviewSourceRef.current = {
+                    messageKey: msgKey,
+                    content: applicableDiffContent,
+                };
                 onActiveDiffChange(applicableDiffContent);
-            }
-            // Фиксируем как "показанное"
-            if (!appliedDiffMessages.has(msgKey)) {
                 setAppliedDiffMessages(prev => new Set(prev).add(msgKey));
             }
         }
     }, [messages, isLoading, onActiveDiffChange, appliedDiffMessages, diffActions, activeDiffContent, currentDiffBaseCode, getDiffRenderSummary]);
+
+    useEffect(() => {
+        const previousContent = previousActiveDiffContentRef.current;
+        const currentContent = activeDiffContent || '';
+        previousActiveDiffContentRef.current = currentContent;
+
+        const transition = resolveDiffPreviewTransition({
+            source: activePreviewSourceRef.current,
+            previousContent,
+            currentContent,
+        });
+        activePreviewSourceRef.current = transition.nextSource;
+        if (transition.dismissedMessageKey) {
+            const resolvedMessageKey = transition.dismissedMessageKey;
+            setDismissedDiffMessages(previous => new Set(previous).add(resolvedMessageKey));
+        }
+    }, [activeDiffContent]);
 
     const handleSendMessage = async (textOverride?: string) => {
         const rawInput = textOverride || input;

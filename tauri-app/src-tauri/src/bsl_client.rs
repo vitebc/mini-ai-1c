@@ -12,11 +12,137 @@ use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use url::Url;
 
-use crate::mcp_client::{InternalMcpHandler, McpTool};
+use crate::mcp_client::{InternalMcpHandler, McpClient, McpTool};
 use crate::settings::load_settings;
 use async_trait::async_trait;
 use serde_json::json;
 use std::sync::Arc;
+
+fn native_server_args(port: u16) -> Vec<String> {
+    vec![
+        "websocket".to_string(),
+        "--mcp".to_string(),
+        format!("--server.port={port}"),
+    ]
+}
+
+fn request_timeout_for(method: &str) -> Duration {
+    if method == "textDocument/diagnostic" {
+        Duration::from_secs(60)
+    } else {
+        Duration::from_secs(15)
+    }
+}
+
+fn should_invalidate_connection(error: &str) -> bool {
+    let error = error.to_ascii_lowercase();
+    error.contains("timeout waiting for bsl ls response")
+        || error.contains("connection closed")
+        || error.contains("websocket error")
+        || error.contains("reset by peer")
+        || error.contains("not connected")
+}
+
+fn should_retry_analysis(attempt: usize, error: &str) -> bool {
+    attempt == 0 && should_invalidate_connection(error)
+}
+
+fn should_reuse_existing_listener(mcp_required: bool) -> bool {
+    !mcp_required
+}
+
+fn official_mcp_endpoint(port: u16) -> String {
+    format!("http://127.0.0.1:{port}/mcp")
+}
+
+const BSL_UPSTREAM_DISCOVERY_TIMEOUT: Duration = Duration::from_millis(1200);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ServerLaunchSpec {
+    program: String,
+    args: Vec<String>,
+    mcp_enabled: bool,
+}
+
+fn server_launch_spec(
+    settings: &crate::settings::BSLServerSettings,
+    port: u16,
+) -> Result<ServerLaunchSpec, String> {
+    if native_launcher_available(settings) {
+        return Ok(ServerLaunchSpec {
+            program: settings.executable_path.clone(),
+            args: native_server_args(port),
+            mcp_enabled: true,
+        });
+    }
+
+    if settings.jar_path.trim().is_empty() {
+        return Err(
+            "BSL Language Server is not installed: native launcher and legacy JAR are missing"
+                .to_string(),
+        );
+    }
+
+    Ok(ServerLaunchSpec {
+        program: settings.java_path.clone(),
+        args: vec![
+            "-Dorg.apache.tomcat.websocket.DEFAULT_BUFFER_SIZE=1048576".to_string(),
+            "-Xmx256m".to_string(),
+            "-XX:+UseSerialGC".to_string(),
+            "-jar".to_string(),
+            settings.jar_path.clone(),
+            "websocket".to_string(),
+            format!("--server.port={port}"),
+        ],
+        mcp_enabled: false,
+    })
+}
+
+fn native_launcher_available(settings: &crate::settings::BSLServerSettings) -> bool {
+    let executable_path = settings.executable_path.trim();
+    !executable_path.is_empty() && std::path::Path::new(executable_path).is_file()
+}
+
+fn resolve_workspace_path(configured_path: &str, fallback: &std::path::Path) -> std::path::PathBuf {
+    let configured_path = configured_path.trim();
+    if configured_path.is_empty() {
+        fallback.to_path_buf()
+    } else {
+        std::path::PathBuf::from(configured_path)
+    }
+}
+
+fn temporary_document_uri(workspace: &std::path::Path, prefix: &str, sequence: u128) -> String {
+    let safe_prefix: String = prefix
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || *character == '-')
+        .collect();
+    let filename = format!(".mini-ai-1c-{safe_prefix}-{sequence}.bsl");
+    let path = workspace.join(filename);
+    Url::from_file_path(&path)
+        .map(|url| url.to_string())
+        .unwrap_or_else(|_| format!("file:///{}", path.to_string_lossy().replace('\\', "/")))
+}
+
+fn official_mcp_config(port: u16) -> crate::settings::McpServerConfig {
+    crate::settings::McpServerConfig {
+        id: "bsl-ls-official".to_string(),
+        name: "BSL Language Server".to_string(),
+        enabled: true,
+        transport: crate::settings::McpTransport::Http,
+        url: Some(official_mcp_endpoint(port)),
+        ..Default::default()
+    }
+}
+
+fn merge_bsl_tools(mut internal: Vec<McpTool>, upstream: Vec<McpTool>) -> Vec<McpTool> {
+    for tool in upstream {
+        if !internal.iter().any(|existing| existing.name == tool.name) {
+            internal.push(tool);
+        }
+    }
+    internal
+}
 
 /// JSON-RPC request
 #[derive(Debug, Serialize)]
@@ -84,9 +210,7 @@ pub struct BSLClient {
     capabilities: Option<serde_json::Value>,
     workspace_root: Option<String>,
     actual_port: Option<u16>,
-    /// When set, the client connects to this remote WebSocket URL
-    /// instead of spawning a local Java process.
-    remote_url: Option<String>,
+    mcp_enabled: bool,
 }
 
 impl BSLClient {
@@ -98,7 +222,7 @@ impl BSLClient {
             capabilities: None,
             workspace_root: None,
             actual_port: None,
-            remote_url: None,
+            mcp_enabled: false,
         }
     }
 
@@ -129,45 +253,73 @@ impl BSLClient {
         self.ws.is_some()
     }
 
+    fn official_mcp_port(&self) -> Option<u16> {
+        if self.mcp_enabled {
+            Some(
+                self.actual_port
+                    .unwrap_or_else(|| load_settings().bsl_server.websocket_port),
+            )
+        } else {
+            None
+        }
+    }
+
+    pub fn is_official_mcp_available(&self) -> bool {
+        self.is_connected() && self.official_mcp_port().is_some()
+    }
+
+    pub fn active_port(&self) -> Option<u16> {
+        self.actual_port
+    }
+
+    pub fn temporary_document_uri(&self, prefix: &str) -> String {
+        let fallback_workspace = crate::settings::get_settings_dir().join("bsl-workspace");
+        let workspace = self
+            .workspace_root
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .unwrap_or(fallback_workspace);
+        let sequence = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        temporary_document_uri(&workspace, prefix, sequence)
+    }
+
     /// Start the BSL Language Server
     pub fn start_server(&mut self) -> Result<(), String> {
-        let settings = load_settings();
-
-        if !settings.bsl_server.enabled {
-            return Err("BSL LS is disabled in settings".to_string());
-        }
-
-        // --- Remote mode ---
-        if settings.bsl_server.is_remote() {
-            let url = settings.bsl_server.remote_url.clone();
-            crate::app_log!("[BSL LS] Remote mode — will connect to {}", url);
-            self.remote_url = Some(url);
-            return Ok(());
-        }
-
         // Guard: already running in this process instance
         if self.server_process.is_some() {
             crate::app_log!("[BSL LS] Already running in this instance, skipping start");
             return Ok(());
         }
 
-        let jar_path = &settings.bsl_server.jar_path;
-        if jar_path.is_empty() {
-            return Err("BSL LS JAR path not configured".to_string());
+        let settings = load_settings();
+
+        if !settings.bsl_server.enabled {
+            return Err("BSL LS is disabled in settings".to_string());
         }
 
         let preferred_port = settings.bsl_server.websocket_port;
+        let mcp_required = native_launcher_available(&settings.bsl_server);
+        self.mcp_enabled = mcp_required;
 
         // Check if BSL LS is already listening on the preferred port
         // (e.g. started by another app instance or another user session on this machine).
         // In that case reuse it instead of spawning a duplicate Java process.
-        if Self::is_port_listening(preferred_port) {
+        if Self::is_port_listening(preferred_port) && should_reuse_existing_listener(mcp_required) {
             crate::app_log!(
                 "[BSL LS] Port {} already has a listener — reusing existing server",
                 preferred_port
             );
             self.actual_port = Some(preferred_port);
             return Ok(());
+        }
+        if Self::is_port_listening(preferred_port) && mcp_required {
+            crate::app_log!(
+                "[BSL LS] Port {} is occupied by an unverified listener; starting MCP-capable server on a free port",
+                preferred_port
+            );
         }
 
         // Find a truly free port (skips any occupied ports)
@@ -180,20 +332,13 @@ impl BSLClient {
             preferred_port
         );
 
-        let mut cmd = AsyncCommand::new(&settings.bsl_server.java_path);
-        cmd.args([
-            // Increase WebSocket message buffer from 8KB default to 1MB
-            "-Dorg.apache.tomcat.websocket.DEFAULT_BUFFER_SIZE=1048576",
-            // Minimal memory footprint for terminal server (256MB heap + Serial GC)
-            "-Xmx256m",
-            "-XX:+UseSerialGC",
-            "-jar",
-            jar_path,
-            "websocket",
-            &format!("--server.port={}", port),
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        let launch = server_launch_spec(&settings.bsl_server, port)?;
+        self.mcp_enabled = launch.mcp_enabled;
+        let mut cmd = AsyncCommand::new(&launch.program);
+        cmd.args(&launch.args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        cmd.kill_on_drop(true);
 
         #[cfg(target_os = "windows")]
         {
@@ -232,29 +377,21 @@ impl BSLClient {
 
     /// Connect to the BSL Language Server
     pub async fn connect(&mut self) -> Result<(), String> {
-        let is_remote = self.remote_url.is_some();
-
-        let url = if let Some(ref remote_url) = self.remote_url {
-            remote_url.clone()
-        } else {
-            let port = self
-                .actual_port
-                .unwrap_or_else(|| load_settings().bsl_server.websocket_port);
-            format!("ws://127.0.0.1:{}/lsp", port)
-        };
+        let port = self
+            .actual_port
+            .unwrap_or_else(|| load_settings().bsl_server.websocket_port);
+        let url = format!("ws://127.0.0.1:{}/lsp", port);
 
         crate::app_log!("[BSL LS] Attempting to connect to {}", url);
 
-        // Remote: fewer retries (server is external, no point waiting long)
-        // Local: up to 30 retries (waiting for Java to start)
-        let max_retries = if is_remote { 3 } else { 30 };
+        let mut retries = 0;
+        let max_retries = 30; // 15 seconds total
 
-        for attempt in 1..=max_retries {
-            let connect_timeout = tokio::time::timeout(
-                tokio::time::Duration::from_secs(if is_remote { 5 } else { 3 }),
-                connect_async(&url),
-            )
-            .await;
+        loop {
+            // Add timeout to connect_async to prevent hang during handshake (common in terminal servers)
+            let connect_timeout =
+                tokio::time::timeout(tokio::time::Duration::from_secs(3), connect_async(&url))
+                    .await;
 
             match connect_timeout {
                 Ok(Ok((ws_stream, _))) => {
@@ -263,7 +400,8 @@ impl BSLClient {
                     break;
                 }
                 Ok(Err(e)) => {
-                    if attempt >= max_retries {
+                    retries += 1;
+                    if retries >= max_retries {
                         crate::app_log!(
                             "[BSL LS] Connection FAILED after {} attempts. Last error: {}",
                             max_retries,
@@ -274,10 +412,10 @@ impl BSLClient {
                             max_retries, e
                         ));
                     }
-                    if attempt % 5 == 0 || is_remote {
+                    if retries % 5 == 0 {
                         crate::app_log!(
                             "[BSL LS] connection attempt {}/{}... (error: {})",
-                            attempt,
+                            retries,
                             max_retries,
                             e
                         );
@@ -285,17 +423,18 @@ impl BSLClient {
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 }
                 Err(_) => {
-                    if attempt >= max_retries {
+                    retries += 1;
+                    crate::app_log!(
+                        "[BSL LS] Connection HANDSHAKE TIMEOUT (3s) at {}/{}",
+                        retries,
+                        max_retries
+                    );
+                    if retries >= max_retries {
                         return Err(format!(
                             "Failed to connect to BSL LS (Handshake Timeout) after {} attempts",
                             max_retries
                         ));
                     }
-                    crate::app_log!(
-                        "[BSL LS] Connection HANDSHAKE TIMEOUT (3s) at {}/{}",
-                        attempt,
-                        max_retries
-                    );
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 }
             }
@@ -325,16 +464,34 @@ impl BSLClient {
             }
         });
 
-        // Setup persistent workspace for BSL LS
-        // Use settings dir which is already guaranteed to be local (%LOCALAPPDATA%)
-        let workspace_path = crate::settings::get_settings_dir().join("bsl-workspace");
-        std::fs::create_dir_all(&workspace_path).unwrap_or_default();
+        // Register either the user-selected BSL project or the app's persistent fallback workspace.
+        let settings = load_settings();
+        let fallback_workspace = crate::settings::get_settings_dir().join("bsl-workspace");
+        let workspace_path =
+            resolve_workspace_path(&settings.bsl_server.workspace_path, &fallback_workspace);
+        let uses_fallback_workspace = settings.bsl_server.workspace_path.trim().is_empty();
+        if uses_fallback_workspace {
+            if let Err(error) = std::fs::create_dir_all(&workspace_path) {
+                self.invalidate_connection();
+                return Err(format!(
+                    "Failed to create BSL workspace '{}': {error}",
+                    workspace_path.display()
+                ));
+            }
+        } else if !workspace_path.is_dir() {
+            self.invalidate_connection();
+            return Err(format!(
+                "Configured BSL workspace does not exist or is not a directory: {}",
+                workspace_path.display()
+            ));
+        }
         let root_dir = workspace_path.to_string_lossy().replace('\\', "/");
         self.workspace_root = Some(root_dir.clone());
 
-        // Create default bsl-ls.json if it doesn't exist
+        // Do not write configuration files into a user project. The default belongs only
+        // to the app-managed fallback workspace.
         let config_path = workspace_path.join(".bsl-language-server.json");
-        if !config_path.exists() {
+        if uses_fallback_workspace && !config_path.exists() {
             let config = serde_json::json!({
                 "language": "ru",
                 "diagnostics": {
@@ -363,7 +520,7 @@ impl BSLClient {
 
         crate::app_log!("[BSL LS] Using rootUri: {}", root_uri);
 
-        let initialize_result = self
+        let initialize_result = match self
             .send_request(
                 "initialize",
                 serde_json::json!({
@@ -377,7 +534,14 @@ impl BSLClient {
                     "trace": "verbose"
                 }),
             )
-            .await?;
+            .await
+        {
+            Ok(result) => result,
+            Err(error) => {
+                self.invalidate_connection();
+                return Err(error);
+            }
+        };
 
         // Store server capabilities
         self.capabilities = initialize_result.get("capabilities").cloned();
@@ -531,10 +695,10 @@ impl BSLClient {
         crate::app_log!("[BSL LS] >>> Request {}: {}", method, msg);
         ws.send(Message::Text(msg))
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("WebSocket error: {e}"))?;
 
         // Wait for response with overall timeout
-        let request_timeout = Duration::from_secs(15);
+        let request_timeout = request_timeout_for(method);
         let start = std::time::Instant::now();
 
         while start.elapsed() < request_timeout {
@@ -565,7 +729,7 @@ impl BSLClient {
                 }
                 Ok(Some(Err(e))) => {
                     crate::app_log!("[BSL LS] WebSocket error: {}", e);
-                    return Err(e.to_string());
+                    return Err(format!("WebSocket error: {e}"));
                 }
                 Ok(None) => {
                     crate::app_log!("[BSL LS] WebSocket closed while waiting for response");
@@ -583,8 +747,9 @@ impl BSLClient {
         }
 
         crate::app_log!(
-            "[BSL LS] TIMEOUT (15s) waiting for response to '{}' request",
-            method
+            "[BSL LS] TIMEOUT ({:?}) waiting for response to '{}' request",
+            request_timeout,
+            method,
         );
         Err(format!(
             "Timeout waiting for BSL LS response to '{}'",
@@ -611,13 +776,32 @@ impl BSLClient {
         let msg = serde_json::to_string(&request).map_err(|e| e.to_string())?;
         ws.send(Message::Text(msg))
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("WebSocket error: {e}"))?;
 
         Ok(())
     }
 
     /// Analyze code and return diagnostics
-    pub async fn analyze_code(&self, code: &str, uri: &str) -> Result<Vec<Diagnostic>, String> {
+    pub async fn analyze_code(&mut self, code: &str, uri: &str) -> Result<Vec<Diagnostic>, String> {
+        for attempt in 0..=1 {
+            match self.analyze_code_once(code, uri).await {
+                Ok(diagnostics) => return Ok(diagnostics),
+                Err(error) if should_retry_analysis(attempt, &error) => {
+                    crate::app_log!(
+                        force: true,
+                        "[BSL LS] Analysis transport failed; reconnecting before one retry: {}",
+                        error
+                    );
+                    self.recover_connection().await?;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+
+        Err("BSL Language Server analysis retry exhausted".to_string())
+    }
+
+    async fn analyze_code_once(&self, code: &str, uri: &str) -> Result<Vec<Diagnostic>, String> {
         crate::app_log!("[BSL LS] Starting analysis for URI: {}", uri);
 
         // Send didOpen notification
@@ -652,18 +836,25 @@ impl BSLClient {
                         }
                     }),
                 )
-                .await?;
+                .await;
 
-            // Close document
-            self.send_notification(
-                "textDocument/didClose",
-                serde_json::json!({
-                    "textDocument": {
-                        "uri": uri
-                    }
-                }),
-            )
-            .await?;
+            // Always close the temporary document, including request timeout/error paths.
+            let close_result = self
+                .send_notification(
+                    "textDocument/didClose",
+                    serde_json::json!({
+                        "textDocument": {
+                            "uri": uri
+                        }
+                    }),
+                )
+                .await;
+
+            let result = match (result, close_result) {
+                (Ok(result), Ok(())) => result,
+                (Err(error), _) => return Err(error),
+                (Ok(_), Err(error)) => return Err(error),
+            };
 
             if let Some(items) = result.get("items").and_then(|v| v.as_array()) {
                 crate::app_log!("[BSL LS] Pull diagnostics raw: {:?}", items);
@@ -755,7 +946,7 @@ impl BSLClient {
                         }
                         Some(Err(e)) => {
                             crate::app_log!("[BSL LS] Error reading message: {}", e);
-                            return Err(e.to_string());
+                            return Err(format!("WebSocket error: {e}"));
                         }
                         None => {
                             crate::app_log!("[BSL LS] Connection closed by server");
@@ -1009,18 +1200,62 @@ impl BSLClient {
         Err("Definition not found".to_string())
     }
 
-    /// Stop the server
-    pub fn stop(&mut self) {
-        // In remote mode: just close the WebSocket, don't kill anything
-        if self.remote_url.is_some() {
-            crate::app_log!("[BSL LS] Remote mode — closing WebSocket only");
-            self.ws.take();
-            return;
+    fn invalidate_connection(&mut self) {
+        self.ws = None;
+        self.capabilities = None;
+        self.workspace_root = None;
+    }
+
+    async fn recover_connection(&mut self) -> Result<(), String> {
+        self.invalidate_connection();
+
+        if let Some(child) = self.server_process.as_mut() {
+            if child
+                .try_wait()
+                .map_err(|error| format!("Failed to inspect BSL LS process: {error}"))?
+                .is_some()
+            {
+                self.server_process = None;
+            }
         }
 
-        if let Some(mut child) = self.server_process.take() {
-            // Try to send exit notification if WS is still alive
-            if let Some(ws_mutex) = self.ws.take() {
+        let port = self
+            .actual_port
+            .unwrap_or_else(|| load_settings().bsl_server.websocket_port);
+        if self.server_process.is_none() && !Self::is_port_listening(port) {
+            self.start_server()?;
+        }
+
+        match self.connect().await {
+            Ok(()) => Ok(()),
+            Err(first_error) => {
+                crate::app_log!(
+                    force: true,
+                    "[BSL LS] Reconnect failed; restarting owned server: {}",
+                    first_error
+                );
+                self.stop();
+                self.start_server()?;
+                self.connect().await.map_err(|second_error| {
+                    format!(
+                        "Failed to recover BSL Language Server connection: {first_error}; restart error: {second_error}"
+                    )
+                })
+            }
+        }
+    }
+
+    /// Stop the server and clear LSP session state.
+    pub fn stop(&mut self) {
+        let owns_process = self.server_process.is_some();
+        let ws = self.ws.take();
+        self.capabilities = None;
+        self.workspace_root = None;
+        self.actual_port = None;
+        self.mcp_enabled = false;
+
+        if owns_process {
+            if let Some(ws_mutex) = ws {
                 tokio::spawn(async move {
                     let mut ws = ws_mutex.lock().await;
                     let exit_notif = JsonRpcRequest {
@@ -1032,12 +1267,18 @@ impl BSLClient {
                     if let Ok(msg) = serde_json::to_string(&exit_notif) {
                         let _ = ws.send(Message::Text(msg)).await;
                     }
-                    // Give it a tiny bit of time to breathe
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 });
             }
+        }
 
-            let _ = child.kill();
+        if let Some(mut child) = self.server_process.take() {
+            if let Err(error) = child.start_kill() {
+                crate::app_log!(
+                    force: true,
+                    "[BSL LS] Failed to terminate owned process: {}",
+                    error
+                );
+            }
         }
     }
 
@@ -1154,7 +1395,7 @@ impl BSLMcpHandler {
 #[async_trait]
 impl InternalMcpHandler for BSLMcpHandler {
     async fn list_tools(&self) -> Vec<McpTool> {
-        vec![
+        let internal_tools = vec![
             McpTool {
                 name: "check_bsl_syntax".to_string(),
                 description: "Проверяет BSL код (1С) на наличие синтаксических ошибок и предупреждений с использованием BSL Language Server.".to_string(),
@@ -1226,7 +1467,39 @@ impl InternalMcpHandler for BSLMcpHandler {
                     "required": ["file", "line", "character"]
                 }),
             },
-        ]
+        ];
+
+        let official_port = {
+            let client = self.client.lock().await;
+            client.official_mcp_port()
+        };
+        let Some(port) = official_port else {
+            return internal_tools;
+        };
+
+        let upstream_result = tokio::time::timeout(BSL_UPSTREAM_DISCOVERY_TIMEOUT, async {
+            let client = McpClient::new(official_mcp_config(port)).await?;
+            client.list_tools().await
+        })
+        .await;
+
+        match upstream_result {
+            Ok(Ok(upstream_tools)) => merge_bsl_tools(internal_tools, upstream_tools),
+            Ok(Err(error)) => {
+                crate::app_log!(
+                    "[BSL MCP] Official tools are temporarily unavailable: {}",
+                    error
+                );
+                internal_tools
+            }
+            Err(_) => {
+                crate::app_log!(
+                    "[BSL MCP] Official tools discovery exceeded {} ms; returning internal tools",
+                    BSL_UPSTREAM_DISCOVERY_TIMEOUT.as_millis()
+                );
+                internal_tools
+            }
+        }
     }
 
     async fn call_tool(
@@ -1260,8 +1533,8 @@ impl InternalMcpHandler for BSLMcpHandler {
                     }
                 }
 
-                let uri = "file:///mcp_check_syntax.bsl";
-                let diagnostics = client.analyze_code(code, uri).await?;
+                let uri = client.temporary_document_uri("mcp-check-syntax");
+                let diagnostics = client.analyze_code(code, &uri).await?;
 
                 Ok(json!({
                     "diagnostics": diagnostics,
@@ -1383,7 +1656,21 @@ impl InternalMcpHandler for BSLMcpHandler {
                 }))
             }
 
-            _ => Err(format!("Неизвестный инструмент BSL: {}", name)),
+            _ => {
+                let port = {
+                    let mut client = self.client.lock().await;
+                    ensure_bsl_connected(&mut client).await?;
+                    client.official_mcp_port().ok_or_else(|| {
+                        format!(
+                            "Official BSL MCP tool '{}' requires BSL Language Server 1.x",
+                            name
+                        )
+                    })?
+                };
+
+                let client = McpClient::new(official_mcp_config(port)).await?;
+                client.call_tool(name, arguments).await
+            }
         }
     }
 
@@ -1396,23 +1683,202 @@ impl InternalMcpHandler for BSLMcpHandler {
             return false;
         }
 
-        // 2. Check JAR
-        if !BSLClient::check_install(&settings.bsl_server.jar_path) {
-            return false;
+        let native_installed = !settings.bsl_server.executable_path.trim().is_empty()
+            && std::path::Path::new(&settings.bsl_server.executable_path).is_file();
+        if native_installed {
+            return true;
         }
 
-        // 3. Check Java
-        let java_ver = BSLClient::check_java(&settings.bsl_server.java_path);
-        if java_ver == "Not found" {
-            return false;
-        }
-
-        true
+        BSLClient::check_install(&settings.bsl_server.jar_path)
+            && BSLClient::check_java(&settings.bsl_server.java_path) != "Not found"
     }
 }
 
 impl Drop for BSLClient {
     fn drop(&mut self) {
         self.stop();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_server_starts_combined_lsp_and_mcp_mode() {
+        assert_eq!(
+            native_server_args(8025),
+            vec![
+                "websocket".to_string(),
+                "--mcp".to_string(),
+                "--server.port=8025".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn native_runtime_does_not_reuse_unknown_listener_without_mcp() {
+        assert!(!should_reuse_existing_listener(true));
+        assert!(should_reuse_existing_listener(false));
+    }
+
+    #[test]
+    fn pull_diagnostics_has_extended_timeout() {
+        assert_eq!(
+            request_timeout_for("textDocument/diagnostic"),
+            Duration::from_secs(60)
+        );
+        assert_eq!(
+            request_timeout_for("textDocument/hover"),
+            Duration::from_secs(15)
+        );
+    }
+
+    #[test]
+    fn transport_failures_invalidate_lsp_connection() {
+        assert!(should_invalidate_connection(
+            "Timeout waiting for BSL LS response to 'textDocument/diagnostic'"
+        ));
+        assert!(should_invalidate_connection("Connection closed"));
+        assert!(should_invalidate_connection(
+            "WebSocket error: reset by peer"
+        ));
+        assert!(!should_invalidate_connection(
+            "LSP error -32602: invalid parameters"
+        ));
+    }
+
+    #[test]
+    fn analysis_retries_transport_failure_only_once() {
+        let timeout = "Timeout waiting for BSL LS response to 'textDocument/diagnostic'";
+
+        assert!(should_retry_analysis(0, timeout));
+        assert!(!should_retry_analysis(1, timeout));
+        assert!(!should_retry_analysis(
+            0,
+            "LSP error -32602: invalid parameters"
+        ));
+    }
+
+    #[test]
+    fn official_mcp_uses_combined_server_endpoint() {
+        assert_eq!(official_mcp_endpoint(8025), "http://127.0.0.1:8025/mcp");
+    }
+
+    #[test]
+    fn native_launch_spec_uses_executable_without_external_java() {
+        let mut settings = crate::settings::BSLServerSettings::default();
+        settings.executable_path = std::env::current_exe()
+            .expect("test executable path")
+            .to_string_lossy()
+            .to_string();
+        settings.java_path = "missing-java".to_string();
+
+        let spec = server_launch_spec(&settings, 8123).expect("native launch spec");
+
+        assert_eq!(spec.program, settings.executable_path);
+        assert_eq!(spec.args, native_server_args(8123));
+        assert!(spec.mcp_enabled);
+    }
+
+    #[test]
+    fn legacy_launch_spec_keeps_java_jar_compatibility() {
+        let mut settings = crate::settings::BSLServerSettings::default();
+        settings.jar_path = r"C:\MiniAI1C\bsl-language-server-0.28.5-exec.jar".to_string();
+        settings.java_path = r"C:\Java\bin\java.exe".to_string();
+
+        let spec = server_launch_spec(&settings, 8025).expect("legacy launch spec");
+
+        assert_eq!(spec.program, settings.java_path);
+        assert!(spec
+            .args
+            .windows(2)
+            .any(|args| args == ["-jar", settings.jar_path.as_str()]));
+        assert!(!spec.args.iter().any(|arg| arg == "--mcp"));
+        assert!(!spec.mcp_enabled);
+    }
+
+    #[test]
+    fn missing_native_launcher_falls_back_to_legacy_jar() {
+        let mut settings = crate::settings::BSLServerSettings::default();
+        settings.executable_path =
+            r"C:\missing\bsl-language-server\bsl-language-server.exe".to_string();
+        settings.jar_path = r"C:\MiniAI1C\bsl-language-server-0.28.5-exec.jar".to_string();
+        settings.java_path = r"C:\Java\bin\java.exe".to_string();
+
+        let spec = server_launch_spec(&settings, 8025).expect("legacy launch spec");
+
+        assert_eq!(spec.program, settings.java_path);
+        assert!(!spec.mcp_enabled);
+        assert!(spec
+            .args
+            .windows(2)
+            .any(|args| args == ["-jar", settings.jar_path.as_str()]));
+    }
+
+    #[test]
+    fn official_mcp_discovery_finishes_before_chat_discovery_budget() {
+        assert!(BSL_UPSTREAM_DISCOVERY_TIMEOUT < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn configured_workspace_overrides_internal_fallback() {
+        let configured = std::path::Path::new(r"C:\Projects\DemoConfiguration");
+        let fallback = std::path::Path::new(r"C:\MiniAI1C\bsl-workspace");
+
+        assert_eq!(
+            resolve_workspace_path(configured.to_string_lossy().as_ref(), fallback),
+            configured
+        );
+        assert_eq!(resolve_workspace_path("", fallback), fallback);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn temporary_analysis_document_is_created_inside_registered_workspace() {
+        let workspace = std::path::Path::new(r"C:\Projects\Demo Configuration");
+
+        let uri = temporary_document_uri(workspace, "check", 42);
+
+        assert_eq!(
+            uri,
+            "file:///C:/Projects/Demo%20Configuration/.mini-ai-1c-check-42.bsl"
+        );
+    }
+
+    #[test]
+    fn official_mcp_config_targets_local_bsl_server() {
+        let config = official_mcp_config(8025);
+
+        assert_eq!(config.id, "bsl-ls-official");
+        assert_eq!(config.url.as_deref(), Some("http://127.0.0.1:8025/mcp"));
+        assert_eq!(config.transport, crate::settings::McpTransport::Http);
+    }
+
+    #[test]
+    fn upstream_mcp_tools_are_merged_without_duplicate_names() {
+        let internal = vec![McpTool {
+            name: "check_bsl_syntax".to_string(),
+            description: "internal".to_string(),
+            input_schema: json!({"type": "object"}),
+        }];
+        let upstream = vec![
+            McpTool {
+                name: "analyze_file".to_string(),
+                description: "upstream".to_string(),
+                input_schema: json!({"type": "object"}),
+            },
+            McpTool {
+                name: "check_bsl_syntax".to_string(),
+                description: "duplicate".to_string(),
+                input_schema: json!({"type": "object"}),
+            },
+        ];
+
+        let tools = merge_bsl_tools(internal, upstream);
+
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0].description, "internal");
+        assert_eq!(tools[1].name, "analyze_file");
     }
 }

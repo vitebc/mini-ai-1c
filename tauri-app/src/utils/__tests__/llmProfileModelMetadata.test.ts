@@ -102,3 +102,53 @@ test('syncMaxTokens does nothing when context_window is missing', () => {
     assert.equal(updated.context_window_override, 32768);
 });
 
+test('selecting a model replaces an unsupported effort with its documented default', () => {
+    const profile = {
+        id: 'profile_1',
+        name: 'Codex',
+        provider: 'CodexCli',
+        model: 'gpt-5.5',
+        api_key_encrypted: 'oauth',
+        base_url: 'https://chatgpt.com/backend-api/codex',
+        max_tokens: 4096,
+        context_window_override: 272000,
+        temperature: 0.7,
+        reasoning_effort: 'max' as const,
+    };
+    const model = {
+        id: 'gpt-5.4',
+        context_window: 272000,
+        default_reasoning_effort: 'medium',
+        supported_reasoning_efforts: ['low', 'medium', 'high', 'xhigh'],
+    };
+
+    const updated = applySelectedModelMetadata(profile, model);
+
+    assert.equal(updated.reasoning_effort, 'medium');
+});
+
+test('selecting a model preserves a supported max effort', () => {
+    const profile = {
+        id: 'profile_1',
+        name: 'Codex',
+        provider: 'CodexCli',
+        model: 'gpt-5.5',
+        api_key_encrypted: 'oauth',
+        base_url: 'https://chatgpt.com/backend-api/codex',
+        max_tokens: 4096,
+        context_window_override: 272000,
+        temperature: 0.7,
+        reasoning_effort: 'max' as const,
+    };
+    const model = {
+        id: 'gpt-5.6-sol',
+        context_window: 272000,
+        default_reasoning_effort: 'low',
+        supported_reasoning_efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    };
+
+    const updated = applySelectedModelMetadata(profile, model);
+
+    assert.equal(updated.reasoning_effort, 'max');
+});
+

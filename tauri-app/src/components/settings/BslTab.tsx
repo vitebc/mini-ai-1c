@@ -20,6 +20,8 @@ interface BslTabProps {
     diagReport: BslDiagnosticItem[] | null;
     setDiagReport: (report: BslDiagnosticItem[] | null) => void;
     runDiagnostics: () => void;
+    reconnectBsl: () => void;
+    reconnecting: boolean;
 }
 
 export function BslTab({
@@ -36,8 +38,13 @@ export function BslTab({
     diagnosing,
     diagReport,
     setDiagReport,
-    runDiagnostics
+    runDiagnostics,
+    reconnectBsl,
+    reconnecting
 }: BslTabProps) {
+    const usesBundledRuntime = bslStatus?.runtime_info.includes('Встроенный') ?? false;
+    const runtimeAvailable = usesBundledRuntime || (bslStatus?.java_info.includes('version') ?? false);
+
     return (
         <div className="p-4 sm:p-8 w-full h-full overflow-y-auto">
             <div className="max-w-2xl mx-auto space-y-6 sm:space-y-8">
@@ -110,7 +117,7 @@ export function BslTab({
                                         <span className="break-all">{downloadError}</span>
                                     </div>
                                     <div className="text-xs text-zinc-400 flex items-center gap-1">
-                                        Скачайте JAR вручную и укажите путь ниже:
+                                        Не удалось установить официальный Windows-пакет:
                                         <button
                                             onClick={() => openUrl(BSL_RELEASES_URL)}
                                             className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 underline"
@@ -202,43 +209,59 @@ export function BslTab({
                         Состояние системы
                     </h3>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-                        {/* Java Runtime Card */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
                         <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4 flex flex-col items-center text-center">
-                            <div className={`p-2 rounded-full mb-3 ${bslStatus?.java_info.includes('version') ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                            <div className={`p-2 rounded-full mb-3 ${runtimeAvailable ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
                                 <Cpu className="w-5 h-5" />
                             </div>
-                            <div className="text-xs text-zinc-500 font-medium uppercase mb-1">Java Runtime</div>
-                            <div className="text-sm font-semibold truncate w-full text-zinc-200" title={bslStatus?.java_info}>
-                                {bslStatus?.java_info.includes('version') ? 'Установлена' : 'Не найдена'}
+                            <div className="text-xs text-zinc-500 font-medium uppercase mb-1">Runtime</div>
+                            <div className="text-sm font-semibold truncate w-full text-zinc-200" title={bslStatus?.runtime_info}>
+                                {runtimeAvailable ? (usesBundledRuntime ? 'Встроенный' : 'External Java') : 'Не найден'}
                             </div>
                         </div>
 
-                        {/* BSL JAR Card */}
                         <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4 flex flex-col items-center text-center">
                             <div className={`p-2 rounded-full mb-3 ${bslStatus?.installed ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
                                 <FileCode className="w-5 h-5" />
                             </div>
                             <div className="text-xs text-zinc-500 font-medium uppercase mb-1">BSL Server</div>
-                            <div className="text-sm font-semibold text-zinc-200">
-                                {bslStatus?.installed ? 'Готов' : 'Отсутствует'}
+                            <div className="text-sm font-semibold text-zinc-200" title={bslStatus?.server_path}>
+                                {bslStatus?.installed ? (bslStatus.server_version || 'Legacy') : 'Отсутствует'}
                             </div>
                         </div>
 
-                        {/* Connection Card */}
                         <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4 flex flex-col items-center text-center">
                             <div className={`p-2 rounded-full mb-3 ${bslStatus?.connected ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
                                 <RefreshCw className={`w-5 h-5 ${bslStatus?.connected ? 'animate-spin-slow' : ''}`} />
                             </div>
                             <div className="text-xs text-zinc-500 font-medium uppercase mb-1">LSP Статус</div>
                             <div className="text-sm font-semibold text-zinc-200">
-                                {bslStatus?.connected ? 'Online' : 'Offline'}
+                                {bslStatus?.connected ? `Online :${bslStatus.active_port}` : 'Offline'}
+                            </div>
+                        </div>
+
+                        <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4 flex flex-col items-center text-center">
+                            <div className={`p-2 rounded-full mb-3 ${bslStatus?.mcp_available ? 'bg-green-500/10 text-green-400' : 'bg-zinc-700/50 text-zinc-500'}`}>
+                                <Terminal className="w-5 h-5" />
+                            </div>
+                            <div className="text-xs text-zinc-500 font-medium uppercase mb-1">Official MCP</div>
+                            <div className="text-sm font-semibold text-zinc-200">
+                                {bslStatus?.mcp_available ? 'Доступен' : 'Недоступен'}
                             </div>
                         </div>
                     </div>
 
                     {/* Diagnose button */}
                     <div className="flex gap-3">
+                        <button
+                            onClick={reconnectBsl}
+                            disabled={reconnecting}
+                            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 border border-blue-500 rounded-xl text-sm font-medium text-white transition-colors disabled:opacity-50"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${reconnecting ? 'animate-spin' : ''}`} />
+                            {reconnecting ? 'Подключение...' : 'Reconnect'}
+                        </button>
+
                         <button
                             onClick={runDiagnostics}
                             disabled={diagnosing}

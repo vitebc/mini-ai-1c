@@ -280,9 +280,13 @@ fn custom_prompt_text_requests_bsl_syntax_check(text: &str) -> bool {
 fn custom_prompts_require_bsl_syntax_check(
     custom: &crate::settings::CustomPromptsSettings,
 ) -> bool {
-    [&custom.system_prefix, &custom.on_code_change, &custom.on_code_generate]
-        .iter()
-        .any(|text| custom_prompt_text_requests_bsl_syntax_check(text))
+    [
+        &custom.system_prefix,
+        &custom.on_code_change,
+        &custom.on_code_generate,
+    ]
+    .iter()
+    .any(|text| custom_prompt_text_requests_bsl_syntax_check(text))
         || custom.templates.iter().any(|template| {
             if !template.enabled {
                 return false;
@@ -543,43 +547,51 @@ pub async fn stream_chat(
                     );
 
                     let handler = crate::bsl_client::BSLMcpHandler::new(bsl_state.inner().clone());
-                    let call_result =
-                        tokio::time::timeout(tokio::time::Duration::from_secs(30), async {
+                    let call_result = tokio::time::timeout(
+                        tokio::time::Duration::from_secs(
+                            crate::mcp_client::BSL_TOOL_CALL_TIMEOUT_SECS,
+                        ),
+                        async {
                             crate::mcp_client::InternalMcpHandler::call_tool(
                                 &handler,
                                 tool_name,
                                 arguments_value,
                             )
                             .await
-                        })
-                        .await;
+                        },
+                    )
+                    .await;
 
                     let (status, tool_result) = match call_result {
                         Ok(Ok(result)) => {
                             if let Some(diagnostics_value) = result.get("diagnostics") {
-                                if let Ok(diagnostics) = serde_json::from_value::<
-                                    Vec<crate::bsl_client::Diagnostic>,
-                                >(diagnostics_value.clone())
+                                if let Ok(diagnostics) =
+                                    serde_json::from_value::<Vec<crate::bsl_client::Diagnostic>>(
+                                        diagnostics_value.clone(),
+                                    )
                                 {
-                                    forced_ui_diagnostics.extend(
-                                        diagnostics.iter().map(bsl_diagnostic_to_ui),
-                                    );
+                                    forced_ui_diagnostics
+                                        .extend(diagnostics.iter().map(bsl_diagnostic_to_ui));
                                 }
                             }
                             ("done", result.to_string())
                         }
                         Ok(Err(error)) => {
-                            crate::app_log!(
-                                "[AI][TOOL][AUTO] check_bsl_syntax failed: {}",
-                                error
-                            );
+                            crate::app_log!("[AI][TOOL][AUTO] check_bsl_syntax failed: {}", error);
                             ("error", format!("Error calling tool: {}", error))
                         }
                         Err(_) => {
                             crate::app_log!(
-                                "[AI][TOOL][AUTO] check_bsl_syntax timed out after 30s"
+                                "[AI][TOOL][AUTO] check_bsl_syntax timed out after {}s",
+                                crate::mcp_client::BSL_TOOL_CALL_TIMEOUT_SECS
                             );
-                            ("error", "Error calling tool: Timeout 30s".to_string())
+                            (
+                                "error",
+                                format!(
+                                    "Error calling tool: Timeout {}s",
+                                    crate::mcp_client::BSL_TOOL_CALL_TIMEOUT_SECS
+                                ),
+                            )
                         }
                     };
 
@@ -895,7 +907,7 @@ pub async fn stream_chat(
             let _ = task_app_handle.emit("chat-status", "Проверка BSL кода...");
 
             let validation_result =
-                tokio::time::timeout(tokio::time::Duration::from_secs(30), async {
+                tokio::time::timeout(tokio::time::Duration::from_secs(90), async {
                     // Проверяем подключение один раз до цикла
                     {
                         let mut client = bsl_state.lock().await;
@@ -908,10 +920,13 @@ pub async fn stream_chat(
                     let mut ui_diagnostics: Vec<BSLDiagnostic> = Vec::new();
 
                     for (idx, code) in bsl_blocks.iter().enumerate() {
-                        let uri = format!("file:///iteration_{}_{}.bsl", current_iteration, idx);
                         // Захватываем и освобождаем lock на каждой итерации
                         let result = {
-                            let client = bsl_state.lock().await;
+                            let mut client = bsl_state.lock().await;
+                            let uri = client.temporary_document_uri(&format!(
+                                "iteration-{}-{}",
+                                current_iteration, idx
+                            ));
                             client.analyze_code(code, &uri).await
                         };
                         match result {

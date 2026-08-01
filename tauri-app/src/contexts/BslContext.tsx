@@ -5,7 +5,13 @@ import { emit } from '@tauri-apps/api/event';
 export interface BslStatus {
     installed: boolean;
     java_info: string;
+    runtime_info: string;
+    server_version: string;
+    server_path: string;
+    workspace_path: string;
+    active_port: number;
     connected: boolean;
+    mcp_available: boolean;
 }
 
 interface BslContextType {

@@ -168,6 +168,17 @@ fn qwen_max_tokens(profile_max_tokens: u32, tool_heavy: bool) -> u32 {
     }
 }
 
+fn minimax_recommended_max_tokens(model: &str, profile_max_tokens: u32) -> u32 {
+    // https://platform.minimax.io/docs/api-reference/text-chat-openai
+    // M3: recommended output 128K; M2.x: recommended output 64K.
+    let recommended = if model == "MiniMax-M3" {
+        131_072
+    } else {
+        65_536
+    };
+    profile_max_tokens.clamp(1, recommended)
+}
+
 fn qwen_thinking_budget(estimated_tokens: u32, tool_heavy: bool) -> u32 {
     let budget = estimated_tokens.saturating_mul(80) / 100;
     if tool_heavy {
@@ -394,9 +405,7 @@ pub async fn stream_chat_completion(
         // Qwen3 thinking models need large token budget to finish thinking before producing content
         profile.max_tokens.max(8192)
     } else if matches!(profile.provider, LLMProvider::MiniMax) {
-        // Official docs (platform.minimax.io): context window 204,800; coding tools integration
-        // recommends max_tokens=64,000. Cap at 64k, but respect lower user-set values.
-        profile.max_tokens.min(64_000).max(4_096)
+        minimax_recommended_max_tokens(&profile.model, profile.max_tokens)
     } else if profile.max_tokens > 16384 {
         4096
     } else {
@@ -1609,6 +1618,19 @@ mod tests {
     fn clamps_qwen_budget_for_tool_heavy_context() {
         assert_eq!(qwen_max_tokens(65_536, true), 16_384);
         assert_eq!(qwen_thinking_budget(20_000, true), 8_192);
+    }
+
+    #[test]
+    fn uses_official_recommended_output_budget_for_minimax_models() {
+        assert_eq!(
+            minimax_recommended_max_tokens("MiniMax-M3", 1_000_000),
+            131_072
+        );
+        assert_eq!(minimax_recommended_max_tokens("MiniMax-M3", 8_192), 8_192);
+        assert_eq!(
+            minimax_recommended_max_tokens("MiniMax-M2.7", 204_800),
+            65_536
+        );
     }
 
     #[test]

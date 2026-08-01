@@ -13,7 +13,8 @@ use lazy_static::lazy_static;
 use rand::RngCore;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
@@ -25,6 +26,8 @@ const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const AUTH_URL: &str = "https://auth.openai.com/oauth/authorize";
 const TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 const CODEX_USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
+const CODEX_MODELS_URL: &str = "https://chatgpt.com/backend-api/codex/models";
+const CODEX_USER_AGENT: &str = "codex_cli_rs/0.114.0 (Windows NT 10.0; x86_64) WindowsTerminal";
 const REDIRECT_PORT: u16 = 1455;
 const REDIRECT_URI: &str = "http://localhost:1455/auth/callback";
 const SCOPE: &str = "openid profile email offline_access";
@@ -44,6 +47,11 @@ enum CallbackResult {
 
 lazy_static! {
     static ref CALLBACK: Mutex<CallbackResult> = Mutex::new(CallbackResult::Pending);
+    static ref CALLBACK_SERVER: tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>> =
+        tokio::sync::Mutex::new(None);
+    static ref TOKEN_REFRESH_LOCKS: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>> =
+        Mutex::new(HashMap::new());
+    static ref TOKEN_GENERATIONS: Mutex<HashMap<String, u64>> = Mutex::new(HashMap::new());
 }
 
 fn reset_callback() {
@@ -63,6 +71,57 @@ fn read_callback() -> CallbackResult {
         .lock()
         .map(|cb| cb.clone())
         .unwrap_or(CallbackResult::Error("Lock error".to_string()))
+}
+
+fn token_refresh_lock(profile_id: &str) -> Arc<tokio::sync::Mutex<()>> {
+    let mut locks = TOKEN_REFRESH_LOCKS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    locks
+        .entry(profile_id.to_string())
+        .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+        .clone()
+}
+
+fn token_generations() -> std::sync::MutexGuard<'static, HashMap<String, u64>> {
+    TOKEN_GENERATIONS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn token_generation(generations: &HashMap<String, u64>, profile_id: &str) -> u64 {
+    generations.get(profile_id).copied().unwrap_or_default()
+}
+
+fn token_generation_matches(
+    generations: &HashMap<String, u64>,
+    profile_id: &str,
+    expected_generation: u64,
+) -> bool {
+    token_generation(generations, profile_id) == expected_generation
+}
+
+fn advance_token_generation(generations: &mut HashMap<String, u64>, profile_id: &str) -> u64 {
+    let generation = generations.entry(profile_id.to_string()).or_default();
+    *generation = generation.wrapping_add(1);
+    *generation
+}
+
+fn refresh_attempt_matches_current(
+    current_access_token: &str,
+    current_refresh_token: Option<&str>,
+    attempted_access_token: &str,
+    attempted_refresh_token: &str,
+) -> bool {
+    current_access_token == attempted_access_token
+        && current_refresh_token == Some(attempted_refresh_token)
+}
+
+fn select_refresh_token<'a>(
+    rotated_refresh_token: Option<&'a str>,
+    existing_refresh_token: &'a str,
+) -> &'a str {
+    rotated_refresh_token.unwrap_or(existing_refresh_token)
 }
 
 // ─── PKCE Helpers ───────────────────────────────────────────────────────────
@@ -125,26 +184,48 @@ fn json_value_as_i64(value: Option<&serde_json::Value>) -> Option<i64> {
     }
 }
 
+type UsageSnapshot = (Vec<CliUsageWindow>, Option<String>);
+
+fn resolve_live_usage_result(result: Result<Option<UsageSnapshot>, String>) -> UsageSnapshot {
+    match result {
+        Ok(Some(snapshot)) => snapshot,
+        Ok(None) => (Vec::new(), None),
+        Err(error) => {
+            crate::app_log!(
+                force: true,
+                "[Codex] Live usage unavailable; no cross-profile session fallback used: {}",
+                error
+            );
+            (Vec::new(), None)
+        }
+    }
+}
+
 // ─── Callback HTTP Server ───────────────────────────────────────────────────
 
 /// Starts a one-shot local HTTP server on port 1455 to receive the OAuth callback.
 /// Stores the received code (or error) in CALLBACK global state.
-fn start_callback_server() {
-    tokio::spawn(async move {
-        let listener = match TcpListener::bind(format!("127.0.0.1:{}", REDIRECT_PORT)).await {
-            Ok(l) => l,
-            Err(e) => {
-                crate::app_log!(force: true, "[Codex] Failed to bind callback server on port {}: {}", REDIRECT_PORT, e);
-                set_callback(CallbackResult::Error(format!(
-                    "Не удалось запустить сервер авторизации (порт {} занят): {}",
-                    REDIRECT_PORT, e
-                )));
-                return;
-            }
-        };
+async fn start_callback_server() -> Result<(), String> {
+    let mut server = CALLBACK_SERVER.lock().await;
+    if let Some(previous) = server.take() {
+        previous.abort();
+        let _ = previous.await;
+    }
+    reset_callback();
 
-        crate::app_log!(force: true, "[Codex] Callback server listening on port {}", REDIRECT_PORT);
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", REDIRECT_PORT))
+        .await
+        .map_err(|error| {
+            crate::app_log!(force: true, "[Codex] Failed to bind callback server on port {}: {}", REDIRECT_PORT, error);
+            format!(
+                "Не удалось запустить сервер авторизации (порт {} занят): {}",
+                REDIRECT_PORT, error
+            )
+        })?;
 
+    crate::app_log!(force: true, "[Codex] Callback server listening on port {}", REDIRECT_PORT);
+
+    *server = Some(tokio::spawn(async move {
         match listener.accept().await {
             Ok((mut stream, _addr)) => {
                 let mut reader = BufReader::new(&mut stream);
@@ -207,7 +288,9 @@ fn start_callback_server() {
                 )));
             }
         }
-    });
+    }));
+
+    Ok(())
 }
 
 // ─── Token exchange ─────────────────────────────────────────────────────────
@@ -279,13 +362,27 @@ async fn exchange_code(code: &str, code_verifier: &str) -> Result<CliAuthStatus,
 
 pub struct CodexCliProvider;
 
+// ─── Rate Limit Types ──────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct CodexSessionRateLimit {
+    used_percent: f32,
+    window_minutes: u32,
+    resets_at: Option<i64>,
+    resets_in_seconds: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CodexSessionRateLimits {
+    primary: Option<CodexSessionRateLimit>,
+    secondary: Option<CodexSessionRateLimit>,
+    plan_type: Option<String>,
+}
+
 impl CodexCliProvider {
     // ── Auth ─────────────────────────────────────────────────────────────────
 
     pub async fn auth_start() -> Result<CliAuthInitResponse, String> {
-        // Reset any previous callback result
-        reset_callback();
-
         let code_verifier = generate_code_verifier();
         let code_challenge = generate_code_challenge(&code_verifier);
         let state = random_state();
@@ -293,7 +390,7 @@ impl CodexCliProvider {
         crate::app_log!(force: true, "[Codex] auth_start: PKCE challenge ready, starting callback server...");
 
         // Start callback server before returning URL
-        start_callback_server();
+        start_callback_server().await?;
 
         // Build browser auth URL
         let params: Vec<(&str, &str)> = vec![
@@ -364,42 +461,6 @@ impl CodexCliProvider {
         crate::settings::get_settings_dir().join(format!("codex-token-{}.dat", profile_id))
     }
 
-    fn sessions_dir() -> Option<std::path::PathBuf> {
-        dirs::home_dir().map(|path| path.join(".codex").join("sessions"))
-    }
-
-    fn collect_rollout_files(
-        dir: &std::path::Path,
-        files: &mut Vec<std::path::PathBuf>,
-    ) -> Result<(), String> {
-        let entries = match std::fs::read_dir(dir) {
-            Ok(entries) => entries,
-            Err(err) => return Err(err.to_string()),
-        };
-
-        for entry in entries {
-            let entry = entry.map_err(|err| err.to_string())?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                Self::collect_rollout_files(&path, files)?;
-                continue;
-            }
-
-            let is_rollout = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .map(|name| name.starts_with("rollout-") && name.ends_with(".jsonl"))
-                .unwrap_or(false);
-
-            if is_rollout {
-                files.push(path);
-            }
-        }
-
-        Ok(())
-    }
-
     fn build_usage_window_identity(window_minutes: u32) -> (String, String) {
         match window_minutes {
             FIVE_HOUR_WINDOW_MINUTES => ("5h".to_string(), "5ч".to_string()),
@@ -459,7 +520,6 @@ impl CodexCliProvider {
     fn build_usage_window_from_api(
         rate_limit: &CodexApiRateLimit,
         window: &CodexApiUsageWindow,
-        fallback_window_minutes: u32,
     ) -> Option<CliUsageWindow> {
         let used_percent = json_value_as_f32(window.used_percent.as_ref())
             .or_else(|| {
@@ -473,15 +533,11 @@ impl CodexCliProvider {
             })?
             .clamp(0.0, 100.0);
 
-        let window_minutes = json_value_as_i64(window.limit_window_seconds.as_ref())
-            .and_then(|seconds| {
-                if seconds > 0 {
-                    u32::try_from(seconds / 60).ok()
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(fallback_window_minutes);
+        let window_seconds = json_value_as_i64(window.limit_window_seconds.as_ref())?;
+        if window_seconds <= 0 {
+            return None;
+        }
+        let window_minutes = u32::try_from(window_seconds / 60).ok()?;
 
         let (key, label) = Self::build_usage_window_identity(window_minutes);
         Some(CliUsageWindow {
@@ -530,96 +586,22 @@ impl CodexCliProvider {
         payload: CodexApiUsagePayload,
     ) -> Option<(Vec<CliUsageWindow>, Option<String>)> {
         let rate_limit = payload.rate_limit?;
-        let (five_hour_window, weekly_window) = Self::classify_api_usage_windows(&rate_limit);
-
-        let mut windows = Vec::new();
-        if let Some(window) = five_hour_window.and_then(|window| {
-            Self::build_usage_window_from_api(&rate_limit, window, FIVE_HOUR_WINDOW_MINUTES)
-        }) {
-            windows.push(window);
-        }
-        if let Some(window) = weekly_window.and_then(|window| {
-            Self::build_usage_window_from_api(&rate_limit, window, WEEKLY_WINDOW_MINUTES)
-        }) {
-            windows.push(window);
-        }
+        let mut windows = [
+            rate_limit.primary_window.as_ref(),
+            rate_limit.secondary_window.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        .filter_map(|window| Self::build_usage_window_from_api(&rate_limit, window))
+        .collect::<Vec<_>>();
 
         if windows.is_empty() {
             return None;
         }
 
         windows.sort_by_key(|window| window.window_minutes);
+        windows.dedup_by_key(|window| window.window_minutes);
         Some((windows, payload.plan_type))
-    }
-
-    fn extract_usage_snapshot_from_line(
-        line: &str,
-    ) -> Option<(Vec<CliUsageWindow>, Option<String>)> {
-        let event: CodexSessionEvent = serde_json::from_str(line).ok()?;
-        let payload = event.payload?;
-        if payload.event_type.as_deref()? != "token_count" {
-            return None;
-        }
-
-        let rate_limits = payload.rate_limits?;
-        let event_timestamp = event
-            .timestamp
-            .as_deref()
-            .and_then(|timestamp| chrono::DateTime::parse_from_rfc3339(timestamp).ok())
-            .map(|timestamp| timestamp.with_timezone(&Utc));
-
-        let mut windows = Vec::new();
-        if let Some(primary) = rate_limits.primary.as_ref() {
-            windows.push(Self::build_usage_window(event_timestamp.as_ref(), primary));
-        }
-        if let Some(secondary) = rate_limits.secondary.as_ref() {
-            windows.push(Self::build_usage_window(
-                event_timestamp.as_ref(),
-                secondary,
-            ));
-        }
-
-        if windows.is_empty() {
-            return None;
-        }
-
-        windows.sort_by_key(|window| window.window_minutes);
-        Some((windows, rate_limits.plan_type))
-    }
-
-    fn usage_snapshot() -> Result<Option<(Vec<CliUsageWindow>, Option<String>)>, String> {
-        let sessions_dir = match Self::sessions_dir() {
-            Some(path) if path.exists() => path,
-            _ => return Ok(None),
-        };
-
-        let mut files = Vec::new();
-        Self::collect_rollout_files(&sessions_dir, &mut files)?;
-        files.sort_by_key(|path| {
-            path.metadata()
-                .and_then(|metadata| metadata.modified())
-                .ok()
-        });
-        files.reverse();
-
-        for file in files.into_iter().take(50) {
-            let content = match std::fs::read_to_string(&file) {
-                Ok(content) => content,
-                Err(_) => continue,
-            };
-
-            for line in content.lines().rev() {
-                if !line.contains("\"type\":\"token_count\"") || !line.contains("\"rate_limits\"") {
-                    continue;
-                }
-
-                if let Some(snapshot) = Self::extract_usage_snapshot_from_line(line) {
-                    return Ok(Some(snapshot));
-                }
-            }
-        }
-
-        Ok(None)
     }
 
     async fn send_usage_request(
@@ -636,10 +618,7 @@ impl CodexCliProvider {
             .header("Accept", "application/json")
             .header("Authorization", format!("Bearer {}", access_token))
             .header("Chatgpt-Account-Id", account_id)
-            .header(
-                "User-Agent",
-                "codex_cli_rs/0.114.0 (Windows NT 10.0; x86_64) WindowsTerminal",
-            )
+            .header("User-Agent", CODEX_USER_AGENT)
             .send()
             .await
             .map_err(|e| format!("Ошибка сети при получении лимитов Codex: {}", e))?;
@@ -677,7 +656,7 @@ impl CodexCliProvider {
                     "[Codex] Usage API returned 401, attempting token refresh for profile {}",
                     profile_id
                 );
-                Self::refresh_access_token(profile_id, refresh_token).await?;
+                Self::refresh_access_token(profile_id, &access_token, refresh_token).await?;
                 if let Some((new_access_token, _, _, new_account_id)) = Self::get_token(profile_id)?
                 {
                     access_token = new_access_token;
@@ -714,18 +693,9 @@ impl CodexCliProvider {
     async fn resolve_usage_snapshot(
         profile_id: &str,
     ) -> Result<(Vec<CliUsageWindow>, Option<String>), String> {
-        match Self::fetch_usage_snapshot_from_api(profile_id).await {
-            Ok(Some(snapshot)) => Ok(snapshot),
-            Ok(None) => Ok(Self::usage_snapshot()?.unwrap_or((Vec::new(), None))),
-            Err(error) => {
-                crate::app_log!(
-                    force: true,
-                    "[Codex] Live usage unavailable, falling back to local sessions: {}",
-                    error
-                );
-                Ok(Self::usage_snapshot()?.unwrap_or((Vec::new(), None)))
-            }
-        }
+        Ok(resolve_live_usage_result(
+            Self::fetch_usage_snapshot_from_api(profile_id).await,
+        ))
     }
 
     pub fn save_token(
@@ -734,6 +704,26 @@ impl CodexCliProvider {
         refresh_token: Option<&str>,
         expires_at: u64,
         resource_url: Option<&str>, // repurposed: stores ChatGPT account_id
+    ) -> Result<(), String> {
+        let mut generations = token_generations();
+        Self::write_token(
+            profile_id,
+            access_token,
+            refresh_token,
+            expires_at,
+            resource_url,
+        )?;
+        advance_token_generation(&mut generations, profile_id);
+        crate::app_log!(force: true, "[Codex] Token saved for profile {}, expires_at={}", profile_id, expires_at);
+        Ok(())
+    }
+
+    fn write_token(
+        profile_id: &str,
+        access_token: &str,
+        refresh_token: Option<&str>,
+        expires_at: u64,
+        resource_url: Option<&str>,
     ) -> Result<(), String> {
         let data = serde_json::json!({
             "access_token": access_token,
@@ -746,8 +736,40 @@ impl CodexCliProvider {
         let path = Self::token_file_path(profile_id);
         std::fs::write(&path, encrypted)
             .map_err(|e| format!("Не удалось записать токен: {}", e))?;
-        crate::app_log!(force: true, "[Codex] Token saved for profile {}, expires_at={}", profile_id, expires_at);
         Ok(())
+    }
+
+    fn get_token_snapshot(
+        profile_id: &str,
+    ) -> Result<(Option<(String, Option<String>, u64, Option<String>)>, u64), String> {
+        let generations = token_generations();
+        let generation = token_generation(&generations, profile_id);
+        let token = Self::get_token(profile_id)?;
+        Ok((token, generation))
+    }
+
+    fn save_token_if_generation(
+        profile_id: &str,
+        access_token: &str,
+        refresh_token: Option<&str>,
+        expires_at: u64,
+        resource_url: Option<&str>,
+        expected_generation: u64,
+    ) -> Result<bool, String> {
+        let mut generations = token_generations();
+        if !token_generation_matches(&generations, profile_id, expected_generation) {
+            return Ok(false);
+        }
+        Self::write_token(
+            profile_id,
+            access_token,
+            refresh_token,
+            expires_at,
+            resource_url,
+        )?;
+        advance_token_generation(&mut generations, profile_id);
+        crate::app_log!(force: true, "[Codex] Refreshed token saved for profile {}, expires_at={}", profile_id, expires_at);
+        Ok(true)
     }
 
     /// Returns `(access_token, refresh_token, expires_at, account_id)`
@@ -776,7 +798,31 @@ impl CodexCliProvider {
         Ok(Some((access_token, refresh_token, expires_at, account_id)))
     }
 
-    pub async fn refresh_access_token(profile_id: &str, refresh_token: &str) -> Result<(), String> {
+    pub async fn refresh_access_token(
+        profile_id: &str,
+        attempted_access_token: &str,
+        attempted_refresh_token: &str,
+    ) -> Result<(), String> {
+        let refresh_lock = token_refresh_lock(profile_id);
+        let _refresh_guard = refresh_lock.lock().await;
+
+        let (current_token, token_generation) = Self::get_token_snapshot(profile_id)?;
+        let current_token = current_token
+            .ok_or_else(|| "Токен Codex был удалён до начала обновления".to_string())?;
+        if !refresh_attempt_matches_current(
+            &current_token.0,
+            current_token.1.as_deref(),
+            attempted_access_token,
+            attempted_refresh_token,
+        ) {
+            crate::app_log!(
+                force: true,
+                "[Codex] Token refresh skipped for profile {}: credentials already changed",
+                profile_id
+            );
+            return Ok(());
+        }
+
         let client = crate::http_client::http_client_builder()?
             .timeout(std::time::Duration::from_secs(30))
             .build()
@@ -785,7 +831,7 @@ impl CodexCliProvider {
         let params = [
             ("client_id", CLIENT_ID),
             ("grant_type", "refresh_token"),
-            ("refresh_token", refresh_token),
+            ("refresh_token", attempted_refresh_token),
         ];
 
         let resp = client
@@ -810,10 +856,6 @@ impl CodexCliProvider {
         );
 
         if !status.is_success() {
-            if status.as_u16() == 400 {
-                crate::app_log!(force: true, "[Codex] Refresh token invalid for profile {}, logging out", profile_id);
-                let _ = Self::logout(profile_id);
-            }
             return Err(format!(
                 "Обновление токена: ошибка {}: {}",
                 status.as_u16(),
@@ -829,29 +871,36 @@ impl CodexCliProvider {
             .id_token
             .as_deref()
             .and_then(extract_account_id_from_id_token)
-            .or_else(|| {
-                Self::get_token(profile_id)
-                    .ok()
-                    .flatten()
-                    .and_then(|(_, _, _, account_id)| account_id)
-            });
-        Self::save_token(
+            .or(current_token.3);
+        let refresh_token_to_store =
+            select_refresh_token(data.refresh_token.as_deref(), attempted_refresh_token);
+        if !Self::save_token_if_generation(
             profile_id,
             &data.access_token,
-            data.refresh_token.as_deref(),
+            Some(refresh_token_to_store),
             expires_at.timestamp() as u64,
             account_id.as_deref(),
-        )?;
+            token_generation,
+        )? {
+            crate::app_log!(
+                force: true,
+                "[Codex] Token refresh result discarded for profile {}: credentials changed while request was in flight",
+                profile_id
+            );
+            return Ok(());
+        }
 
         crate::app_log!(force: true, "[Codex] Token refreshed for profile {}, expires_in={}s", profile_id, data.expires_in.unwrap_or(0));
         Ok(())
     }
 
     pub fn logout(profile_id: &str) -> Result<(), String> {
+        let mut generations = token_generations();
         let path = Self::token_file_path(profile_id);
         if path.exists() {
             std::fs::remove_file(&path).map_err(|e| format!("Не удалось удалить токен: {}", e))?;
         }
+        advance_token_generation(&mut generations, profile_id);
         Ok(())
     }
 
@@ -867,13 +916,13 @@ impl CodexCliProvider {
                 usage_windows: None,
                 usage_plan: None,
             }),
-            Some((_, refresh_token, expires_at, _account_id)) => {
+            Some((access_token, refresh_token, expires_at, _account_id)) => {
                 let is_expired = Utc::now().timestamp() as u64 > expires_at;
 
                 if is_expired {
                     if let Some(rt) = refresh_token.as_deref() {
                         crate::app_log!(force: true, "[Codex] get_status: token expired, attempting silent refresh for profile {}", profile_id);
-                        match Self::refresh_access_token(profile_id, rt).await {
+                        match Self::refresh_access_token(profile_id, &access_token, rt).await {
                             Ok(()) => {
                                 if let Ok(Some((_, _, new_exp, _))) = Self::get_token(profile_id) {
                                     let (usage_windows, usage_plan) =
@@ -926,14 +975,135 @@ impl CodexCliProvider {
         }
     }
 
-    /// Returns the curated list of Codex-compatible models.
-    ///
-    /// `chatgpt.com/backend-api/models` exposes generic ChatGPT models such as `gpt-5-3`,
-    /// which do not match the slugs accepted by `backend-api/codex/responses`.
-    pub async fn fetch_models(
-        _profile_id: &str,
+    fn parse_models_response(body: &str) -> Result<Vec<crate::llm::providers::Model>, String> {
+        let payload: CodexModelsResponse = serde_json::from_str(body).map_err(|error| {
+            format!("Не удалось разобрать официальный каталог Codex: {}", error)
+        })?;
+
+        let mut models = payload
+            .models
+            .into_iter()
+            .filter_map(|model| {
+                if model.visibility != "list" || !model.slug.starts_with("gpt-") {
+                    return None;
+                }
+                let context_window = model.context_window?;
+
+                Some(crate::llm::providers::Model {
+                    id: model.slug,
+                    name: model.display_name,
+                    context_window,
+                    description: model.description,
+                    cost_in: None,
+                    cost_out: None,
+                    default_reasoning_effort: model.default_reasoning_level,
+                    supported_reasoning_efforts: model
+                        .supported_reasoning_levels
+                        .into_iter()
+                        .map(|level| level.effort)
+                        .collect(),
+                    priority: Some(model.priority),
+                    supported_in_api: model.supported_in_api,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        models.sort_by_key(|model| model.priority.unwrap_or(u32::MAX));
+        Ok(models)
+    }
+
+    async fn send_models_request(
+        access_token: &str,
+        account_id: &str,
+    ) -> Result<(reqwest::StatusCode, String), String> {
+        let client = crate::http_client::http_client_builder()?
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|error| error.to_string())?;
+        let response = client
+            .get(CODEX_MODELS_URL)
+            .query(&[("client_version", env!("CARGO_PKG_VERSION"))])
+            .header("Accept", "application/json")
+            .header("Authorization", format!("Bearer {}", access_token))
+            .header("ChatGPT-Account-Id", account_id)
+            .header("Originator", "codex-cli")
+            .header("User-Agent", CODEX_USER_AGENT)
+            .send()
+            .await
+            .map_err(|error| format!("Ошибка сети при загрузке каталога Codex: {}", error))?;
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Ok((status, body))
+    }
+
+    async fn fetch_live_models(
+        profile_id: &str,
     ) -> Result<Vec<crate::llm::providers::Model>, String> {
-        Ok(crate::llm::providers::static_codex_models())
+        let (mut access_token, refresh_token, _, mut account_id) = Self::get_token(profile_id)?
+            .ok_or_else(|| "Для профиля Codex отсутствует OAuth-токен".to_string())?;
+        let current_account_id = account_id
+            .clone()
+            .ok_or_else(|| "Для профиля Codex отсутствует ChatGPT account id".to_string())?;
+
+        let (mut status, mut body) =
+            Self::send_models_request(&access_token, &current_account_id).await?;
+        crate::app_log!(
+            force: true,
+            "[Codex] Models response: {}",
+            safe_response_summary(status, &body)
+        );
+
+        if status.as_u16() == 401 {
+            if let Some(refresh_token) = refresh_token.as_deref() {
+                Self::refresh_access_token(profile_id, &access_token, refresh_token).await?;
+                if let Some((new_access_token, _, _, new_account_id)) = Self::get_token(profile_id)?
+                {
+                    access_token = new_access_token;
+                    account_id = new_account_id.or(account_id);
+                    let refreshed_account_id = account_id.ok_or_else(|| {
+                        "После обновления токена отсутствует ChatGPT account id".to_string()
+                    })?;
+                    (status, body) =
+                        Self::send_models_request(&access_token, &refreshed_account_id).await?;
+                    crate::app_log!(
+                        force: true,
+                        "[Codex] Models response after refresh: {}",
+                        safe_response_summary(status, &body)
+                    );
+                }
+            }
+        }
+
+        if !status.is_success() {
+            return Err(format!(
+                "Официальный каталог Codex вернул HTTP {}",
+                status.as_u16()
+            ));
+        }
+
+        let models = Self::parse_models_response(&body)?;
+        if models.is_empty() {
+            return Err("Официальный каталог Codex не содержит доступных GPT-моделей".to_string());
+        }
+        Ok(models)
+    }
+
+    /// Loads the official Codex catalog for the authenticated ChatGPT account.
+    /// Falls back to a source-verified snapshot when the endpoint is unavailable.
+    pub async fn fetch_models(
+        profile_id: &str,
+    ) -> Result<Vec<crate::llm::providers::Model>, String> {
+        match Self::fetch_live_models(profile_id).await {
+            Ok(models) => Ok(models),
+            Err(error) => {
+                crate::app_log!(
+                    force: true,
+                    "[Codex] Live model catalog unavailable; using verified fallback: {}",
+                    error
+                );
+                Ok(crate::llm::providers::static_codex_models())
+            }
+        }
     }
 }
 
@@ -945,6 +1115,30 @@ struct CodexTokenResponse {
     refresh_token: Option<String>,
     expires_in: Option<u64>,
     id_token: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CodexModelsResponse {
+    models: Vec<CodexApiModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CodexApiModel {
+    slug: String,
+    display_name: String,
+    description: Option<String>,
+    default_reasoning_level: Option<String>,
+    #[serde(default)]
+    supported_reasoning_levels: Vec<CodexReasoningLevel>,
+    visibility: String,
+    supported_in_api: Option<bool>,
+    priority: u32,
+    context_window: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CodexReasoningLevel {
+    effort: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -976,34 +1170,6 @@ struct CodexApiUsageWindow {
     reset_after_seconds: Option<serde_json::Value>,
     #[serde(alias = "resetAt")]
     reset_at: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CodexSessionEvent {
-    timestamp: Option<String>,
-    payload: Option<CodexSessionPayload>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CodexSessionPayload {
-    #[serde(rename = "type")]
-    event_type: Option<String>,
-    rate_limits: Option<CodexSessionRateLimits>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CodexSessionRateLimits {
-    primary: Option<CodexSessionRateLimit>,
-    secondary: Option<CodexSessionRateLimit>,
-    plan_type: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CodexSessionRateLimit {
-    used_percent: f32,
-    window_minutes: u32,
-    resets_at: Option<i64>,
-    resets_in_seconds: Option<i64>,
 }
 
 /// Extract account_id (ChatGPT workspace) from id_token JWT claims.
@@ -1051,54 +1217,181 @@ fn extract_account_id_from_id_token(id_token: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CodexApiUsagePayload, CodexCliProvider, CodexSessionRateLimit, FIVE_HOUR_WINDOW_MINUTES,
+        advance_token_generation, read_callback, refresh_attempt_matches_current,
+        resolve_live_usage_result, select_refresh_token, set_callback, token_generation_matches,
+        CallbackResult, CodexApiUsagePayload, CodexCliProvider, CALLBACK_SERVER,
     };
-    use chrono::{DateTime, Utc};
+    use std::collections::HashMap;
 
-    #[test]
-    fn build_usage_window_converts_percentages_and_absolute_reset() {
-        let rate_limit = CodexSessionRateLimit {
-            used_percent: 53.0,
-            window_minutes: FIVE_HOUR_WINDOW_MINUTES,
-            resets_at: Some(1_775_051_447),
-            resets_in_seconds: None,
-        };
+    static AUTH_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-        let window = CodexCliProvider::build_usage_window(None, &rate_limit);
+    #[tokio::test(flavor = "current_thread")]
+    async fn restarting_auth_replaces_previous_callback_listener() {
+        let _test_guard = AUTH_TEST_LOCK.lock().expect("auth test lock");
 
-        assert_eq!(window.key, "5h");
-        assert_eq!(window.label, "5ч");
-        assert_eq!(window.used_percent, 53.0);
-        assert_eq!(window.remaining_percent, 47.0);
-        assert_eq!(window.window_minutes, FIVE_HOUR_WINDOW_MINUTES);
-        assert_eq!(
-            window.resets_at.as_deref(),
-            DateTime::<Utc>::from_timestamp(1_775_051_447, 0)
-                .map(|dt| dt.to_rfc3339())
-                .as_deref()
+        CodexCliProvider::auth_start()
+            .await
+            .expect("first OAuth listener should start");
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        CodexCliProvider::auth_start()
+            .await
+            .expect("restarted OAuth listener should replace the previous listener");
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        assert!(
+            matches!(read_callback(), CallbackResult::Pending),
+            "restarting OAuth must not report that its own callback port is occupied"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn restarting_auth_discards_callback_written_before_lifecycle_lock() {
+        let _test_guard = AUTH_TEST_LOCK.lock().expect("auth test lock");
+
+        CodexCliProvider::auth_start()
+            .await
+            .expect("first OAuth listener should start");
+        let lifecycle_guard = CALLBACK_SERVER.lock().await;
+        let restart = tokio::spawn(CodexCliProvider::auth_start());
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        set_callback(CallbackResult::Success {
+            code: "stale-code".to_string(),
+            state: Some("stale-state".to_string()),
+        });
+        drop(lifecycle_guard);
+        restart
+            .await
+            .expect("restart task should complete")
+            .expect("restarted OAuth listener should start");
+
+        assert!(
+            matches!(read_callback(), CallbackResult::Pending),
+            "new OAuth session must reset callback state after stopping the previous listener"
         );
     }
 
     #[test]
-    fn build_usage_window_supports_relative_reset_seconds() {
-        let event_timestamp = DateTime::parse_from_rfc3339("2026-04-01T08:58:56.066Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let rate_limit = CodexSessionRateLimit {
-            used_percent: 16.0,
-            window_minutes: 10_080,
-            resets_at: None,
-            resets_in_seconds: Some(60),
-        };
+    fn refresh_attempt_only_matches_unchanged_credentials() {
+        assert!(refresh_attempt_matches_current(
+            "access-old",
+            Some("refresh-old"),
+            "access-old",
+            "refresh-old",
+        ));
+        assert!(!refresh_attempt_matches_current(
+            "access-new",
+            Some("refresh-new"),
+            "access-old",
+            "refresh-old",
+        ));
+        assert!(!refresh_attempt_matches_current(
+            "access-old",
+            None,
+            "access-old",
+            "refresh-old",
+        ));
+    }
 
-        let window = CodexCliProvider::build_usage_window(Some(&event_timestamp), &rate_limit);
-
-        assert_eq!(window.key, "weekly");
-        assert_eq!(window.remaining_percent, 84.0);
+    #[test]
+    fn refresh_token_uses_rotated_value_or_preserves_existing_value() {
         assert_eq!(
-            window.resets_at.as_deref(),
-            Some("2026-04-01T08:59:56.066+00:00")
+            select_refresh_token(Some("refresh-new"), "refresh-old"),
+            "refresh-new"
         );
+        assert_eq!(select_refresh_token(None, "refresh-old"), "refresh-old");
+    }
+
+    #[test]
+    fn credential_generation_invalidates_an_in_flight_refresh_snapshot() {
+        let mut generations = HashMap::new();
+        let refresh_generation = 0;
+
+        assert!(token_generation_matches(
+            &generations,
+            "profile-race",
+            refresh_generation,
+        ));
+        advance_token_generation(&mut generations, "profile-race");
+        assert!(!token_generation_matches(
+            &generations,
+            "profile-race",
+            refresh_generation,
+        ));
+    }
+
+    #[test]
+    fn missing_or_failed_live_usage_does_not_reuse_cross_profile_session_data() {
+        let missing = resolve_live_usage_result(Ok(None));
+        let failed = resolve_live_usage_result(Err("offline".to_string()));
+
+        assert!(missing.0.is_empty());
+        assert!(missing.1.is_none());
+        assert!(failed.0.is_empty());
+        assert!(failed.1.is_none());
+    }
+
+    #[test]
+    fn parse_models_response_keeps_only_listed_gpt_models_with_source_metadata() {
+        let models = CodexCliProvider::parse_models_response(
+            r#"{
+                "models": [
+                    {
+                        "slug": "gpt-5.6-sol",
+                        "display_name": "GPT-5.6-Sol",
+                        "description": "Latest frontier agentic coding model.",
+                        "default_reasoning_level": "low",
+                        "supported_reasoning_levels": [
+                            {"effort": "low", "description": "Fast"},
+                            {"effort": "max", "description": "Deep"},
+                            {"effort": "ultra", "description": "Orchestrated"}
+                        ],
+                        "visibility": "list",
+                        "supported_in_api": true,
+                        "priority": 1,
+                        "context_window": 272000
+                    },
+                    {
+                        "slug": "gpt-hidden",
+                        "display_name": "Hidden",
+                        "visibility": "hide",
+                        "priority": 2,
+                        "context_window": 272000
+                    },
+                    {
+                        "slug": "not-gpt",
+                        "display_name": "Other",
+                        "visibility": "list",
+                        "priority": 3,
+                        "context_window": 128000
+                    },
+                    {
+                        "slug": "gpt-without-context",
+                        "display_name": "No context",
+                        "visibility": "list",
+                        "priority": 4
+                    }
+                ]
+            }"#,
+        )
+        .expect("official response should parse");
+
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "gpt-5.6-sol");
+        assert_eq!(models[0].name, "GPT-5.6-Sol");
+        assert_eq!(models[0].context_window, 272_000);
+        assert_eq!(
+            models[0].description.as_deref(),
+            Some("Latest frontier agentic coding model.")
+        );
+        assert_eq!(models[0].default_reasoning_effort.as_deref(), Some("low"));
+        assert_eq!(
+            models[0].supported_reasoning_efforts,
+            vec!["low", "max", "ultra"]
+        );
+        assert_eq!(models[0].priority, Some(1));
+        assert_eq!(models[0].supported_in_api, Some(true));
     }
 
     #[test]
@@ -1136,7 +1429,37 @@ mod tests {
     }
 
     #[test]
-    fn extract_usage_snapshot_from_api_payload_falls_back_to_primary_secondary_order() {
+    fn extract_usage_snapshot_from_api_payload_deduplicates_identical_weekly_windows() {
+        let payload: CodexApiUsagePayload = serde_json::from_str(
+            r#"{
+                "plan_type": "prolite",
+                "rate_limit": {
+                    "primary_window": {
+                        "used_percent": 9,
+                        "limit_window_seconds": 604800,
+                        "reset_at": 1785689529
+                    },
+                    "secondary_window": {
+                        "used_percent": 9,
+                        "limit_window_seconds": 604800,
+                        "reset_at": 1785689529
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let (windows, plan_type) =
+            CodexCliProvider::extract_usage_snapshot_from_api_payload(payload).unwrap();
+
+        assert_eq!(plan_type.as_deref(), Some("prolite"));
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0].key, "weekly");
+        assert_eq!(windows[0].remaining_percent, 91.0);
+    }
+
+    #[test]
+    fn extract_usage_snapshot_from_api_payload_ignores_windows_without_source_duration() {
         let payload: CodexApiUsagePayload = serde_json::from_str(
             r#"{
                 "plan_type": "pro",
@@ -1154,13 +1477,6 @@ mod tests {
         )
         .unwrap();
 
-        let (windows, plan_type) =
-            CodexCliProvider::extract_usage_snapshot_from_api_payload(payload).unwrap();
-
-        assert_eq!(plan_type.as_deref(), Some("pro"));
-        assert_eq!(windows.len(), 2);
-        assert_eq!(windows[0].key, "5h");
-        assert_eq!(windows[0].window_minutes, FIVE_HOUR_WINDOW_MINUTES);
-        assert_eq!(windows[1].key, "weekly");
+        assert!(CodexCliProvider::extract_usage_snapshot_from_api_payload(payload).is_none());
     }
 }
