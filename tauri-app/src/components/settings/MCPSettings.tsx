@@ -193,6 +193,7 @@ const BUILTIN_BSL_LS_ID = 'bsl-ls';
 const BUILTIN_1C_HELP_ID = 'builtin-1c-help';
 const BUILTIN_MCP_SKILLS_ID = 'builtin-mcp-skills';
 const BUILTIN_1C_FILESYSTEM_ID = 'builtin-1c-filesystem';
+const BUILTIN_1C_ENV_ID = 'builtin-1c-env';
 
 const makeProfileId = (prefix: string) =>
     `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -404,6 +405,27 @@ export function MCPSettings({
             }
         }
 
+        // Check 1С:Платформа и базы
+        const envIndex = updatedServers.findIndex(s => s.id === BUILTIN_1C_ENV_ID);
+        if (envIndex === -1) {
+            updatedServers.push({
+                id: BUILTIN_1C_ENV_ID,
+                name: '1С:Платформа и базы',
+                enabled: true,
+                transport: 'stdio',
+                command: effectiveNodePath,
+                args: ['mcp-servers/1c-env.cjs'],
+            });
+            needsUpdate = true;
+        } else {
+            const srv = updatedServers[envIndex];
+            const isSupportedCmd = isBuiltinNodeLauncher(srv.command, effectiveNodePath);
+            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(['mcp-servers/1c-env.cjs'])) {
+                updatedServers[envIndex] = { ...srv, command: effectiveNodePath, args: ['mcp-servers/1c-env.cjs'] };
+                needsUpdate = true;
+            }
+        }
+
         // Сортируем серверы по нужному порядку карточек
         const ORDER: Record<string, number> = {
             [BUILTIN_BSL_LS_ID]: 0,
@@ -413,6 +435,7 @@ export function MCPSettings({
             [BUILTIN_1C_METADATA_ID]: 4,
             [BUILTIN_MCP_SKILLS_ID]: 5,
             [BUILTIN_1C_FILESYSTEM_ID]: 6,
+            [BUILTIN_1C_ENV_ID]: 7,
         };
 
         const originalIds = servers.map(s => s.id).join(',');
@@ -589,7 +612,7 @@ export function MCPSettings({
     };
 
     const sortedServers = [...servers].sort((a, b) => {
-        const builtinIds = [BUILTIN_BSL_LS_ID, BUILTIN_1C_HELP_ID, BUILTIN_1C_SEARCH_ID, BUILTIN_1C_SERVER_ID, BUILTIN_1C_METADATA_ID, BUILTIN_MCP_SKILLS_ID, BUILTIN_1C_FILESYSTEM_ID];
+        const builtinIds = [BUILTIN_BSL_LS_ID, BUILTIN_1C_HELP_ID, BUILTIN_1C_SEARCH_ID, BUILTIN_1C_SERVER_ID, BUILTIN_1C_METADATA_ID, BUILTIN_MCP_SKILLS_ID, BUILTIN_1C_FILESYSTEM_ID, BUILTIN_1C_ENV_ID];
         const aIdx = builtinIds.indexOf(a.id);
         const bIdx = builtinIds.indexOf(b.id);
 
@@ -640,7 +663,8 @@ export function MCPSettings({
                         const isSearch = server.id === BUILTIN_1C_SEARCH_ID;
                         const isSkills = server.id === BUILTIN_MCP_SKILLS_ID;
                         const isFilesystem = server.id === BUILTIN_1C_FILESYSTEM_ID;
-                        const isBuiltin = server.id === BUILTIN_1C_SERVER_ID || isMetadata || isBslLs || isHelp || isSearch || isSkills || isFilesystem;
+                        const isEnv = server.id === BUILTIN_1C_ENV_ID;
+                        const isBuiltin = server.id === BUILTIN_1C_SERVER_ID || isMetadata || isBslLs || isHelp || isSearch || isSkills || isFilesystem || isEnv;
                         const searchProfileState = isSearch ? normalizeSearchProfiles(server) : null;
                         const searchActiveProfile = searchProfileState
                             ? (searchProfileState.profiles.find(p => p.id === searchProfileState.activeId) || searchProfileState.profiles[0])
@@ -1508,6 +1532,13 @@ export function MCPSettings({
                                                         </div>
                                                     );
                                                 })()
+                                            ) : isEnv ? (
+                                                <div className="space-y-3">
+                                                    <div className="bg-zinc-900/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400">
+                                                        Автоопределение установленных платформ 1С и списка информационных баз (из ibases.v8i).
+                                                        Инструменты: <code className="bg-zinc-800 text-zinc-300 px-1 rounded">list_infobases</code>, <code className="bg-zinc-800 text-zinc-300 px-1 rounded">find_platform</code>, <code className="bg-zinc-800 text-zinc-300 px-1 rounded">get_1c_environment</code>.
+                                                    </div>
+                                                </div>
                                             ) : (
                                                 <>
                                                     <div className="flex items-center justify-between mb-4">

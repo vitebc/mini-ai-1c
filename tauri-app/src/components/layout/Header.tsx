@@ -34,6 +34,11 @@ const PRESET_MCP_NOTIFICATIONS = [
         name: 'Скиллы',
         description: 'Наборы знаний и инструкций для AI-агента — Rust, TypeScript, дизайн UI и др.',
     },
+    {
+        id: 'builtin-1c-env',
+        name: '1С:Платформа и базы',
+        description: 'Автоопределение установленных версий 1С и списка информационных баз.',
+    },
 ];
 
 interface HeaderProps {

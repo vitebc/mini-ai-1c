@@ -825,6 +825,7 @@ impl McpSession {
             "1c-naparnik.cjs" => Some(include_bytes!("../mcp-servers/1c-naparnik.cjs")),
             "mcp-skills.cjs" => Some(include_bytes!("../mcp-servers/mcp-skills.cjs")),
             "1c-filesystem.cjs" => Some(include_bytes!("../mcp-servers/1c-filesystem.cjs")),
+            "1c-env.cjs" => Some(include_bytes!("../mcp-servers/1c-env.cjs")),
             #[cfg(windows)]
             "mcp-1c-search.exe" => Some(include_bytes!("../mcp-servers/mcp-1c-search.exe")),
             #[cfg(not(windows))]

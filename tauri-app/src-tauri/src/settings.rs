@@ -749,6 +749,22 @@ pub fn ensure_builtin_mcp_servers(settings: &mut AppSettings) -> bool {
         modified = true;
     }
 
+    // builtin-1c-env (enabled by default — platform detection + database list)
+    if !settings.mcp_servers.iter().any(|s| s.id == "builtin-1c-env") {
+        crate::app_log!("[SETTINGS] Adding builtin-1c-env server");
+        settings.mcp_servers.push(McpServerConfig {
+            id: "builtin-1c-env".to_string(),
+            name: "1С:Платформа и базы".to_string(),
+            enabled: true,
+            transport: McpTransport::Stdio,
+            command: Some(node_path.clone()),
+            args: Some(vec!["mcp-servers/1c-env.cjs".to_string()]),
+            env: None,
+            ..Default::default()
+        });
+        modified = true;
+    }
+
     modified
 }
 
@@ -769,7 +785,7 @@ pub fn clear_runtime_only_settings(settings: &mut AppSettings) -> bool {
 fn is_builtin_node_mcp_server(server_id: &str) -> bool {
     matches!(
         server_id,
-        "builtin-1c-naparnik" | "builtin-1c-metadata" | "builtin-1c-help" | "builtin-mcp-skills" | "builtin-1c-filesystem"
+        "builtin-1c-naparnik" | "builtin-1c-metadata" | "builtin-1c-help" | "builtin-mcp-skills" | "builtin-1c-filesystem" | "builtin-1c-env"
     )
 }
 
