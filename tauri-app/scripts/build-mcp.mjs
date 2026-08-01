@@ -27,7 +27,7 @@ async function buildMcp() {
         { in: '1c-help.ts', out: '1c-help.cjs', banner: HELP_BANNER },
         { in: 'mcp-skills.ts', out: 'mcp-skills.cjs' },
         { in: '1c-filesystem.ts', out: '1c-filesystem.cjs' },
-        { in: '1c-env.ts', out: '1c-env.cjs' },
+        { in: 'jvv-1c.ts', out: 'jvv-1c.cjs' },
     ];
 
     for (const entry of entries) {

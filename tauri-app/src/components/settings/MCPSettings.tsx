@@ -193,7 +193,7 @@ const BUILTIN_BSL_LS_ID = 'bsl-ls';
 const BUILTIN_1C_HELP_ID = 'builtin-1c-help';
 const BUILTIN_MCP_SKILLS_ID = 'builtin-mcp-skills';
 const BUILTIN_1C_FILESYSTEM_ID = 'builtin-1c-filesystem';
-const BUILTIN_1C_ENV_ID = 'builtin-1c-env';
+const BUILTIN_1C_ENV_ID = 'builtin-jvv-1c';
 
 const makeProfileId = (prefix: string) =>
     `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -414,14 +414,14 @@ export function MCPSettings({
                 enabled: true,
                 transport: 'stdio',
                 command: effectiveNodePath,
-                args: ['mcp-servers/1c-env.cjs'],
+                args: ['mcp-servers/jvv-1c.cjs'],
             });
             needsUpdate = true;
         } else {
             const srv = updatedServers[envIndex];
             const isSupportedCmd = isBuiltinNodeLauncher(srv.command, effectiveNodePath);
-            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(['mcp-servers/1c-env.cjs'])) {
-                updatedServers[envIndex] = { ...srv, command: effectiveNodePath, args: ['mcp-servers/1c-env.cjs'] };
+            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(['mcp-servers/jvv-1c.cjs'])) {
+                updatedServers[envIndex] = { ...srv, command: effectiveNodePath, args: ['mcp-servers/jvv-1c.cjs'] };
                 needsUpdate = true;
             }
         }

@@ -556,6 +556,29 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
 
 "#);
         }
+
+        if available_tools
+            .iter()
+            .any(|t| t.tool.function.name == "search_skills" || t.tool.function.name == "get_skill" || t.tool.function.name == "list_skills")
+        {
+            prompt.push_str(r#"
+=== СКИЛЛЫ (builtin-mcp-skills) ===
+
+У тебя есть доступ к базе знаний — скиллам (инструкциям и паттернам по технологиям).
+Скиллы содержат готовые решения, паттерны и лучшие практики по Rust, TypeScript, Tauri, MCP, UI/UX и другим технологиям.
+
+⚠️ ОБЯЗАТЕЛЬНО: При начале каждого нового диалога или при получении задачи по незнакомой технологии —
+ВЫЗВАЙ `search_skills` или `list_skills` для поиска релевантных скиллов.
+Если нашёл подходящий скилл — получи его содержимое через `get_skill` и СЛЕДУЙ инструкциям из него.
+
+Как использовать:
+1. Определи технологию/задачу (например: "Tauri", "React", "MCP сервер", "BSL")
+2. search_skills(query="Tauri") или list_skills() — найди подходящий скилл
+3. get_skill(id="desktop-framework-tauri") — получи полное содержимое
+4. Следуй инструкциям из SKILL.md при решении задачи
+
+"#);
+        }
     }
 
     prompt
