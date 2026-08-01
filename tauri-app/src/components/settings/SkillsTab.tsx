@@ -189,18 +189,15 @@ export function SkillsTab() {
                             </div>
                         </div>
 
-                        {/* Editor + Preview */}
+                        {/* Editor */}
                         {mode === 'edit' ? (
-                            <div className="flex-1 flex min-h-0">
+                            <div className="flex-1 min-h-0">
                                 <textarea
                                     value={editingContent}
                                     onChange={e => { setEditingContent(e.target.value); setDirty(true); }}
-                                    className="flex-1 p-4 text-sm font-mono bg-zinc-950 text-zinc-300 border-r border-zinc-800 resize-none focus:outline-none custom-scrollbar"
+                                    className="w-full h-full p-4 text-sm font-mono bg-zinc-950 text-zinc-300 resize-none focus:outline-none custom-scrollbar"
                                     spellCheck={false}
                                 />
-                                <div className="flex-1 p-4 overflow-y-auto custom-scrollbar bg-zinc-950">
-                                    <MarkdownPreview markdown={editingContent} />
-                                </div>
                             </div>
                         ) : (
                             <div className="flex-1 p-6 overflow-y-auto custom-scrollbar bg-zinc-950">

@@ -104,18 +104,18 @@ body {
 /* ===== LIGHT THEME ===== */
 /* Tailwind v4 uses CSS variables for zinc colors — override them to flip dark→light */
 html.light {
-    /* Flip zinc scale: dark values → neutral light equivalents */
-    --color-zinc-950: oklch(0.985 0.001 0);
-    --color-zinc-900: oklch(0.965 0.001 0);
-    --color-zinc-800: oklch(0.925 0.001 0);
-    --color-zinc-700: oklch(0.87 0.001 0);
-    --color-zinc-600: oklch(0.70 0.001 0);
-    --color-zinc-500: oklch(0.55 0.001 0);
-    --color-zinc-400: oklch(0.44 0.001 0);
-    --color-zinc-300: oklch(0.37 0.001 0);
-    --color-zinc-200: oklch(0.27 0.001 0);
-    --color-zinc-100: oklch(0.21 0.001 0);
-    --color-zinc-50: oklch(0.14 0.001 0);
+    /* Flip zinc scale: dark values → lighter neutral equivalents */
+    --color-zinc-950: oklch(0.99 0.001 0);
+    --color-zinc-900: oklch(0.975 0.001 0);
+    --color-zinc-800: oklch(0.955 0.001 0);
+    --color-zinc-700: oklch(0.92 0.001 0);
+    --color-zinc-600: oklch(0.78 0.001 0);
+    --color-zinc-500: oklch(0.62 0.001 0);
+    --color-zinc-400: oklch(0.50 0.001 0);
+    --color-zinc-300: oklch(0.42 0.001 0);
+    --color-zinc-200: oklch(0.32 0.001 0);
+    --color-zinc-100: oklch(0.26 0.001 0);
+    --color-zinc-50: oklch(0.18 0.001 0);
 
     /* HSL semantic vars used by shadcn/tailwind config */
     --background: 0 0% 100%;
@@ -158,30 +158,30 @@ html.light {
 
 /* Override hardcoded hex colors used in components */
 html.light .bg-\[\#111113\] { background-color: #ffffff !important; }
-html.light .bg-\[\#1c1c1e\] { background-color: #f5f5f5 !important; }
-html.light .bg-\[\#1c1c1e\]\/80 { background-color: rgb(248 248 248 / 0.95) !important; }
-html.light .border-\[\#424244\]\/30 { border-color: rgb(200 200 200 / 0.6) !important; }
+html.light .bg-\[\#1c1c1e\] { background-color: #fafafa !important; }
+html.light .bg-\[\#1c1c1e\]\/80 { background-color: rgb(250 250 250 / 0.95) !important; }
+html.light .border-\[\#424244\]\/30 { border-color: rgb(210 210 210 / 0.6) !important; }
 
 /* Soften blue buttons in light theme — less jarring than vivid Tailwind blue-600 */
 html.light .bg-blue-600 { background-color: #0078d4 !important; }
 html.light .hover\:bg-blue-500:hover { background-color: #1184db !important; }
 html.light .hover\:bg-blue-700:hover { background-color: #006cbd !important; }
-html.light .bg-\[\#1f1f21\] { background-color: #f0f0f0 !important; }
-html.light .bg-\[\#222224\] { background-color: #f3f3f3 !important; }
-html.light .bg-\[\#232325\] { background-color: #f0f0f2 !important; }
-html.light .bg-\[\#171719\] { background-color: #f8f8f8 !important; }
-html.light .bg-\[\#2a2a2c\] { background-color: #e4e4e7 !important; }
-html.light .bg-\[\#3a3a3c\] { background-color: #f0f0f0 !important; }
-html.light .bg-\[\#424244\] { background-color: #d4d4d8 !important; }
-html.light .border-\[\#2a2a2c\] { border-color: #d4d4d8 !important; }
-html.light .hover\:bg-\[\#2a2a2c\]:hover { background-color: #e9e9ec !important; }
-html.light .hover\:bg-\[\#363638\]:hover { background-color: #e0e0e7 !important; }
-html.light .bg-\[\#2a2a2c\]\/50 { background-color: rgb(228 228 231 / 0.5) !important; }
+html.light .bg-\[\#1f1f21\] { background-color: #f7f7f7 !important; }
+html.light .bg-\[\#222224\] { background-color: #fafafa !important; }
+html.light .bg-\[\#232325\] { background-color: #f7f7f9 !important; }
+html.light .bg-\[\#171719\] { background-color: #fcfcfc !important; }
+html.light .bg-\[\#2a2a2c\] { background-color: #ececec !important; }
+html.light .bg-\[\#3a3a3c\] { background-color: #f7f7f7 !important; }
+html.light .bg-\[\#424244\] { background-color: #dedede !important; }
+html.light .border-\[\#2a2a2c\] { border-color: #dedede !important; }
+html.light .hover\:bg-\[\#2a2a2c\]:hover { background-color: #f0f0f0 !important; }
+html.light .hover\:bg-\[\#363638\]:hover { background-color: #eaeaea !important; }
+html.light .bg-\[\#2a2a2c\]\/50 { background-color: rgb(236 236 236 / 0.5) !important; }
 html.light .bg-\[\#111113\]\/50 { background-color: rgb(255 255 255 / 0.5) !important; }
 
 /* Light scrollbar */
-html.light ::-webkit-scrollbar-thumb { background: #c4c4c4; }
-html.light ::-webkit-scrollbar-thumb:hover { background-color: #a8a8a8; }
+html.light ::-webkit-scrollbar-thumb { background: #d0d0d0; }
+html.light ::-webkit-scrollbar-thumb:hover { background-color: #b8b8b8; }
 
 /* Light body */
 html.light body {
