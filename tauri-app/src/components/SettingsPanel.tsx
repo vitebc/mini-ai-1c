@@ -225,7 +225,7 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
             data-testid="settings-modal"
             className="fixed inset-0 bg-black/60 flex items-start justify-center z-50 pt-12 pb-4 px-4 sm:pt-16 sm:pb-6 sm:px-6 animate-in fade-in duration-200 overflow-y-auto"
         >
-            <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-4xl h-full sm:h-[85vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-5xl h-full sm:h-[85vh] overflow-hidden flex flex-col shadow-2xl">
                 {/* Header */}
                 <div data-tauri-drag-region className="flex items-center justify-between px-6 sm:px-8 py-3 sm:py-4 border-b border-zinc-800 bg-zinc-900 select-none">
                     <h2 className="text-lg sm:text-xl font-bold text-zinc-100 pointer-events-none">Settings</h2>
@@ -251,37 +251,39 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
                     </div>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex border-b border-zinc-800 bg-zinc-900/50 overflow-x-auto scrollbar-thin">
-                    {[
-                        { id: 'general' as const, label: 'Общие', icon: SlidersHorizontal },
-                        { id: 'llm' as const, label: 'LLM', icon: Cpu },
-                        { id: 'configurator' as const, label: 'Конфиг', icon: Monitor },
-                        { id: 'bsl' as const, label: 'BSL', icon: FileCode },
-                        { id: 'mcp' as const, label: 'MCP', icon: Database },
-                        { id: 'prompts' as const, label: 'Промпты', icon: MessageSquare },
-                        { id: 'slash_commands' as const, label: 'Команды', icon: Terminal },
-                        { id: 'skills' as const, label: 'Скиллы', icon: Brain },
-                        { id: 'debug' as const, label: 'Advanced', icon: Settings2 },
-                    ].map((t) => (
-                        <button
-                            key={t.id}
-                            data-testid={`settings-tab-${t.id}`}
-                            onClick={() => setTab(t.id)}
-                            title={t.label}
-                            className={`flex items-center gap-2 px-2.5 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-medium transition-all border-b-2 whitespace-nowrap flex-shrink-0 ${tab === t.id
-                                ? 'border-blue-500 text-blue-400 bg-zinc-800/50'
-                                : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/30'
-                                }`}
-                        >
-                            <t.icon className="w-4 h-4 shrink-0" />
-                            <span className="hidden min-[700px]:inline">{t.label}</span>
-                        </button>
-                    ))}
-                </div>
+                {/* Sidebar + Content */}
+                <div className="flex-1 overflow-hidden flex">
+                    {/* Left sidebar */}
+                    <nav className="w-[220px] shrink-0 overflow-y-auto py-2 bg-zinc-900">
+                        {[
+                            { id: 'general' as const, label: 'Общие', icon: SlidersHorizontal },
+                            { id: 'llm' as const, label: 'LLM', icon: Cpu },
+                            { id: 'configurator' as const, label: 'Конфиг', icon: Monitor },
+                            { id: 'bsl' as const, label: 'BSL', icon: FileCode },
+                            { id: 'mcp' as const, label: 'MCP', icon: Database },
+                            { id: 'prompts' as const, label: 'Промпты', icon: MessageSquare },
+                            { id: 'slash_commands' as const, label: 'Команды', icon: Terminal },
+                            { id: 'skills' as const, label: 'Скиллы', icon: Brain },
+                            { id: 'debug' as const, label: 'Advanced', icon: Settings2 },
+                        ].map((t) => (
+                            <button
+                                key={t.id}
+                                data-testid={`settings-tab-${t.id}`}
+                                onClick={() => setTab(t.id)}
+                                title={t.label}
+                                className={`w-full flex items-center gap-2.5 px-4 py-2 text-sm font-medium transition-colors border-l-2 ${tab === t.id
+                                    ? 'border-blue-500 bg-zinc-800/50 text-blue-400'
+                                    : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/30'
+                                    }`}
+                            >
+                                <t.icon className="w-4 h-4 shrink-0" />
+                                <span className="truncate">{t.label}</span>
+                            </button>
+                        ))}
+                    </nav>
 
-                {/* Content */}
-                <div className="flex-1 overflow-hidden flex relative">
+                    {/* Content */}
+                    <div className="flex-1 overflow-hidden relative">
                     {tab === 'general' && settings && (
                         <GeneralTab
                             settings={settings}
@@ -401,6 +403,7 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
                             currentProvider={activeProfile?.provider}
                         />
                     )}
+                </div>
                 </div>
 
                 {/* Footer */}
