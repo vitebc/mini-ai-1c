@@ -47,8 +47,8 @@ export function CodeSidePanel({
     const isLightTheme = settings?.theme === 'light';
     const sideResizeGripClass = isLightTheme ? 'bg-zinc-400 group-hover:bg-blue-500' : 'bg-zinc-700 group-hover:bg-blue-400';
     const inlineToolbarClass = isLightTheme
-        ? 'flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-[#d4d4d8] rounded-md shadow-sm p-0 pointer-events-auto leading-none'
-        : 'flex items-center gap-1 bg-[#2b2b2b]/80 backdrop-blur-sm border border-[#505050]/30 rounded-md shadow-sm p-0 pointer-events-auto leading-none';
+        ? 'flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-zinc-300 rounded-md shadow-sm p-0 pointer-events-auto leading-none'
+        : 'flex items-center gap-1 bg-zinc-900/80 backdrop-blur-sm border border-zinc-500/30 rounded-md shadow-sm p-0 pointer-events-auto leading-none';
     const inlineRevertButtonClass = isLightTheme
         ? 'px-1 py-0.5 text-[9px] font-bold text-zinc-600 hover:text-red-600 hover:bg-red-500/10 rounded-sm transition-all active:scale-95'
         : 'px-1 py-0.5 text-[9px] font-bold text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-sm transition-all active:scale-95';
@@ -433,7 +433,7 @@ export function CodeSidePanel({
             id="code-side-panel"
             style={{ width: isFullWidth ? '100%' : (isExpanded ? `${width}px` : '280px') }}
             className={`border-l flex flex-col h-full shadow-2xl transition-[width] duration-300 ease-in-out relative ${
-                isLightTheme ? 'border-[#d4d4d8] bg-[#fafafa]' : 'border-[#3b3b3b] bg-[#2b2b2b]'
+                isLightTheme ? 'border-zinc-300 bg-[#fafafa]' : 'border-zinc-700 bg-zinc-900'
             } ${isResizing || isFullWidth ? 'transition-none' : ''} ${isFullWidth ? 'w-full' : 'flex-shrink-0'}`}
         >
             {/* Resize Handle */}
@@ -753,8 +753,8 @@ export function CodeSidePanel({
                 onMouseDown={startDiagnosticsResizing}
                 className={`group h-2 flex-shrink-0 cursor-row-resize border-t transition-colors ${
                     isLightTheme
-                        ? 'border-[#d4d4d8] bg-[#f4f4f5] hover:bg-blue-500/5'
-                        : 'border-[#3b3b3b] bg-[#111114] hover:bg-blue-500/10'
+                        ? 'border-zinc-300 bg-zinc-100 hover:bg-blue-500/5'
+                        : 'border-zinc-700 bg-zinc-950 hover:bg-blue-500/10'
                 }`}
                 role="separator"
                 aria-label="Resize diagnostics panel"

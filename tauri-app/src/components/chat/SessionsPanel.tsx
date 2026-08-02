@@ -67,7 +67,7 @@ function SessionItem({ session, isActive, onSwitch, onDelete, isLight }: { sessi
       className={`group flex items-center gap-1.5 px-2 py-1.5 mx-1 rounded-md cursor-pointer text-[12px] transition-colors ${
         isActive
           ? isLight ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-500/10 text-emerald-400'
-          : isLight ? 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800' : 'text-zinc-400 hover:bg-[#353535] hover:text-zinc-200'
+          : isLight ? 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
       }`}
       onClick={() => onSwitch(session.id)}
       onMouseEnter={() => setShowDelete(true)}
@@ -229,18 +229,18 @@ export function SessionsPanel() {
       >
         <div
           className={`flex-1 flex flex-col shrink-0 border-r ${
-            isLight ? 'border-zinc-200 bg-white' : 'border-[#3b3b3b] bg-[#3f3f3f]'
+            isLight ? 'border-zinc-200 bg-white' : 'border-zinc-700 bg-zinc-700'
           }`}
           style={{ width: panelWidth }}
         >
           <div className={`flex items-center justify-between px-3 py-2.5 border-b ${
-            isLight ? 'border-zinc-200' : 'border-[#3b3b3b]'
+            isLight ? 'border-zinc-200' : 'border-zinc-700'
           }`}>
             <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-zinc-500' : 'text-zinc-500'}`}>Сессии</span>
             <button
               onClick={handleNewChat}
               className={`p-1 rounded transition-colors ${
-                isLight ? 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700' : 'hover:bg-[#3b3b3b] text-zinc-400 hover:text-zinc-200'
+                isLight ? 'hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700' : 'hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200'
               }`}
               title="Новый чат"
             >
@@ -284,11 +284,11 @@ export function SessionsPanel() {
         className={`flex items-center justify-center w-6 h-16 my-auto rounded-r-md transition-all shrink-0 cursor-pointer ${
           isOpen
             ? isLight
-              ? 'bg-[#353535] text-zinc-600 hover:bg-[#3b3b3b] hover:text-zinc-800 shadow-sm'
-              : 'bg-[#353535] text-zinc-300 hover:bg-[#3b3b3b] shadow-sm'
+              ? 'bg-zinc-800 text-zinc-600 hover:bg-zinc-700 hover:text-zinc-800 shadow-sm'
+              : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 shadow-sm'
             : isLight
-              ? 'bg-[#353535] text-zinc-400 hover:text-zinc-600 hover:bg-[#3b3b3b]'
-              : 'bg-[#353535] text-zinc-500 hover:text-zinc-200 hover:bg-[#3b3b3b]'
+              ? 'bg-zinc-800 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-700'
+              : 'bg-zinc-800 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700'
         }`}
         title={isOpen ? 'Скрыть панель сессий' : 'Показать панель сессий'}
       >

@@ -17,7 +17,7 @@ export function Footer({
 
     return (
         <div className={`p-3 border-t flex items-center justify-between ${
-            isLightTheme ? 'border-[#d4d4d8] bg-[#f4f4f5]' : 'border-[#3b3b3b] bg-[#2b2b2b]'
+            isLightTheme ? 'border-zinc-300 bg-zinc-100' : 'border-zinc-700 bg-zinc-900'
         }`}>
             <div className="text-[10px] text-zinc-500 flex items-center gap-2">
             </div>
@@ -27,9 +27,9 @@ export function Footer({
                 disabled={isApplying || !modifiedCode.trim()}
                 className={`flex items-center gap-2 px-4 py-1.5 rounded text-xs font-medium transition-colors ${isApplying || !modifiedCode.trim()
                     ? isLightTheme
-                        ? 'bg-[#e4e4e7] text-[#747476] cursor-not-allowed'
-                        : 'bg-[#3b3b3b] text-zinc-500 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-500 text-[#ffffff] shadow-lg shadow-blue-500/10'
+                        ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
+                        : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/10'
                     }`}
                 id="tour-apply"
             >

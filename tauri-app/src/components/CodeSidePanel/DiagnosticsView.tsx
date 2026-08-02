@@ -25,26 +25,26 @@ export function DiagnosticsView({
     onSelectionChange,
 }: DiagnosticsViewProps) {
     const headerClass = isLightTheme
-        ? 'border-[#d4d4d8] text-[#505050] bg-[#f4f4f5]'
-        : 'border-[#3b3b3b]/50 text-zinc-500 bg-[#353535]';
+        ? 'border-zinc-300 text-zinc-500 bg-zinc-100'
+        : 'border-zinc-700/50 text-zinc-500 bg-zinc-800';
     const countBadgeClass = isLightTheme
-        ? 'bg-[#e4e4e7] text-[#505050]'
-        : 'bg-[#3b3b3b] text-zinc-400';
-    const emptyStateClass = isLightTheme ? 'text-[#747476]' : 'text-zinc-600';
+        ? 'bg-zinc-200 text-zinc-500'
+        : 'bg-zinc-700 text-zinc-400';
+    const emptyStateClass = isLightTheme ? 'text-zinc-600' : 'text-zinc-600';
     const tableHeaderClass = isLightTheme
-        ? 'bg-[#f4f4f5] text-[#52525b]'
-        : 'bg-[#353535] text-zinc-500';
+        ? 'bg-zinc-100 text-zinc-400'
+        : 'bg-zinc-800 text-zinc-500';
     const rowClass = isLightTheme
-        ? 'border-[#e4e4e7] hover:bg-[#f4f4f5]'
-        : 'border-[#3b3b3b]/30 hover:bg-[#3b3b3b]/50';
+        ? 'border-[#e4e4e7] hover:bg-zinc-100'
+        : 'border-zinc-700/30 hover:bg-zinc-700/50';
     const messageClass = isLightTheme ? 'text-[#2b2b2b]' : 'text-zinc-300';
-    const sourceClass = isLightTheme ? 'text-[#52525b]' : 'text-zinc-500';
+    const sourceClass = isLightTheme ? 'text-zinc-400' : 'text-zinc-500';
     const bulkButtonClass = isLightTheme
-        ? 'text-[#52525b] hover:text-[#2b2b2b] hover:bg-[#e4e4e7]'
-        : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#3b3b3b]';
+        ? 'text-zinc-400 hover:text-[#2b2b2b] hover:bg-zinc-200'
+        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700';
     const activeBulkButtonClass = isLightTheme
-        ? 'bg-[#e4e4e7] text-[#2b2b2b]'
-        : 'bg-[#3b3b3b] text-zinc-200';
+        ? 'bg-zinc-200 text-[#2b2b2b]'
+        : 'bg-zinc-700 text-zinc-200';
 
     const selectedCount = diagnostics.filter((diagnostic) => selectedKeys.has(diagnosticKey(diagnostic))).length;
     const allSelected = diagnostics.length > 0 && selectedCount === diagnostics.length;
@@ -76,8 +76,8 @@ export function DiagnosticsView({
                 isResizing
                     ? 'border-blue-500/70 shadow-[inset_0_1px_0_rgba(59,130,246,0.45)]'
                     : isLightTheme
-                        ? 'border-[#d4d4d8] bg-[#fafafa]'
-                        : 'border-[#3b3b3b] bg-[#2b2b2b]'
+                        ? 'border-zinc-300 bg-zinc-100'
+                        : 'border-zinc-700 bg-zinc-900'
             }`}
         >
             <div className={`px-3 py-1.5 border-b flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider ${headerClass}`}>
@@ -146,7 +146,7 @@ export function DiagnosticsView({
                                                 type="button"
                                                 onClick={() => toggleOne(diagnostic)}
                                                 className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${
-                                                    isLightTheme ? 'text-[#52525b] hover:text-[#2b2b2b]' : 'text-zinc-500 hover:text-zinc-300'
+                                                    isLightTheme ? 'text-zinc-400 hover:text-[#2b2b2b]' : 'text-zinc-500 hover:text-zinc-300'
                                                 }`}
                                                 title={checked ? 'Снять отметку' : 'Отметить'}
                                             >

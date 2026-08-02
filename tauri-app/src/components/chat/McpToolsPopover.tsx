@@ -95,7 +95,7 @@ export default function McpToolsPopover({
     return (
         <div
             ref={popoverRef}
-            className="absolute bottom-full right-0 mb-2 w-[420px] bg-[#2b2b2b] border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50 animate-in slide-in-from-bottom-2 duration-200"
+            className="absolute bottom-full right-0 mb-2 w-[420px] bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50 animate-in slide-in-from-bottom-2 duration-200"
         >
             <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800">
                 <div className="min-w-0">

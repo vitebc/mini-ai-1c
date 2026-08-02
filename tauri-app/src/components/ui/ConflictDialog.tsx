@@ -19,9 +19,9 @@ export function ConflictDialog({
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="w-full max-w-md bg-[#2b2b2b] border border-[#3b3b3b] rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="w-full max-w-md bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
                 {/* Header */}
-                <div className="p-4 border-b border-[#3b3b3b] flex items-center justify-between bg-zinc-900/50">
+                <div className="p-4 border-b border-zinc-700 flex items-center justify-between bg-zinc-900/50">
                     <div className="flex items-center gap-2 text-yellow-500">
                         <AlertTriangle className="w-5 h-5" />
                         <h3 className="text-sm font-semibold text-zinc-100">Конфликт изменений</h3>
@@ -43,7 +43,7 @@ export function ConflictDialog({
                     <div className="grid gap-3">
                         <button
                             onClick={onApplyToAll}
-                            className="flex items-start gap-3 p-3 rounded-lg border border-[#3b3b3b] bg-zinc-900/50 hover:bg-zinc-800 transition-all group text-left"
+                            className="flex items-start gap-3 p-3 rounded-lg border border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800 transition-all group text-left"
                         >
                             <div className="p-2 rounded-md bg-blue-500/10 text-blue-500 group-hover:bg-blue-500/20 transition-colors">
                                 <Copy className="w-4 h-4" />
@@ -56,7 +56,7 @@ export function ConflictDialog({
 
                         <button
                             onClick={onApplyToSelection}
-                            className="flex items-start gap-3 p-3 rounded-lg border border-[#3b3b3b] bg-zinc-900/50 hover:bg-zinc-800 transition-all group text-left"
+                            className="flex items-start gap-3 p-3 rounded-lg border border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800 transition-all group text-left"
                         >
                             <div className="p-2 rounded-md bg-zinc-800 text-zinc-400 group-hover:bg-zinc-700 transition-colors">
                                 <MousePointer className="w-4 h-4" />
@@ -76,7 +76,7 @@ export function ConflictDialog({
                 </div>
 
                 {/* Footer */}
-                <div className="p-3 border-t border-[#3b3b3b] bg-zinc-900/50 flex justify-end">
+                <div className="p-3 border-t border-zinc-700 bg-zinc-900/50 flex justify-end">
                     <button
                         onClick={onClose}
                         className="px-4 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"

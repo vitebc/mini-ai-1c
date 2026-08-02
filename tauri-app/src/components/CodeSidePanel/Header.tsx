@@ -46,27 +46,27 @@ export function Header({
     const isLightTheme = settings?.theme === 'light';
 
     const shellClass = isLightTheme
-        ? 'border-[#d4d4d8] bg-[#f4f4f5]'
-        : 'border-[#3b3b3b] bg-[#2b2b2b]';
+        ? 'border-zinc-300 bg-zinc-100'
+        : 'border-zinc-700 bg-zinc-900';
     const badgeClass = isLightTheme
-        ? 'bg-[#e4e4e7] border-[#d4d4d8]'
-        : 'bg-[#3b3b3b] border-zinc-700';
-    const toggleShellClass = isLightTheme ? 'bg-[#e4e4e7]' : 'bg-[#3b3b3b]';
-    const activeTabClass = isLightTheme ? 'bg-white text-[#2b2b2b] shadow-sm' : 'bg-[#505050] text-white shadow-sm';
+        ? 'bg-zinc-200 border-zinc-300'
+        : 'bg-zinc-700 border-zinc-700';
+    const toggleShellClass = isLightTheme ? 'bg-zinc-200' : 'bg-zinc-700';
+    const activeTabClass = isLightTheme ? 'bg-white text-[#2b2b2b] shadow-sm' : 'bg-zinc-500 text-white shadow-sm';
     const inactiveTabClass = isLightTheme
-        ? 'text-[#52525b] hover:text-[#2b2b2b] hover:bg-white/80'
+        ? 'text-zinc-400 hover:text-[#2b2b2b] hover:bg-white/80'
         : 'text-zinc-500 hover:text-zinc-300';
-    const diffShellClass = isLightTheme ? 'bg-[#e4e4e7]' : 'bg-[#3b3b3b]/50';
+    const diffShellClass = isLightTheme ? 'bg-zinc-200' : 'bg-zinc-700/50';
     const diffDividerClass = isLightTheme ? 'border-zinc-300' : 'border-zinc-700/50';
     const subtleButtonClass = isLightTheme
-        ? 'text-[#52525b] hover:text-[#2b2b2b] hover:bg-[#d4d4d8]'
+        ? 'text-zinc-400 hover:text-[#2b2b2b] hover:bg-[#d4d4d8]'
         : 'text-zinc-400 hover:text-white hover:bg-zinc-800';
-    const toolbarIconClass = isLightTheme ? 'text-[#52525b] hover:text-[#2b2b2b]' : 'text-zinc-500 hover:text-zinc-300';
+    const toolbarIconClass = isLightTheme ? 'text-zinc-400 hover:text-[#2b2b2b]' : 'text-zinc-500 hover:text-zinc-300';
     const rejectClass = isLightTheme
-        ? 'text-[#52525b] hover:text-[#dc2626] hover:bg-[#d4d4d8]'
+        ? 'text-zinc-400 hover:text-[#dc2626] hover:bg-[#d4d4d8]'
         : 'text-zinc-400 hover:text-red-400 hover:bg-zinc-800';
-    const validatingClass = isLightTheme ? 'bg-[#e4e4e7] text-[#52525b]' : 'bg-[#3b3b3b]/50 text-zinc-500';
-    const diffCounterClass = isLightTheme ? 'text-[#52525b]' : 'text-zinc-500';
+    const validatingClass = isLightTheme ? 'bg-zinc-200 text-zinc-400' : 'bg-zinc-700/50 text-zinc-500';
+    const diffCounterClass = isLightTheme ? 'text-zinc-400' : 'text-zinc-500';
     const errorBadgeTextClass = isLightTheme ? 'text-[#dc2626]' : 'text-red-400';
     const warningBadgeTextClass = isLightTheme ? 'text-[#b45309]' : 'text-yellow-500';
 

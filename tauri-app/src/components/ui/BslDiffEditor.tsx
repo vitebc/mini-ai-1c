@@ -45,14 +45,14 @@ export function BslDiffEditor({
     }, [monacoTheme]);
 
     const defaultLoading = (
-        <div className="bg-[#3f3f3f] p-4 text-zinc-300 text-[13px] font-mono">
+        <div className="bg-zinc-700 p-4 text-zinc-300 text-[13px] font-mono">
             <div className="opacity-50">Loading diff...</div>
         </div>
     );
 
     return (
         <div
-            className={`overflow-hidden transition-all duration-300 ${!hideBorder ? 'rounded-b-lg border border-[#3b3b3b] border-t-0' : ''} ${className || ''}`}
+            className={`overflow-hidden transition-all duration-300 ${!hideBorder ? 'rounded-b-lg border border-zinc-700 border-t-0' : ''} ${className || ''}`}
             style={{ height: typeof height === 'number' ? `${height}px` : height }}
         >
             <DiffEditor

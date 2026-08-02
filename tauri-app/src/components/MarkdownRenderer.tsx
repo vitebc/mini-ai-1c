@@ -209,7 +209,7 @@ const LargeBslCodeBlock = memo(function LargeBslCodeBlock({ codeString, onApplyC
 
     return (
         <div className="relative my-4 group w-full">
-            <div className="flex flex-wrap items-center justify-between gap-y-1 px-3 py-1.5 bg-zinc-800/80 backdrop-blur-sm rounded-t-lg border-x border-t border-[#3b3b3b]">
+            <div className="flex flex-wrap items-center justify-between gap-y-1 px-3 py-1.5 bg-zinc-800/80 backdrop-blur-sm rounded-t-lg border-x border-t border-zinc-700">
                 <div className="flex items-center gap-2 min-w-0">
                     <div className="w-2 h-2 rounded-full bg-emerald-500" />
                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap">BSL (1C:Enterprise)</span>
@@ -241,7 +241,7 @@ const LargeBslCodeBlock = memo(function LargeBslCodeBlock({ codeString, onApplyC
                     )}
                 </div>
             </div>
-            <div className="bg-[#3f3f3f] border border-[#3b3b3b] rounded-b-lg overflow-hidden border-t-0">
+            <div className="bg-zinc-700 border border-zinc-700 rounded-b-lg overflow-hidden border-t-0">
                 <div className="px-4 py-2 text-[11px] text-zinc-500 border-b border-zinc-800">
                     Полный блок слишком большой для встроенной подсветки; показан краткий preview, полный код доступен через Copy/Применить.
                 </div>
@@ -263,7 +263,7 @@ const CodeBlock = memo(({ inline, className, children, isStreaming, onApplyCode,
     if (inline || !isMultiline) {
         return (
             <code
-                className="bg-[#3b3b3b] text-blue-300 font-semibold px-1.5 py-0.5 rounded-md text-[13px] font-mono border border-zinc-700/50 max-w-full overflow-x-auto inline-flex align-middle scrollbar-hide"
+                className="bg-zinc-700 text-blue-300 font-semibold px-1.5 py-0.5 rounded-md text-[13px] font-mono border border-zinc-700/50 max-w-full overflow-x-auto inline-flex align-middle scrollbar-hide"
                 style={{ verticalAlign: 'middle', whiteSpace: 'nowrap' }}
                 {...props}
             >
@@ -279,13 +279,13 @@ const CodeBlock = memo(({ inline, className, children, isStreaming, onApplyCode,
     if (isStreaming) {
         return (
             <div className="relative my-4 group w-full">
-                <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-800/80 backdrop-blur-sm rounded-t-lg border-x border-t border-[#3b3b3b]">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-800/80 backdrop-blur-sm rounded-t-lg border-x border-t border-zinc-700">
                     <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
                         <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{isBsl ? 'BSL (1C:Enterprise)' : (language || 'code')}</span>
                     </div>
                 </div>
-                <div className="bg-[#3f3f3f] border border-[#3b3b3b] rounded-b-lg overflow-hidden border-t-0 min-h-[50px] max-h-[400px] flex">
+                <div className="bg-zinc-700 border border-zinc-700 rounded-b-lg overflow-hidden border-t-0 min-h-[50px] max-h-[400px] flex">
                     <pre className="p-4 overflow-auto w-full text-zinc-300 text-[13px] font-mono whitespace-pre flex-1 custom-scrollbar">
                         {codeString}
                     </pre>
@@ -304,7 +304,7 @@ const CodeBlock = memo(({ inline, className, children, isStreaming, onApplyCode,
         return (
             <>
                 <div className="relative my-4 group w-full">
-                    <div className="flex flex-wrap items-center justify-between gap-y-1 px-3 py-1.5 bg-zinc-800/80 backdrop-blur-sm rounded-t-lg border-x border-t border-[#3b3b3b]">
+                    <div className="flex flex-wrap items-center justify-between gap-y-1 px-3 py-1.5 bg-zinc-800/80 backdrop-blur-sm rounded-t-lg border-x border-t border-zinc-700">
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full bg-emerald-500" />
                             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap">BSL (1C:Enterprise)</span>
@@ -408,7 +408,7 @@ const CodeBlock = memo(({ inline, className, children, isStreaming, onApplyCode,
                             </div>
                         </div>
                         <div className="flex-1 p-8 overflow-hidden">
-                            <div className="w-full h-full rounded-2xl border border-zinc-800 overflow-hidden shadow-2xl bg-[#3f3f3f]">
+                            <div className="w-full h-full rounded-2xl border border-zinc-800 overflow-hidden shadow-2xl bg-zinc-700">
                                 {showDiff && hasDiff ? (
                                     <BslDiffEditor original={originalCode} modified={codeString} height="100%" hideBorder className="h-full" />
                                 ) : (
@@ -427,7 +427,7 @@ const CodeBlock = memo(({ inline, className, children, isStreaming, onApplyCode,
 
     return (
         <div className="relative my-2 group w-full">
-            <div className="flex items-center justify-between px-3 py-1 bg-zinc-800 rounded-t-lg border-x border-t border-[#3b3b3b]">
+            <div className="flex items-center justify-between px-3 py-1 bg-zinc-800 rounded-t-lg border-x border-t border-zinc-700">
                 <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{language || 'code'}</span>
                 </div>
@@ -440,7 +440,7 @@ const CodeBlock = memo(({ inline, className, children, isStreaming, onApplyCode,
                     <span>{codeCopied ? 'Скопировано' : 'Копировать'}</span>
                 </button>
             </div>
-            <pre className="bg-[#2b2b2b] border border-[#3b3b3b] rounded-b-lg p-4 overflow-x-auto border-t-0 text-zinc-300">
+            <pre className="bg-zinc-900 border border-zinc-700 rounded-b-lg p-4 overflow-x-auto border-t-0 text-zinc-300">
                 <code className={`text-[13px] font-mono leading-relaxed ${className || ''}`} {...props}>
                     {children}
                 </code>

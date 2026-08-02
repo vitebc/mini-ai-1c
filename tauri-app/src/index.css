@@ -32,18 +32,18 @@
     --chart-5: 340 75% 55%;
     --radius: 0.5rem;
 
-    /* Zinc scale — blue-grey tinted (hue 220) */
-    --color-zinc-50: oklch(0.97 0.005 220);
-    --color-zinc-100: oklch(0.92 0.005 220);
-    --color-zinc-200: oklch(0.87 0.008 220);
-    --color-zinc-300: oklch(0.74 0.008 220);
-    --color-zinc-400: oklch(0.55 0.012 220);
-    --color-zinc-500: oklch(0.45 0.012 220);
-    --color-zinc-600: oklch(0.37 0.012 220);
-    --color-zinc-700: oklch(0.30 0.015 220);
-    --color-zinc-800: oklch(0.23 0.015 220);
-    --color-zinc-900: oklch(0.17 0.012 220);
-    --color-zinc-950: oklch(0.11 0.012 220);
+    /* Zinc scale — ayu-dark palette */
+    --color-zinc-50: oklch(0.95 0.011 95);
+    --color-zinc-100: oklch(0.88 0.010 94);
+    --color-zinc-200: oklch(0.80 0.010 94);
+    --color-zinc-300: oklch(0.66 0.021 263);
+    --color-zinc-400: oklch(0.50 0.035 267);
+    --color-zinc-500: oklch(0.44 0.036 262);
+    --color-zinc-600: oklch(0.29 0.024 261);
+    --color-zinc-700: oklch(0.24 0.020 268);
+    --color-zinc-800: oklch(0.21 0.019 266);
+    --color-zinc-900: oklch(0.19 0.017 264);
+    --color-zinc-950: oklch(0.17 0.015 267);
 
     /* VSCode Theme Variables — Ayu Dark */
     --vscode-editor-background: #10141c;

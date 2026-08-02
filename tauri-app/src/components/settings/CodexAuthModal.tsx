@@ -113,9 +113,9 @@ export function CodexAuthModal({ isOpen, onClose, onSuccess }: CodexAuthModalPro
 
     return (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
-            <div className="bg-[#2b2b2b] border border-[#3b3b3b] rounded-xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col">
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-[#3b3b3b]">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-700">
                     <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded bg-emerald-600 flex items-center justify-center">
                             <Globe className="w-3.5 h-3.5 text-white" />
@@ -143,7 +143,7 @@ export function CodexAuthModal({ isOpen, onClose, onSuccess }: CodexAuthModalPro
                                 Приложение получит токен автоматически.
                             </p>
 
-                            <div className="flex flex-col items-center gap-3 pt-2 border-t border-[#3b3b3b]">
+                            <div className="flex flex-col items-center gap-3 pt-2 border-t border-zinc-700">
                                 <div className="flex items-center gap-2.5">
                                     <Loader2 className="w-4 h-4 text-emerald-500 animate-spin" />
                                     <span className="text-zinc-400 text-sm">Ожидание авторизации в браузере...</span>
@@ -190,7 +190,7 @@ export function CodexAuthModal({ isOpen, onClose, onSuccess }: CodexAuthModalPro
                 </div>
 
                 {/* Footer */}
-                <div className="px-6 py-4 bg-[#2b2b2b]/50 border-t border-[#3b3b3b] flex justify-between items-center">
+                <div className="px-6 py-4 bg-zinc-900/50 border-t border-zinc-700 flex justify-between items-center">
                     <p className="text-[10px] text-zinc-600">
                         OAuth2 + PKCE · Токен хранится локально в зашифрованном виде
                     </p>
