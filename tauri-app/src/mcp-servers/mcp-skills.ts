@@ -186,7 +186,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: 'get_skill',
-                description: 'Получить полное содержимое скилла: его SKILL.md + все файлы (референсы, примеры). Используй этот инструмент когда нужно получить глубокие знания по конкретной технологии — Rust, TypeScript, React, Tauri, MCP и т.д.',
+                description: 'Получить полное содержимое скилла: SKILL.md + все файлы + абсолютный путь к директории скилла. В ответе указаны пути к скриптам (если есть). Используй этот инструмент когда нужно получить знания по конкретной технологии или запустить скрипт скилла.',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -256,9 +256,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             const files = getSkillFiles(id);
             const references: { path: string; content: string }[] = [];
+            const scripts: string[] = [];
 
             for (const file of files) {
                 if (file === 'SKILL.md' || file.endsWith('.exe') || file.endsWith('.pyc')) continue;
+                // Collect scripts (ps1, sh, py, js, mjs in scripts/ dir)
+                if (file.startsWith('scripts/') && /\.(ps1|sh|py|js|mjs|bat|cmd)$/i.test(file)) {
+                    scripts.push(file);
+                }
                 try {
                     references.push({ path: file, content: readSkillFile(id, file) });
                 } catch { /* skip */ }
@@ -272,7 +277,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         ``,
                         `**ID:** \`${info.id}\``,
                         `**Описание:** ${info.description}`,
+                        `**Директория скилла:** \`${skillDir}\``,
                         `**Файлов:** ${files.length}`,
+                        ...(scripts.length > 0 ? [
+                            `**Скрипты:**`,
+                            ...scripts.map(s => `  - \`${join(skillDir, s)}\``),
+                        ] : []),
                         ``,
                         `---`,
                         ``,
