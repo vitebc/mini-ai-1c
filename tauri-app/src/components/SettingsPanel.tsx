@@ -225,7 +225,7 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
             data-testid="settings-modal"
             className="fixed inset-0 bg-black/60 flex items-start justify-center z-50 pt-12 pb-4 px-4 sm:pt-16 sm:pb-6 sm:px-6 animate-in fade-in duration-200 overflow-y-auto"
         >
-            <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-5xl h-full sm:h-[85vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-7xl h-full sm:h-[85vh] overflow-hidden flex flex-col shadow-2xl">
                 {/* Header */}
                 <div data-tauri-drag-region className="flex items-center justify-between px-6 sm:px-8 py-3 sm:py-4 border-b border-zinc-800 bg-zinc-900 select-none">
                     <h2 className="text-lg sm:text-xl font-bold text-zinc-100 pointer-events-none">Settings</h2>
@@ -254,7 +254,7 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
                 {/* Sidebar + Content */}
                 <div className="flex-1 overflow-hidden flex">
                     {/* Left sidebar */}
-                    <nav className="w-[220px] shrink-0 overflow-y-auto py-2 bg-zinc-900">
+                    <nav className="w-[180px] shrink-0 overflow-y-auto py-2 bg-zinc-900">
                         {[
                             { id: 'general' as const, label: 'Общие', icon: SlidersHorizontal },
                             { id: 'llm' as const, label: 'LLM', icon: Cpu },

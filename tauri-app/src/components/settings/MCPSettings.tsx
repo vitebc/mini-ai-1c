@@ -663,7 +663,7 @@ export function MCPSettings({
     return (
         <div className="flex h-full bg-zinc-900 p-2 gap-2">
             {/* ─── Left Sidebar — Server List ─── */}
-            <div className="w-56 shrink-0 border border-zinc-800 rounded-lg flex flex-col bg-zinc-800/30 overflow-hidden">
+            <div className="w-[264px] shrink-0 border border-zinc-800 rounded-lg flex flex-col bg-zinc-800/30 overflow-hidden">
                 <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800 bg-zinc-800/30">
                     <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
                         <Globe className="w-3.5 h-3.5" /> MCP Servers
