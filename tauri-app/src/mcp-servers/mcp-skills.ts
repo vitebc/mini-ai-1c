@@ -186,16 +186,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: 'get_skill',
-                description: 'Получить полное содержимое скилла: SKILL.md + все файлы + абсолютный путь к директории скилла. В ответе указаны пути к скриптам (если есть). Используй этот инструмент когда нужно получить знания по конкретной технологии или запустить скрипт скилла.',
+                description: 'Получить полное содержимое SKILL.md + список файлов скилла. Содержимое файлов (скрипты, документы) читай через отдельный инструмент get_skill_file.',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         id: {
                             type: 'string',
-                            description: 'ID скилла (например: rust-engineer, typescript-pro, frontend-design, desktop-framework-tauri, mcp-builder)',
+                            description: 'ID скилла (например: cc-1c-skills/form-add, rust-engineer, typescript-pro)',
                         },
                     },
                     required: ['id'],
+                },
+            },
+            {
+                name: 'get_skill_file',
+                description: 'Прочитать содержимое конкретного файла скилла (PS1-скрипт, документация и т.д.). Сначала вызови get_skill чтобы увидеть список доступных файлов, затем вызови этот инструмент с путём.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        id: {
+                            type: 'string',
+                            description: 'ID скилла (например: cc-1c-skills/form-add)',
+                        },
+                        path: {
+                            type: 'string',
+                            description: 'Относительный путь к файлу (например: scripts/form-add.ps1)',
+                        },
+                    },
+                    required: ['id', 'path'],
                 },
             },
             {
@@ -255,19 +273,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { metadata, body } = parseSkillFrontmatter(raw);
 
             const files = getSkillFiles(id);
-            const references: { path: string; content: string }[] = [];
-            const scripts: string[] = [];
-
-            for (const file of files) {
-                if (file === 'SKILL.md' || file.endsWith('.exe') || file.endsWith('.pyc')) continue;
-                // Collect scripts (ps1, sh, py, js, mjs in scripts/ dir)
-                if (file.startsWith('scripts/') && /\.(ps1|sh|py|js|mjs|bat|cmd)$/i.test(file)) {
-                    scripts.push(file);
-                }
-                try {
-                    references.push({ path: file, content: readSkillFile(id, file) });
-                } catch { /* skip */ }
-            }
+            const nonMdFiles = files.filter(
+                f => f !== 'SKILL.md' && !f.endsWith('.exe') && !f.endsWith('.pyc')
+            );
 
             return {
                 content: [{
@@ -279,27 +287,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         `**Описание:** ${info.description}`,
                         `**Директория скилла:** \`${skillDir}\``,
                         `**Файлов:** ${files.length}`,
-                        ...(scripts.length > 0 ? [
-                            `**Скрипты:**`,
-                            ...scripts.map(s => `  - \`${join(skillDir, s)}\``),
-                        ] : []),
                         ``,
                         `---`,
                         ``,
                         body,
-                        ...(references.length > 0 ? [
+                        ...(nonMdFiles.length > 0 ? [
                             ``,
                             `---`,
-                            `## Референсы (${references.length} файлов)`,
+                            `## Доступные файлы`,
                             ``,
-                            ...references.map(r => [
-                                `### ${r.path}`,
-                                ``,
-                                r.content,
-                            ]).flat(),
+                            `Для чтения содержимого файлов используй инструмент \`get_skill_file\` с параметрами \`id\` = \`${id}\` и \`path\` = относительный путь.`,
+                            ``,
+                            ...nonMdFiles.map(f => `- \`${f}\``),
                         ] : []),
                     ].join('\n'),
                 }],
+            };
+        }
+
+        case 'get_skill_file': {
+            const id = (args as any)?.id as string;
+            const filePath = (args as any)?.path as string;
+            if (!id || !filePath) throw new Error('Parameters "id" and "path" are required');
+            if (!isValidSkillId(id)) throw new Error('Invalid skill id');
+            // Path traversal protection
+            if (filePath.includes('..') || filePath.startsWith('/') || filePath.startsWith('\\')) {
+                throw new Error('Invalid file path');
+            }
+            const content = readSkillFile(id, filePath);
+            if (!content) throw new Error(`File "${filePath}" not found in skill "${id}"`);
+            return {
+                content: [{ type: 'text' as const, text: `### ${filePath}\n\n${content}` }],
             };
         }
 

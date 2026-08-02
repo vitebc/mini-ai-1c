@@ -917,10 +917,16 @@ pub async fn stream_chat(
                         }
                     }
 
-                    // Truncate large tool results to prevent context explosion
-                    if tool_result.len() > MAX_TOOL_RESULT_CHARS {
-                        // Find last valid UTF-8 char boundary at or before the byte limit
-                        let boundary = (0..=MAX_TOOL_RESULT_CHARS)
+                    // Truncate large tool results to prevent context explosion.
+                    // get_skill / search_skills return full SKILL.md + file paths,
+                    // which can be large — allow up to 50k chars (≈12.5k tokens).
+                    let max_result_chars = if tool_name == "get_skill" || tool_name == "search_skills" {
+                        50_000
+                    } else {
+                        MAX_TOOL_RESULT_CHARS
+                    };
+                    if tool_result.len() > max_result_chars {
+                        let boundary = (0..=max_result_chars)
                             .rev()
                             .find(|&i| tool_result.is_char_boundary(i))
                             .unwrap_or(0);
