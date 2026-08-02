@@ -127,7 +127,7 @@ export function SearchProfileBar() {
           {selectedPid ? (
             <>
               {isBound && <Link className="w-2.5 h-2.5 text-green-400 shrink-0" />}
-              <span className="truncate max-w-[200px]">{activeProfile?.name || 'Нет профиля'}</span>
+              <span className="truncate max-w-[200px] text-blue-400">{activeProfile?.name || 'Нет профиля'}</span>
             </>
           ) : (
             <span className="text-red-400 font-medium">Профиль не выбран</span>
