@@ -25,6 +25,7 @@ export interface WindowInfo {
 interface ConfiguratorContextType {
     detectedWindows: WindowInfo[];
     selectedHwnd: number | null;
+    selectedPid: number | null;
     bindingStatus: ConfiguratorBindingStatus;
     bindingMessage: string | null;
     refreshWindows: () => Promise<void>;
@@ -69,6 +70,7 @@ export function ConfiguratorProvider({ children }: { children: React.ReactNode }
     );
 
     const selectedHwnd = bindingResolution.activeWindow?.hwnd ?? null;
+    const selectedPid = bindingResolution.activeWindow?.process_id ?? null;
 
     const persistBinding = useCallback(async (nextBinding: ConfiguratorWindowBinding) => {
         if (!settings) return;
@@ -273,6 +275,7 @@ export function ConfiguratorProvider({ children }: { children: React.ReactNode }
     const contextValue = useMemo(() => ({
         detectedWindows,
         selectedHwnd,
+        selectedPid,
         bindingStatus,
         bindingMessage,
         refreshWindows,
@@ -283,7 +286,7 @@ export function ConfiguratorProvider({ children }: { children: React.ReactNode }
         snapToConfigurator,
         activeConfigTitle,
         parsedTitleContext,
-    }), [detectedWindows, selectedHwnd, bindingStatus, bindingMessage, refreshWindows, selectWindow, getCode, pasteCode, checkSelection, snapToConfigurator, activeConfigTitle, parsedTitleContext]);
+    }), [detectedWindows, selectedHwnd, selectedPid, bindingStatus, bindingMessage, refreshWindows, selectWindow, getCode, pasteCode, checkSelection, snapToConfigurator, activeConfigTitle, parsedTitleContext]);
 
     return (
         <ConfiguratorContext.Provider value={contextValue}>
