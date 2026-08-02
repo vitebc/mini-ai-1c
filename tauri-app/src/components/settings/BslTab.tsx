@@ -10,7 +10,6 @@ interface BslTabProps {
     setSettings: (settings: AppSettings) => void;
     bslStatus: BslStatus | null;
     refreshBslStatus: () => void;
-    browseJar: () => void;
     handleDownloadBslLs: () => void;
     downloading: boolean;
     downloadProgress: number;
@@ -29,7 +28,6 @@ export function BslTab({
     setSettings,
     bslStatus,
     refreshBslStatus,
-    browseJar,
     handleDownloadBslLs,
     downloading,
     downloadProgress,
@@ -68,28 +66,26 @@ export function BslTab({
                         </div>
 
                         <div>
-                            <label className="text-xs text-zinc-500 uppercase font-semibold mb-1 block">JAR Path</label>
+                            <label className="text-xs text-zinc-500 uppercase font-semibold mb-1 block">Native Server</label>
                             <div className="flex flex-col sm:flex-row gap-2">
                                 <input
                                     type="text"
-                                    value={settings.bsl_server.jar_path}
+                                    value={settings.bsl_server.executable_path}
                                     onChange={(e) => setSettings({
                                         ...settings,
-                                        bsl_server: { ...settings.bsl_server, jar_path: e.target.value }
+                                        bsl_server: { ...settings.bsl_server, executable_path: e.target.value }
                                     })}
+                                    placeholder="Установите официальный Windows-пакет"
                                     className="flex-1 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100"
                                 />
-                                <div className="flex gap-2">
-                                    <button onClick={browseJar} className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-200 transition-colors">Browse</button>
-                                    <button
-                                        onClick={handleDownloadBslLs}
-                                        disabled={downloading}
-                                        className="px-3 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 border border-green-700 rounded-lg text-sm text-white flex items-center gap-1 transition-colors"
-                                    >
-                                        <Download className="w-3 h-3" />
-                                        {downloading ? 'Downloading...' : 'Download'}
-                                    </button>
-                                </div>
+                                <button
+                                    onClick={handleDownloadBslLs}
+                                    disabled={downloading}
+                                    className="px-3 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 border border-green-700 rounded-lg text-sm text-white flex items-center gap-1 transition-colors"
+                                >
+                                    <Download className="w-3 h-3" />
+                                    {downloading ? 'Downloading...' : 'Download'}
+                                </button>
                             </div>
                             {downloading && (
                                 <div className="mt-2 space-y-1">
@@ -138,68 +134,18 @@ export function BslTab({
                         </div>
 
                         <div>
-                            <label className="text-xs text-zinc-500 uppercase font-semibold mb-1 block">Java Path</label>
+                            <label className="text-xs text-zinc-500 uppercase font-semibold mb-1 block">WebSocket Port</label>
                             <input
-                                type="text"
-                                value={settings.bsl_server.java_path}
+                                type="number"
+                                value={settings.bsl_server.websocket_port}
                                 onChange={(e) => setSettings({
                                     ...settings,
-                                    bsl_server: { ...settings.bsl_server, java_path: e.target.value }
+                                    bsl_server: { ...settings.bsl_server, websocket_port: parseInt(e.target.value) || 8025 }
                                 })}
-                                className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100"
+                                className="w-32 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100"
                             />
                         </div>
 
-                        <div className="border-t border-zinc-700 pt-4 mt-2">
-                            <label className="text-xs text-zinc-500 uppercase font-semibold mb-1 block">Режим подключения</label>
-                            <div className="flex items-center gap-3 mb-3">
-                                <span className="text-xs text-zinc-500">Локальный (Java + JAR)</span>
-                                <input
-                                    type="checkbox"
-                                    checked={!!settings.bsl_server.remote_url}
-                                    onChange={(e) => setSettings({
-                                        ...settings,
-                                        bsl_server: {
-                                            ...settings.bsl_server,
-                                            remote_url: e.target.checked ? 'ws://' : ''
-                                        }
-                                    })}
-                                    className="rounded bg-zinc-700 border-zinc-600 text-blue-500 focus:ring-blue-500"
-                                />
-                                <span className="text-xs text-zinc-500">Удалённый сервер</span>
-                            </div>
-
-                            {settings.bsl_server.remote_url ? (
-                                <div>
-                                    <label className="text-xs text-zinc-500 uppercase font-semibold mb-1 block">WebSocket URL сервера</label>
-                                    <input
-                                        type="text"
-                                        value={settings.bsl_server.remote_url}
-                                        onChange={(e) => setSettings({
-                                            ...settings,
-                                            bsl_server: { ...settings.bsl_server, remote_url: e.target.value }
-                                        })}
-                                        placeholder="ws://192.168.1.100:8025/lsp"
-                                        className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100 font-mono"
-                                    />
-                                </div>
-                            ) : (
-                                <>
-                                    <div>
-                                        <label className="text-xs text-zinc-500 uppercase font-semibold mb-1 block">WebSocket Port</label>
-                                        <input
-                                            type="number"
-                                            value={settings.bsl_server.websocket_port}
-                                            onChange={(e) => setSettings({
-                                                ...settings,
-                                                bsl_server: { ...settings.bsl_server, websocket_port: parseInt(e.target.value) || 8025 }
-                                            })}
-                                            className="w-32 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100"
-                                        />
-                                    </div>
-                                </>
-                            )}
-                        </div>
                     </div>
                 </section>
 
@@ -209,7 +155,7 @@ export function BslTab({
                         Состояние системы
                     </h3>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
                         <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4 flex flex-col items-center text-center">
                             <div className={`p-2 rounded-full mb-3 ${runtimeAvailable ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
                                 <Cpu className="w-5 h-5" />

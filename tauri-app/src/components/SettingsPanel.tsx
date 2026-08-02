@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { open } from '@tauri-apps/plugin-dialog';
+
 import { X, Save, Cpu, Monitor, FileCode, Database, Settings2, MessageSquare, Terminal, Sun, Moon, Check, RefreshCw, SlidersHorizontal, Brain } from 'lucide-react';
 
 import { LLMSettings } from './settings/LLMSettings';
@@ -160,24 +160,6 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
         }
     };
 
-    const browseJar = async () => {
-        try {
-            const file = await open({
-                multiple: false,
-                filters: [{ name: 'JAR Files', extensions: ['jar'] }],
-                directory: false
-            });
-            if (file && typeof file === 'string' && settings) {
-                setSettings({
-                    ...settings,
-                    bsl_server: { ...settings.bsl_server, jar_path: file }
-                });
-            }
-        } catch (error) {
-            console.error('Failed to open file dialog:', error);
-        }
-    };
-
     const handleDownloadBslLs = async () => {
         setDownloading(true);
         setBslDownloadError(null);
@@ -187,13 +169,10 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
         });
 
         try {
-            const path = await invoke<string>('install_bsl_ls_cmd');
-            if (settings) {
-                setSettings({
-                    ...settings,
-                    bsl_server: { ...settings.bsl_server, jar_path: path }
-                });
-            }
+            await invoke<string>('install_bsl_ls_cmd');
+            // Re-read settings from backend (installer updates executable_path)
+            const installedSettings = await invoke<AppSettings>('get_settings');
+            setSettings(installedSettings);
             setBslDownloadSuccess(true);
             invoke('reconnect_bsl_ls_cmd').catch(e => console.warn(e));
             setTimeout(refreshBslStatus, 2000);
@@ -348,7 +327,6 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
                             setSettings={setSettings}
                             bslStatus={bslStatus}
                             refreshBslStatus={refreshBslStatus}
-                            browseJar={browseJar}
                             handleDownloadBslLs={handleDownloadBslLs}
                             downloading={downloading}
                             downloadProgress={downloadProgress}
