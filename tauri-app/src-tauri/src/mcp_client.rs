@@ -658,7 +658,11 @@ impl McpClient {
     }
 
     pub async fn call_tool(&self, name: &str, arguments: Value) -> Result<Value, String> {
-        let timeout_secs = tool_call_timeout_secs(&self.session.config.id);
+        let mut timeout_secs = tool_call_timeout_secs(&self.session.config.id);
+        // run_command can execute long-running operations (XML loads, config uploads, etc.)
+        if name == "run_command" {
+            timeout_secs = timeout_secs.max(300);
+        }
         match tokio::time::timeout(
             Duration::from_secs(timeout_secs),
             self.session.call_tool(name, arguments),
