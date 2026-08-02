@@ -54,7 +54,6 @@ const CONTEXT_PRUNE_THRESHOLD: usize = 7000;
 /// 8000 chars ≈ 2000 tokens per tool result.
 const MAX_TOOL_RESULT_CHARS: usize = 8000;
 const MAX_CODEX_TOOL_NAME_LEN: usize = 64;
-const HARD_CONTEXT_LIMIT_FACTOR: f64 = 0.85;
 
 fn build_initial_chat_status() -> String {
     "Подготавливаю запрос...".to_string()
@@ -272,17 +271,13 @@ fn deduplicate_tool_results(messages: &mut Vec<ApiMessage>) {
         if messages[i].role != "tool" {
             continue;
         }
-        // Build a key from tool_call_id prefix (before timestamp) or content hash
+        // Build a fingerprint from content for dedup key
         let key = messages[i]
             .content
             .as_deref()
             .map(|c| {
-                // Use first 200 chars as fingerprint for dedup
-                if c.len() > 200 {
-                    c[..200].to_string()
-                } else {
-                    c.to_string()
-                }
+                let truncated: String = c.chars().take(200).collect();
+                truncated
             })
             .unwrap_or_default();
 
@@ -1532,5 +1527,71 @@ mod tests {
         assert_eq!(tool_call.function.arguments, arguments);
         assert_eq!(arguments_value["code"], code);
         assert!(arguments.contains("????????? Hello"));
+    }
+
+    #[test]
+    fn deduplicate_tool_results_handles_utf8_boundary() {
+        // Russian text with 'о' (2-byte UTF-8 char) at byte 199-201
+        // This previously panicked with "end byte index 200 is not a char boundary"
+        let russian_content = "Результат: содержимое модуля МодульМенеджера 1С:Предприятие. "
+            .repeat(6); // > 200 bytes, and the boundary falls inside 'о'
+
+        let mut messages = vec![
+            ApiMessage {
+                role: "user".to_string(),
+                content: Some("get_skill".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+            },
+            ApiMessage {
+                role: "tool".to_string(),
+                content: Some(russian_content.clone()),
+                tool_calls: None,
+                tool_call_id: Some("call_1".to_string()),
+                name: Some("get_skill".to_string()),
+            },
+            ApiMessage {
+                role: "tool".to_string(),
+                content: Some(russian_content.clone()),
+                tool_calls: None,
+                tool_call_id: Some("call_2".to_string()),
+                name: Some("get_skill".to_string()),
+            },
+        ];
+
+        // Should not panic
+        deduplicate_tool_results(&mut messages);
+
+        // Second message should be replaced with short reference
+        assert!(messages[2].content.as_ref().unwrap().contains("Результат уже выше"));
+        // First message should remain unchanged
+        assert_eq!(messages[1].content.as_ref().unwrap().len(), russian_content.len());
+    }
+
+    #[test]
+    fn deduplicate_tool_results_skips_short_and_empty_content() {
+        let mut messages = vec![
+            ApiMessage {
+                role: "tool".to_string(),
+                content: Some("short".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_1".to_string()),
+                name: Some("read_file".to_string()),
+            },
+            ApiMessage {
+                role: "tool".to_string(),
+                content: None,
+                tool_calls: None,
+                tool_call_id: Some("call_2".to_string()),
+                name: Some("read_file".to_string()),
+            },
+        ];
+
+        deduplicate_tool_results(&mut messages);
+
+        // Empty/short content shouldn't be deduplicated
+        assert_eq!(messages[0].content.as_deref(), Some("short"));
+        assert!(messages[1].content.is_none());
     }
 }
