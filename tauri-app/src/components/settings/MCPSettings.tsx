@@ -745,59 +745,59 @@ export function MCPSettings({
             </div>
 
             {/* ─── Right Panel — Server Configuration ─── */}
-            <div className="flex-1 flex flex-col min-w-0 overflow-y-auto border border-zinc-800 rounded-lg">
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden border border-zinc-800 rounded-lg">
                 {server ? (
-                    <div className="flex-1 flex flex-col min-h-0">
+                    <div key={server.id} className="flex-1 flex flex-col min-h-0">
                         {/* Server Header Bar */}
-                                <div className={`px-5 py-3 border-b flex items-center justify-between shrink-0 ${isBuiltin ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-zinc-800/30 border-zinc-800'}`}>
-                                    <div className="flex items-center gap-3 min-w-0">
-                                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                                            !server.enabled ? 'bg-zinc-600'
-                                                : isConnected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'
-                                                : isUnknown ? 'bg-amber-500'
-                                                : 'bg-red-500 animate-pulse'
-                                        }`} />
-                                        {isBuiltin ? (
-                                            <div className="flex items-center gap-2 min-w-0">
-                                                <span className="text-zinc-100 font-medium text-sm truncate">{server.name}</span>
-                                                <span className="text-[9px] px-1 py-0.5 rounded border bg-yellow-500/10 text-yellow-400 border-yellow-500/20 whitespace-nowrap shrink-0 hidden sm:inline">PRE-INSTALLED</span>
-                                            </div>
-                                        ) : (
-                                            <input
-                                                type="text"
-                                                value={server.name}
-                                                onChange={(e) => handleUpdateServer(server.id, { name: e.target.value })}
-                                                className="bg-transparent border-none text-zinc-100 font-medium focus:ring-0 p-0 text-sm w-full min-w-[100px]"
-                                                placeholder="Название сервера"
-                                            />
-                                        )}
-                                        {server.enabled && (
-                                            <span className={`text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap shrink-0 ${
-                                                isConnected ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                                                    : isUnknown ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                                    : 'bg-red-500/10 text-red-400 border-red-500/20'
-                                            }`}>
-                                                {isConnected ? 'LIVE' : isUnknown ? 'UNVERIFIED' : isOffline ? 'OFFLINE' : isError ? 'ERROR' : isStopped ? 'STOPPED' : 'OFFLINE'}
-                                            </span>
-                                        )}
+                        <div className={`px-5 py-3 border-b flex items-center justify-between shrink-0 ${isBuiltin ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-zinc-800/30 border-zinc-800'}`}>
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                                    !server.enabled ? 'bg-zinc-600'
+                                        : isConnected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'
+                                        : isUnknown ? 'bg-amber-500'
+                                        : 'bg-red-500 animate-pulse'
+                                }`} />
+                                {isBuiltin ? (
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span className="text-zinc-100 font-medium text-sm truncate">{server.name}</span>
+                                        <span className="text-[9px] px-1 py-0.5 rounded border bg-yellow-500/10 text-yellow-400 border-yellow-500/20 whitespace-nowrap shrink-0 hidden sm:inline">PRE-INSTALLED</span>
                                     </div>
-                                    <div className="flex items-center gap-3 ml-auto">
-                                        {!isBuiltin && (
-                                            <div className="flex bg-zinc-800 rounded-lg p-0.5 border border-zinc-700">
-                                                <button onClick={() => handleUpdateServer(server.id, { transport: 'http' })} className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold transition ${server.transport === 'http' ? 'bg-zinc-700 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}>HTTP</button>
-                                                <button onClick={() => handleUpdateServer(server.id, { transport: 'stdio' })} className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold transition ${server.transport === 'stdio' ? 'bg-zinc-700 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}>Stdio</button>
-                                            </div>
-                                        )}
-                                        <button onClick={() => handleUpdateServer(server.id, { enabled: !server.enabled })} className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors focus:outline-none ${server.enabled ? 'bg-blue-500' : 'bg-zinc-600'}`}>
-                                            <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform ${server.enabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
-                                        </button>
-                                        {!isBuiltin && (
-                                            <button onClick={() => handleRemoveServer(server.id)} className="p-1 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded transition" title="Удалить">
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        )}
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={server.name}
+                                        onChange={(e) => handleUpdateServer(server.id, { name: e.target.value })}
+                                        className="bg-transparent border-none text-zinc-100 font-medium focus:ring-0 p-0 text-sm w-full min-w-[100px]"
+                                        placeholder="Название сервера"
+                                    />
+                                )}
+                                {server.enabled && (
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap shrink-0 ${
+                                        isConnected ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                                            : isUnknown ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                            : 'bg-red-500/10 text-red-400 border-red-500/20'
+                                    }`}>
+                                        {isConnected ? 'LIVE' : isUnknown ? 'UNVERIFIED' : isOffline ? 'OFFLINE' : isError ? 'ERROR' : isStopped ? 'STOPPED' : 'OFFLINE'}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-3 ml-auto">
+                                {!isBuiltin && (
+                                    <div className="flex bg-zinc-800 rounded-lg p-0.5 border border-zinc-700">
+                                        <button onClick={() => handleUpdateServer(server.id, { transport: 'http' })} className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold transition ${server.transport === 'http' ? 'bg-zinc-700 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}>HTTP</button>
+                                        <button onClick={() => handleUpdateServer(server.id, { transport: 'stdio' })} className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold transition ${server.transport === 'stdio' ? 'bg-zinc-700 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}>Stdio</button>
                                     </div>
-                                </div>
+                                )}
+                                <button onClick={() => handleUpdateServer(server.id, { enabled: !server.enabled })} className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors focus:outline-none ${server.enabled ? 'bg-blue-500' : 'bg-zinc-600'}`}>
+                                    <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform ${server.enabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                                </button>
+                                {!isBuiltin && (
+                                    <button onClick={() => handleRemoveServer(server.id)} className="p-1 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded transition" title="Удалить">
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
 
                                 {/* Server Settings Body */}
                                 <div className={`flex-1 overflow-y-auto custom-scrollbar p-5 space-y-4 transition-opacity ${!server.enabled ? 'opacity-60' : ''} bg-zinc-800/30`}>
@@ -1757,8 +1757,10 @@ export function MCPSettings({
                                 </div>
                             </div>
                 ) : (
-                    <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">
-                        Выберите сервер из списка
+                    <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 text-sm gap-2 p-6">
+                        <Globe className="w-8 h-8 text-zinc-700" />
+                        <span>Выберите сервер из списка слева</span>
+                        <span className="text-xs text-zinc-600">Найдено серверов: {sortedServers.length}</span>
                     </div>
                 )}
             </div>
