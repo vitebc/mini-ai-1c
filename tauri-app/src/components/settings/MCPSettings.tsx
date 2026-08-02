@@ -79,7 +79,7 @@ function BenchmarkPanel({ result, loading, onClose }: { result: Record<string, a
     };
 
     if (loading) return (
-        <div className="mt-2 rounded-lg border border-zinc-700/50 bg-zinc-900/50 p-4 text-center text-[11px] text-zinc-500">
+        <div className="mt-2 rounded-lg border border-zinc-700/50 bg-zinc-800/50 p-4 text-center text-[11px] text-zinc-500">
             <Activity className="w-4 h-4 animate-spin inline mr-2" />
             Замер производительности ({20} итераций × {8} инструментов)...
         </div>
@@ -99,7 +99,7 @@ function BenchmarkPanel({ result, loading, onClose }: { result: Record<string, a
     );
 
     return (
-        <div className="mt-2 rounded-lg border border-zinc-700/50 bg-zinc-900/60 overflow-hidden">
+        <div className="mt-2 rounded-lg border border-zinc-700/50 bg-zinc-800/60 overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-700/50">
                 <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-wide">
                     Benchmark · {result.symbol_count?.toLocaleString('ru-RU')} символов · {result.db_size_mb} МБ
@@ -627,11 +627,44 @@ export function MCPSettings({
 
     const selectedServer = sortedServers.find(s => s.id === selectedServerId) || sortedServers[0] || null;
 
+    // Auto-select first server on mount
+    useEffect(() => {
+        if (!selectedServerId && sortedServers.length > 0) {
+            setSelectedServerId(sortedServers[0].id);
+        }
+    }, [sortedServers, selectedServerId]);
+
+    // Pre-compute server properties for the selected server
+    const server = selectedServer;
+    const status = server ? statuses[server.id] : null;
+    const isMetadata = server?.id === BUILTIN_1C_METADATA_ID;
+    const isBslLs = server?.id === BUILTIN_BSL_LS_ID;
+    const isHelp = server?.id === BUILTIN_1C_HELP_ID;
+    const isSearch = server?.id === BUILTIN_1C_SEARCH_ID;
+    const isSkills = server?.id === BUILTIN_MCP_SKILLS_ID;
+    const isFilesystem = server?.id === BUILTIN_1C_FILESYSTEM_ID;
+    const isEnv = server?.id === BUILTIN_1C_ENV_ID;
+    const isBuiltin = server ? (server.id === BUILTIN_1C_SERVER_ID || isMetadata || isBslLs || isHelp || isSearch || isSkills || isFilesystem || isEnv) : false;
+    const searchProfileState = isSearch && server ? normalizeSearchProfiles(server) : null;
+    const searchActiveProfile = searchProfileState
+        ? (searchProfileState.profiles.find(p => p.id === searchProfileState.activeId) || searchProfileState.profiles[0])
+        : null;
+    const searchConfigPath = isSearch ? (searchActiveProfile?.main_path?.trim() || server?.env?.['ONEC_CONFIG_PATH']?.trim() || '') : '';
+    const searchHelpStatus = isSearch ? (status?.help_status || '') : '';
+    const isSearchUnavailable = isSearch && (!searchConfigPath || searchHelpStatus === 'unavailable');
+    const effectiveStatus = isSearchUnavailable ? 'error' : status?.status;
+    const isConnected = effectiveStatus === 'connected';
+    const isUnknown = effectiveStatus === 'unknown';
+    const isOffline = effectiveStatus === 'offline';
+    const isError = effectiveStatus === 'error';
+    const isStopped = effectiveStatus === 'stopped';
+    const lastChecked = status?.last_checked || 0;
+
     return (
-        <div className="flex h-full bg-zinc-950 p-2">
+        <div className="flex h-full bg-zinc-900 p-2 gap-2">
             {/* ─── Left Sidebar — Server List ─── */}
-            <div className="w-56 shrink-0 border border-zinc-800 rounded-lg flex flex-col bg-zinc-900/50 overflow-hidden">
-                <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800">
+            <div className="w-56 shrink-0 border border-zinc-800 rounded-lg flex flex-col bg-zinc-800/30 overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800 bg-zinc-800/30">
                     <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
                         <Globe className="w-3.5 h-3.5" /> MCP Servers
                     </span>
@@ -679,8 +712,8 @@ export function MCPSettings({
                                 onClick={() => setSelectedServerId(server.id)}
                                 className={`group flex items-center gap-2 px-3 py-2 mx-1 rounded-md cursor-pointer text-sm transition-colors ${
                                     selectedServer?.id === server.id
-                                        ? 'bg-blue-500/10 text-blue-400'
-                                        : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+                                        ? 'bg-blue-500/15 text-blue-400'
+                                        : 'text-zinc-400 hover:bg-zinc-700/50 hover:text-zinc-200'
                                 }`}
                             >
                                 <div className={`w-2 h-2 rounded-full shrink-0 ${
@@ -701,7 +734,7 @@ export function MCPSettings({
                                 </div>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); handleUpdateServer(server.id, { enabled: !server.enabled }); }}
-                                    className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors shrink-0 ${server.enabled ? 'bg-blue-600' : 'bg-[#505050]'}`}
+                                    className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors shrink-0 ${server.enabled ? 'bg-blue-500' : 'bg-zinc-600'}`}
                                 >
                                     <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform ${server.enabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
                                 </button>
@@ -712,38 +745,11 @@ export function MCPSettings({
             </div>
 
             {/* ─── Right Panel — Server Configuration ─── */}
-            <div className="flex-1 flex flex-col min-w-0 overflow-hidden border border-zinc-800 rounded-lg ml-2">
-                {selectedServer ? (
-                    (() => {
-                        const server = selectedServer;
-                        const status = statuses[server.id];
-                        const isMetadata = server.id === BUILTIN_1C_METADATA_ID;
-                        const isBslLs = server.id === BUILTIN_BSL_LS_ID;
-                        const isHelp = server.id === BUILTIN_1C_HELP_ID;
-                        const isSearch = server.id === BUILTIN_1C_SEARCH_ID;
-                        const isSkills = server.id === BUILTIN_MCP_SKILLS_ID;
-                        const isFilesystem = server.id === BUILTIN_1C_FILESYSTEM_ID;
-                        const isEnv = server.id === BUILTIN_1C_ENV_ID;
-                        const isBuiltin = server.id === BUILTIN_1C_SERVER_ID || isMetadata || isBslLs || isHelp || isSearch || isSkills || isFilesystem || isEnv;
-                        const searchProfileState = isSearch ? normalizeSearchProfiles(server) : null;
-                        const searchActiveProfile = searchProfileState
-                            ? (searchProfileState.profiles.find(p => p.id === searchProfileState.activeId) || searchProfileState.profiles[0])
-                            : null;
-                        const searchConfigPath = isSearch ? (searchActiveProfile?.main_path?.trim() || server.env?.['ONEC_CONFIG_PATH']?.trim() || '') : '';
-                        const searchHelpStatus = isSearch ? (status?.help_status || '') : '';
-                        const isSearchUnavailable = isSearch && (!searchConfigPath || searchHelpStatus === 'unavailable');
-                        const effectiveStatus = isSearchUnavailable ? 'error' : status?.status;
-                        const isConnected = effectiveStatus === 'connected';
-                        const isUnknown = effectiveStatus === 'unknown';
-                        const isOffline = effectiveStatus === 'offline';
-                        const isError = effectiveStatus === 'error';
-                        const isStopped = effectiveStatus === 'stopped';
-                        const lastChecked = status?.last_checked || 0;
-
-                        return (
-                            <div className="flex-1 flex flex-col min-h-0">
-                                {/* Server Header Bar */}
-                                <div className={`px-5 py-3 border-b flex items-center justify-between shrink-0 ${isBuiltin ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-zinc-900/50 border-zinc-800'}`}>
+            <div className="flex-1 flex flex-col min-w-0 overflow-y-auto border border-zinc-800 rounded-lg">
+                {server ? (
+                    <div className="flex-1 flex flex-col min-h-0">
+                        {/* Server Header Bar */}
+                                <div className={`px-5 py-3 border-b flex items-center justify-between shrink-0 ${isBuiltin ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-zinc-800/30 border-zinc-800'}`}>
                                     <div className="flex items-center gap-3 min-w-0">
                                         <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${
                                             !server.enabled ? 'bg-zinc-600'
@@ -777,12 +783,12 @@ export function MCPSettings({
                                     </div>
                                     <div className="flex items-center gap-3 ml-auto">
                                         {!isBuiltin && (
-                                            <div className="flex bg-zinc-900 rounded-lg p-0.5 border border-zinc-700">
+                                            <div className="flex bg-zinc-800 rounded-lg p-0.5 border border-zinc-700">
                                                 <button onClick={() => handleUpdateServer(server.id, { transport: 'http' })} className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold transition ${server.transport === 'http' ? 'bg-zinc-700 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}>HTTP</button>
                                                 <button onClick={() => handleUpdateServer(server.id, { transport: 'stdio' })} className={`px-2 py-0.5 rounded-md text-[10px] uppercase font-bold transition ${server.transport === 'stdio' ? 'bg-zinc-700 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}>Stdio</button>
                                             </div>
                                         )}
-                                        <button onClick={() => handleUpdateServer(server.id, { enabled: !server.enabled })} className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors focus:outline-none ${server.enabled ? 'bg-blue-600' : 'bg-[#505050]'}`}>
+                                        <button onClick={() => handleUpdateServer(server.id, { enabled: !server.enabled })} className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors focus:outline-none ${server.enabled ? 'bg-blue-500' : 'bg-zinc-600'}`}>
                                             <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform ${server.enabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
                                         </button>
                                         {!isBuiltin && (
@@ -794,7 +800,7 @@ export function MCPSettings({
                                 </div>
 
                                 {/* Server Settings Body */}
-                                <div className={`flex-1 overflow-y-auto custom-scrollbar p-5 space-y-4 transition-opacity ${!server.enabled ? 'opacity-60' : ''}`}>
+                                <div className={`flex-1 overflow-y-auto custom-scrollbar p-5 space-y-4 transition-opacity ${!server.enabled ? 'opacity-60' : ''} bg-zinc-800/30`}>
                                     {isBuiltin ? (
                                         <div className="mt-0 space-y-4">
                                             {server.id === BUILTIN_1C_SERVER_ID ? (
@@ -819,12 +825,12 @@ export function MCPSettings({
                                                             const newEnv = { ...(server.env || {}), 'ONEC_AI_TOKEN': e.target.value };
                                                             handleUpdateServer(server.id, { env: newEnv });
                                                         }}
-                                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                         placeholder="Вставьте ваш токен 1C.ai"
                                                     />
                                                 </div>
                                             ) : server.id === BUILTIN_BSL_LS_ID ? (
-                                                <div className="bg-zinc-900/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400 italic">
+                                                <div className="bg-zinc-800/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400 italic">
                                                     Этот сервер интегрирован как внутренний инструмент анализа кода.
                                                     Основные настройки (путь к Java, JAR и порт) находятся во вкладке <b>"BSL Server"</b> выше.
                                                 </div>
@@ -883,7 +889,7 @@ export function MCPSettings({
                                                                         handleUpdateServer(server.id, { env: newEnv });
                                                                     }}
                                                                     placeholder="Авто: C:\Program Files\1cv8"
-                                                                    className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 font-mono min-w-0"
+                                                                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 font-mono min-w-0"
                                                                 />
                                                                 <button
                                                                     onClick={() => void browseHelpDir()}
@@ -966,7 +972,7 @@ export function MCPSettings({
                                                         return (
                                                             <div className="space-y-3">
                                                                 {pathField}
-                                                                <div className="bg-zinc-900/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400 italic">
+                                                                <div className="bg-zinc-800/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400 italic">
                                                                     Поиск по официальной справке платформы 1С:Предприятие 8.3.
                                                                     При первом включении индексация займёт 1-3 минуты.
                                                                 </div>
@@ -1090,7 +1096,7 @@ export function MCPSettings({
                                                     };
                                                     return (
                                                         <div className="space-y-3">
-                                                            <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-3">
+                                                            <div className="rounded-lg border border-zinc-700/50 bg-zinc-800/30 p-3">
                                                                 <label className="text-[10px] text-zinc-500 uppercase font-bold flex items-center gap-1 mb-1">
                                                                     <Database className="w-3 h-3" /> Папка search-index
                                                                 </label>
@@ -1099,7 +1105,7 @@ export function MCPSettings({
                                                                         type="text"
                                                                         value={searchIndexDir}
                                                                         onChange={(e) => onSearchIndexDirChange(e.target.value)}
-                                                                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono min-w-0"
+                                                                        className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono min-w-0"
                                                                         placeholder="По умолчанию: ~/.config/mini-ai-1c/search-index"
                                                                     />
                                                                     <button
@@ -1122,7 +1128,7 @@ export function MCPSettings({
                                                                     <select
                                                                         value={activeId}
                                                                         onChange={(e) => commitProfiles(profiles, e.target.value)}
-                                                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                                     >
                                                                         {profiles.map(profile => (
                                                                             <option key={profile.id} value={profile.id}>{profile.name || 'Без названия'}</option>
@@ -1155,7 +1161,7 @@ export function MCPSettings({
                                                                     type="text"
                                                                     value={activeProfile?.name ?? ''}
                                                                     onChange={(e) => updateActiveProfile({ name: e.target.value })}
-                                                                    className={`w-full bg-zinc-900 border rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:outline-none ${
+                                                                    className={`w-full bg-zinc-800 border rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:outline-none ${
                                                                         !activeProfile?.name?.trim()
                                                                             ? 'border-red-500/60 focus:ring-red-500'
                                                                             : 'border-zinc-700 focus:ring-blue-500'
@@ -1179,7 +1185,7 @@ export function MCPSettings({
                                                                         }}
                                                                         onBlur={() => { if (configPath) addToSearchHistory(configPath); }}
                                                                         onKeyDown={(e) => { if (e.key === 'Enter' && configPath) addToSearchHistory(configPath); }}
-                                                                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono min-w-0"
+                                                                        className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono min-w-0"
                                                                         placeholder="C:\1C\configs\MyConfig"
                                                                     />
                                                                     <button
@@ -1230,7 +1236,7 @@ export function MCPSettings({
                                                                 )}
                                                                 <p className="text-[10px] text-zinc-600 mt-1">Корневая директория основной выгрузки (содержит CommonModules, Documents и т.д.)</p>
                                                             </div>
-                                                            <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-3 space-y-2">
+                                                            <div className="rounded-lg border border-zinc-700/50 bg-zinc-800/30 p-3 space-y-2">
                                                                 <div className="flex items-center justify-between gap-2">
                                                                     <label className="text-[10px] text-zinc-500 uppercase font-bold flex items-center gap-1">
                                                                         <Wrench className="w-3 h-3" /> Расширения конфигурации
@@ -1445,7 +1451,7 @@ export function MCPSettings({
                                                                 </button>
                                                                 </>
                                                             ) : (
-                                                                <div className="bg-zinc-900/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400 italic">
+                                                                <div className="bg-zinc-800/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400 italic">
                                                                     Быстрый поиск и символьный индекс процедур/функций конфигурации 1С (BSL файлы).
                                                                     Поддерживает поиск по коду и навигацию к определениям.
                                                                 </div>
@@ -1454,7 +1460,7 @@ export function MCPSettings({
                                                     );
                                                 })()
                                             ) : isSkills ? (
-                                                <div className="bg-zinc-900/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400">
+                                                     <div className="bg-zinc-800/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400">
                                                     Сервис скиллов — наборов знаний и инструкций для AI-агента.
                                                     Скиллы хранятся в папке <code className="bg-zinc-800 text-zinc-300 px-1 rounded">~/.config/mini-ai-1c/.agents/skills/</code>.
                                                     Положите туда папки с файлами SKILL.md.
@@ -1478,7 +1484,7 @@ export function MCPSettings({
                                                     };
                                                     return (
                                                         <div className="space-y-3">
-                                                            <div className="bg-zinc-900/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400">
+                                                 <div className="bg-zinc-800/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400">
                                                                 Агент сможет читать и изменять файлы только внутри указанной папки.
                                                             </div>
                                                             <div>
@@ -1494,7 +1500,7 @@ export function MCPSettings({
                                                                             handleUpdateServer(server.id, { env: newEnv });
                                                                         }}
                                                                         placeholder="Укажите путь к папке..."
-                                                                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 font-mono min-w-0"
+                                                                        className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 font-mono min-w-0"
                                                                     />
                                                                     <button
                                                                         onClick={() => void browseSandboxDir()}
@@ -1516,7 +1522,7 @@ export function MCPSettings({
                                                 })()
                                             ) : isEnv ? (
                                                 <div className="space-y-3">
-                                                    <div className="bg-zinc-900/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400">
+                                                             <div className="bg-zinc-800/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400">
                                                         Автоопределение установленных платформ 1С и списка информационных баз (из ibases.v8i).
                                                         Инструменты: <code className="bg-zinc-800 text-zinc-300 px-1 rounded">list_infobases</code>, <code className="bg-zinc-800 text-zinc-300 px-1 rounded">find_platform</code>, <code className="bg-zinc-800 text-zinc-300 px-1 rounded">get_1c_environment</code>.
                                                     </div>
@@ -1550,7 +1556,7 @@ export function MCPSettings({
                                                                     const newEnv = { ...(server.env || {}), 'ONEC_METADATA_URL': newUrl };
                                                                     handleUpdateServer(server.id, { env: newEnv });
                                                                 }}
-                                                                className="w-full bg-zinc-900 border border-zinc-700 font-bold rounded-lg px-2 py-1.5 text-[11px] focus:ring-1 focus:ring-yellow-500 focus:outline-none text-yellow-500 bg-yellow-500/5"
+                                                                className="w-full bg-zinc-800 border border-zinc-700 font-bold rounded-lg px-2 py-1.5 text-[11px] focus:ring-1 focus:ring-yellow-500 focus:outline-none text-yellow-500 bg-yellow-500/5"
                                                             >
                                                                 <option value="http">HTTP</option>
                                                                 <option value="https">HTTPS</option>
@@ -1572,7 +1578,7 @@ export function MCPSettings({
                                                                     const newEnv = { ...(server.env || {}), 'ONEC_METADATA_URL': newUrl };
                                                                     handleUpdateServer(server.id, { env: newEnv });
                                                                 }}
-                                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-yellow-500 focus:outline-none"
+                                                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-yellow-500 focus:outline-none"
                                                                 placeholder="localhost"
                                                             />
                                                         </div>
@@ -1591,7 +1597,7 @@ export function MCPSettings({
                                                                     const newEnv = { ...(server.env || {}), 'ONEC_METADATA_URL': newUrl };
                                                                     handleUpdateServer(server.id, { env: newEnv });
                                                                 }}
-                                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-yellow-500 focus:outline-none"
+                                                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-yellow-500 focus:outline-none"
                                                                 placeholder="demo"
                                                             />
                                                         </div>
@@ -1612,7 +1618,7 @@ export function MCPSettings({
                                                                     const newEnv = { ...(server.env || {}), 'ONEC_USERNAME': e.target.value };
                                                                     handleUpdateServer(server.id, { env: newEnv });
                                                                 }}
-                                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                                 placeholder="Администратор"
                                                             />
                                                         </div>
@@ -1627,7 +1633,7 @@ export function MCPSettings({
                                                                     const newEnv = { ...(server.env || {}), 'ONEC_PASSWORD': e.target.value };
                                                                     handleUpdateServer(server.id, { env: newEnv });
                                                                 }}
-                                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                                 placeholder="••••••"
                                                             />
                                                         </div>
@@ -1648,7 +1654,7 @@ export function MCPSettings({
                                                             value={server.url || ''}
                                                             onChange={(e) => handleUpdateServer(server.id, { url: e.target.value })}
                                                             placeholder="http://example.com/mcp"
-                                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                         />
                                                     </div>
 
@@ -1661,7 +1667,7 @@ export function MCPSettings({
                                                                 type="text"
                                                                 value={server.login || ''}
                                                                 onChange={(e) => handleUpdateServer(server.id, { login: e.target.value || null })}
-                                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                             />
                                                         </div>
                                                         <div>
@@ -1672,7 +1678,7 @@ export function MCPSettings({
                                                                 type="password"
                                                                 value={server.password || ''}
                                                                 onChange={(e) => handleUpdateServer(server.id, { password: e.target.value || null })}
-                                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                             />
                                                         </div>
                                                     </div>
@@ -1688,7 +1694,7 @@ export function MCPSettings({
                                                             value={server.command || ''}
                                                             onChange={(e) => handleUpdateServer(server.id, { command: e.target.value })}
                                                             placeholder="npx"
-                                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono"
+                                                            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono"
                                                         />
                                                     </div>
                                                     <div>
@@ -1705,7 +1711,7 @@ export function MCPSettings({
                                                                 handleUpdateServer(server.id, { args: parsed });
                                                             }}
                                                             placeholder="chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222 -y"
-                                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono"
+                                                            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono"
                                                         />
                                                     </div>
                                                 </>
@@ -1750,9 +1756,11 @@ export function MCPSettings({
                                     </div>
                                 </div>
                             </div>
-                        );
-                    })()
-                ) : null}
+                ) : (
+                    <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">
+                        Выберите сервер из списка
+                    </div>
+                )}
             </div>
             {/* Tools Modal */}
             {viewingToolsId && (
@@ -1822,8 +1830,8 @@ export function MCPSettings({
             {/* Smart Import Modal */}
             {smartImportId && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-200">
-                    <div className="bg-zinc-900 border border-zinc-700/50 rounded-2xl w-full max-w-lg shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
-                        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
+                    <div className="bg-zinc-800 border border-zinc-700/50 rounded-2xl w-full max-w-lg shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
+                        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-800/50">
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-blue-500/10 rounded-xl">
                                     <Sparkles className="w-5 h-5 text-blue-400" />
@@ -1877,7 +1885,7 @@ export function MCPSettings({
                             </div>
                         </div>
 
-                        <div className="px-6 py-4 bg-zinc-900/80 border-t border-zinc-800 flex items-center justify-end gap-3">
+                        <div className="px-6 py-4 bg-zinc-800/80 border-t border-zinc-800 flex items-center justify-end gap-3">
                             <button
                                 onClick={() => {
                                     setSmartImportId(null);
@@ -1902,7 +1910,7 @@ export function MCPSettings({
             {/* JSON Import Modal */}
             {showJsonImport && (
                 <div className="absolute inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 rounded-xl">
-                    <div className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+                    <div className="bg-zinc-800 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
                         <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <Code className="w-5 h-5 text-blue-400" />
@@ -1950,7 +1958,7 @@ export function MCPSettings({
                             )}
                         </div>
 
-                        <div className="px-6 py-4 bg-zinc-900/80 border-t border-zinc-800 flex items-center justify-end gap-3">
+                        <div className="px-6 py-4 bg-zinc-800/80 border-t border-zinc-800 flex items-center justify-end gap-3">
                             <button
                                 onClick={() => setShowJsonImport(false)}
                                 className="px-4 py-2 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-bold transition-colors"
