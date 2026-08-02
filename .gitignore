@@ -15,6 +15,10 @@ dist/
 dist-ssr/
 *.local
 
+# Vite build artifacts in root
+/*-[A-Za-z0-9]*.js
+/*-[A-Za-z0-9]*.css
+
 # Tauri / Rust
 tauri-app/src-tauri/target/
 tauri-app/src-tauri/gen/
