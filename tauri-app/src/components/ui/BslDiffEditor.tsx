@@ -24,7 +24,7 @@ export function BslDiffEditor({
 }: BslDiffEditorProps) {
     const editorRef = useRef<any>(null);
     const { settings } = useSettings();
-    const monacoTheme = settings?.theme === 'light' ? 'vs' : 'vs-dark';
+    const monacoTheme = settings?.theme === 'light' ? 'vs' : 'ayu-dark';
 
     // Normalize line endings to LF to prevent Monaco from highlighting the entire file as changed
     const normalizedOriginal = original ? original.replace(/\r\n/g, '\n') : '';

@@ -5,6 +5,7 @@ import {
     setConfiguratorEditorBridgeEnabled,
     setConfiguratorRdpMode
 } from '../api/configurator';
+import { ayuDarkTheme } from '../monaco-themes/ayu-dark';
 
 import { AppSettings } from '../types/settings';
 
@@ -15,6 +16,9 @@ interface SettingsContextType {
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
+
+// Register ayu-dark theme once when Monaco is first loaded
+let themeRegistered = false;
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -57,7 +61,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         }
         // Set Monaco global theme
         loader.init().then(monaco => {
-            monaco.editor.setTheme(isLight ? 'vs' : 'vs-dark');
+            if (!themeRegistered) {
+                monaco.editor.defineTheme('ayu-dark', ayuDarkTheme);
+                themeRegistered = true;
+            }
+            monaco.editor.setTheme(isLight ? 'vs' : 'ayu-dark');
         }).catch(() => {/* Monaco not yet loaded, theme prop on Editor handles initial mount */});
     }, [settings?.theme]);
 

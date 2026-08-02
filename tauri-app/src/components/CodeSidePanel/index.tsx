@@ -43,7 +43,7 @@ export function CodeSidePanel({
         onDiagnosticSelectionChange?.(diagnostics);
     }, [diagnostics, onDiagnosticSelectionChange]);
     const { settings } = useSettings();
-    const monacoTheme = settings?.theme === 'light' ? 'vs' : 'vs-dark';
+    const monacoTheme = settings?.theme === 'light' ? 'vs' : 'ayu-dark';
     const isLightTheme = settings?.theme === 'light';
     const sideResizeGripClass = isLightTheme ? 'bg-zinc-400 group-hover:bg-blue-500' : 'bg-zinc-700 group-hover:bg-blue-400';
     const inlineToolbarClass = isLightTheme

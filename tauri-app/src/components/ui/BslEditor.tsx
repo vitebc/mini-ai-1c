@@ -15,7 +15,7 @@ interface BslEditorProps {
 export function BslEditor({ code, height = '200px', readOnly = true, loading, className, hideBorder = false }: BslEditorProps) {
     const editorRef = useRef<any>(null);
     const { settings } = useSettings();
-    const monacoTheme = settings?.theme === 'light' ? 'vs' : 'vs-dark';
+    const monacoTheme = settings?.theme === 'light' ? 'vs' : 'ayu-dark';
 
     // Register BSL language once
     useEffect(() => {
