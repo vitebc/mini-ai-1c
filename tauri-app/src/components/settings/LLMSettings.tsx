@@ -539,7 +539,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                             <div className="flex-1 min-w-[150px]">
                                 <label className="text-xs text-zinc-500 uppercase font-bold px-1">Profile Name</label>
                                 <input
-                                    className="w-full mt-1 bg-zinc-950 border border-zinc-800 rounded-md px-3 h-9 text-sm focus:border-blue-500 outline-none text-zinc-200"
+                                    className="w-full mt-1 bg-[var(--input-bg)] border border-zinc-800 rounded-md px-3 h-9 text-sm focus:border-blue-500 outline-none text-zinc-200"
                                     value={editForm.name}
                                     onChange={e => setEditForm({ ...editForm, name: e.target.value })}
                                 />
@@ -561,7 +561,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                         };
                                     });
                                 }}>
-                                    <SelectTrigger className="w-full mt-1 bg-zinc-950 border border-zinc-800 h-9 px-3 rounded-md focus:ring-1 focus:ring-blue-500 shadow-none transition-all outline-none">
+                                    <SelectTrigger className="w-full mt-1 bg-[var(--input-bg)] border border-zinc-800 h-9 px-3 rounded-md focus:ring-1 focus:ring-blue-500 shadow-none transition-all outline-none">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -813,7 +813,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                     <input
                                         ref={apiKeyInputRef}
                                         type="password"
-                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 h-9 text-sm focus:border-orange-500 outline-none placeholder-zinc-700 text-zinc-200"
+                                        className="w-full bg-[var(--input-bg)] border border-zinc-800 rounded-md px-3 h-9 text-sm focus:border-orange-500 outline-none placeholder-zinc-500 text-zinc-200"
                                         placeholder={editForm.api_key_encrypted ? "•••••••••••• (сохранён)" : "Вставьте токен..."}
                                         value={newApiKey}
                                         onChange={e => setNewApiKey(e.target.value)}
@@ -842,7 +842,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                     <input
                                         ref={apiKeyInputRef}
                                         type="password"
-                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 h-9 text-sm focus:border-violet-500 outline-none placeholder-zinc-700 text-zinc-200"
+                                        className="w-full bg-[var(--input-bg)] border border-zinc-800 rounded-md px-3 h-9 text-sm focus:border-violet-500 outline-none placeholder-zinc-500 text-zinc-200"
                                         placeholder={editForm.api_key_encrypted ? "•••••••••••• (Encrypted)" : "eyJ..."}
                                         value={newApiKey}
                                         onChange={e => setNewApiKey(e.target.value)}
@@ -850,7 +850,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                     <div>
                                         <label className="text-xs text-zinc-500 uppercase font-bold px-0.5">Base URL</label>
                                         <input
-                                            className="w-full mt-1 bg-zinc-950 border border-zinc-800 rounded-md px-3 h-9 text-sm focus:border-violet-500 outline-none font-mono text-zinc-400"
+                                            className="w-full mt-1 bg-[var(--input-bg)] border border-zinc-800 rounded-md px-3 h-9 text-sm focus:border-violet-500 outline-none font-mono text-zinc-400"
                                             value={editForm.base_url || 'https://api.minimax.io/v1'}
                                             onChange={e => setEditForm({ ...editForm, base_url: e.target.value })}
                                         />
@@ -902,7 +902,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                     <input
                                         ref={apiKeyInputRef}
                                         type="password"
-                                        className="w-full mt-1 bg-zinc-950 border border-zinc-800 rounded-md px-3 h-9 text-sm focus:border-blue-500 outline-none placeholder-zinc-700 text-zinc-200"
+                                        className="w-full mt-1 bg-[var(--input-bg)] border border-zinc-800 rounded-md px-3 h-9 text-sm focus:border-blue-500 outline-none placeholder-zinc-500 text-zinc-200"
                                         placeholder={editForm.api_key_encrypted ? "•••••••••••• (Encrypted)" : "sk-..."}
                                         value={newApiKey}
                                         onChange={e => setNewApiKey(e.target.value)}
@@ -915,7 +915,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                             <div>
                                 <label className="text-xs text-zinc-500 uppercase font-bold px-1">Base URL</label>
                                 <input
-                                    className="w-full mt-1 bg-zinc-950 border border-zinc-800 rounded-md px-3 h-9 text-sm focus:border-blue-500 outline-none font-mono text-zinc-400"
+                                    className="w-full mt-1 bg-[var(--input-bg)] border border-zinc-800 rounded-md px-3 h-9 text-sm focus:border-blue-500 outline-none font-mono text-zinc-400"
                                     value={editForm.base_url || ''}
                                     onChange={e => setEditForm({ ...editForm, base_url: e.target.value })}
                                 />
@@ -960,7 +960,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                             });
                                         }}
                                     >
-                                        <SelectTrigger className="w-full bg-zinc-900 border-zinc-700 h-9 px-3">
+                                        <SelectTrigger className="w-full bg-[var(--input-bg)] border-zinc-700 h-9 px-3">
                                             <SelectValue placeholder="Select a model" />
                                         </SelectTrigger>
                                         <SelectContent className="max-h-60">
@@ -978,7 +978,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                     </Select>
                                 ) : (
                                     <input
-                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 h-9 text-sm focus:border-blue-500 outline-none text-zinc-200"
+                                        className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-md px-3 h-9 text-sm focus:border-blue-500 outline-none text-zinc-200"
                                         value={editForm.model}
                                         onChange={e => setEditForm(prev => prev ? ({ ...prev, model: e.target.value }) : null)}
                                         placeholder="gpt-4, qwen-2.5-coder, etc."
@@ -997,7 +997,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                     <div className="relative mt-1">
                                         <input
                                             type="number"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-md pl-3 pr-16 h-9 text-sm text-zinc-200"
+                                            className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-md pl-3 pr-16 h-9 text-sm text-zinc-200"
                                             value={editForm.max_tokens}
                                             onChange={e => setEditForm({ ...editForm, max_tokens: parseInt(e.target.value) || 0 })}
                                         />
@@ -1031,7 +1031,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                             value={editForm.reasoning_effort || 'xhigh'}
                                             onValueChange={v => setEditForm({ ...editForm, reasoning_effort: v as LLMProfile['reasoning_effort'] })}
                                         >
-                                            <SelectTrigger className="w-full mt-1 bg-zinc-900 border-zinc-700 h-9 px-3">
+                                            <SelectTrigger className="w-full mt-1 bg-[var(--input-bg)] border-zinc-700 h-9 px-3">
                                                 <SelectValue placeholder="Select effort" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -1053,7 +1053,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                         </label>
                                         <input
                                             type="number" step="0.1" min="0" max="2"
-                                            className="w-full mt-1 bg-zinc-900 border border-zinc-700 rounded-md px-3 h-9 text-sm text-zinc-200"
+                                            className="w-full mt-1 bg-[var(--input-bg)] border border-zinc-700 rounded-md px-3 h-9 text-sm text-zinc-200"
                                             value={editForm.temperature}
                                             onChange={e => setEditForm({ ...editForm, temperature: parseFloat(e.target.value) || 0.7 })}
                                         />
@@ -1105,7 +1105,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                             const v = parseInt(e.target.value);
                                             setEditForm({ ...editForm, stream_timeout_secs: isNaN(v) ? undefined : v });
                                         }}
-                                        className="w-20 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-right focus:outline-none focus:border-zinc-500"
+                                        className="w-20 bg-[var(--input-bg)] border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-right focus:outline-none focus:border-zinc-500"
                                     />
                                 </div>
                             )}

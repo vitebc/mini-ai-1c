@@ -1652,7 +1652,7 @@ export const ChatArea = memo(function ChatArea({
                                                         value={editText}
                                                         onChange={(e) => setEditText(e.target.value)}
                                                         onKeyDown={(e) => handleEditKeyDown(e, i)}
-                                                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-zinc-300 text-[13px] font-sans resize-none focus:outline-none focus:border-blue-500/50 transition-colors"
+                                                        className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg p-3 text-zinc-300 text-[13px] font-sans resize-none focus:outline-none focus:border-blue-500/50 transition-colors"
                                                         rows={Math.min(10, Math.max(3, editText.split('\n').length))}
                                                         autoFocus
                                                     />
@@ -1752,7 +1752,7 @@ export const ChatArea = memo(function ChatArea({
                     isLoading={isLoading}
                 />
                 <SearchProfileBar />
-                <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl focus-within:ring-1 focus-within:ring-blue-500/50 transition-all min-h-[120px] flex flex-col max-w-4xl mx-auto">
+                <div className="relative bg-[var(--input-bg)] border border-zinc-700 rounded-xl focus-within:ring-1 focus-within:ring-blue-500/50 transition-all min-h-[120px] flex flex-col max-w-4xl mx-auto">
 
                     <textarea
                         ref={inputRef}
@@ -1761,7 +1761,7 @@ export const ChatArea = memo(function ChatArea({
                         onChange={handleInputChange}
                         onKeyDown={handleKeyDown}
                         placeholder="Опишите задачу, вставьте код или введите / для команд..."
-                        className="w-full h-full bg-transparent text-zinc-300 px-4 py-3 resize-none focus:outline-none placeholder-zinc-600 text-[13px] font-sans leading-relaxed flex-1"
+                        className="w-full h-full bg-transparent text-zinc-300 px-4 py-3 resize-none focus:outline-none placeholder-zinc-500 text-[13px] font-sans leading-relaxed flex-1"
                         style={{ fontFamily: 'Inter, sans-serif' }}
                     />
 

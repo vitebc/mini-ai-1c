@@ -32,6 +32,9 @@
     --chart-5: 340 75% 55%;
     --radius: 0.5rem;
 
+    /* Input field background — lighter than zinc-700 for better contrast */
+    --input-bg: #2a2f3a;
+
     /* Zinc scale — ayu-dark palette */
     --color-zinc-50: oklch(0.95 0.011 95);
     --color-zinc-100: oklch(0.88 0.010 94);
@@ -117,6 +120,9 @@ html.light {
     --color-zinc-200: oklch(0.32 0.001 0);
     --color-zinc-100: oklch(0.26 0.001 0);
     --color-zinc-50: oklch(0.18 0.001 0);
+
+    /* Input field background — light theme */
+    --input-bg: #ffffff;
 
     /* HSL semantic vars used by shadcn/tailwind config */
     --background: 0 0% 100%;

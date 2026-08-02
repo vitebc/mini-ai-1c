@@ -257,7 +257,7 @@ export function GeneralTab({
                                     <select
                                         value={proxy.protocol}
                                         onChange={(event) => updateProxy({ protocol: event.target.value as ProxyProtocol })}
-                                        className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 focus:border-blue-500 focus:outline-none"
+                                        className="rounded-lg border border-zinc-700 bg-[var(--input-bg)] px-3 py-2 text-sm text-zinc-200 focus:border-blue-500 focus:outline-none"
                                     >
                                         <option value="http">HTTP</option>
                                         <option value="socks5">SOCKS5</option>
@@ -267,7 +267,7 @@ export function GeneralTab({
                                         value={proxy.host}
                                         onChange={(event) => updateProxy({ host: event.target.value })}
                                         placeholder="proxy.company.local"
-                                        className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-blue-500 focus:outline-none"
+                                        className="min-w-0 rounded-lg border border-zinc-700 bg-[var(--input-bg)] px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 focus:border-blue-500 focus:outline-none"
                                     />
                                     <input
                                         type="number"
@@ -277,7 +277,7 @@ export function GeneralTab({
                                         value={proxy.port ?? ''}
                                         onChange={(event) => updateProxyPort(event.target.value)}
                                         placeholder="8080"
-                                        className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-blue-500 focus:outline-none"
+                                        className="rounded-lg border border-zinc-700 bg-[var(--input-bg)] px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 focus:border-blue-500 focus:outline-none"
                                     />
                                 </div>
 
@@ -287,14 +287,14 @@ export function GeneralTab({
                                         value={proxy.username}
                                         onChange={(event) => updateProxy({ username: event.target.value })}
                                         placeholder="Логин"
-                                        className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-blue-500 focus:outline-none"
+                                        className="min-w-0 rounded-lg border border-zinc-700 bg-[var(--input-bg)] px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 focus:border-blue-500 focus:outline-none"
                                     />
                                     <input
                                         type="password"
                                         value={proxy.password}
                                         onChange={(event) => updateProxy({ password: event.target.value })}
                                         placeholder="Пароль"
-                                        className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-blue-500 focus:outline-none"
+                                        className="min-w-0 rounded-lg border border-zinc-700 bg-[var(--input-bg)] px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 focus:border-blue-500 focus:outline-none"
                                     />
                                 </div>
                             </div>
@@ -372,7 +372,7 @@ export function GeneralTab({
                                     type="text"
                                     value={nodePathInputValue}
                                     onChange={(event) => setNodePath(event.target.value)}
-                                    className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-[var(--input-bg)] px-3 py-1.5 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                     placeholder={detectedNodePath || 'node или C:\\portable\\node\\node.exe'}
                                 />
                                 <button

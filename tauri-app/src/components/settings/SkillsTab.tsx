@@ -92,7 +92,7 @@ export function SkillsTab() {
                             value={newId}
                             onChange={e => setNewId(e.target.value)}
                             placeholder="ID скилла (например: my-skill)"
-                            className="w-full px-2 py-1.5 text-xs bg-zinc-800 border border-zinc-700 rounded text-zinc-300 placeholder-zinc-500 focus:outline-none focus:border-blue-500 mb-1.5"
+                            className="w-full px-2 py-1.5 text-xs bg-[var(--input-bg)] border border-zinc-700 rounded text-zinc-300 placeholder-zinc-500 focus:outline-none focus:border-blue-500 mb-1.5"
                             onKeyDown={e => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setCreating(false); }}
                             autoFocus
                         />
@@ -195,7 +195,7 @@ export function SkillsTab() {
                                 <textarea
                                     value={editingContent}
                                     onChange={e => { setEditingContent(e.target.value); setDirty(true); }}
-                                    className="w-full h-full p-4 text-sm font-mono bg-zinc-950 text-zinc-300 resize-none focus:outline-none custom-scrollbar"
+                                    className="w-full h-full p-4 text-sm font-mono bg-[var(--input-bg)] text-zinc-300 resize-none focus:outline-none custom-scrollbar"
                                     spellCheck={false}
                                 />
                             </div>

@@ -636,7 +636,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                                     value={apiKey}
                                     onChange={(e) => setApiKey(e.target.value)}
                                     placeholder="sk-..."
-                                    className="w-full px-3 py-2 bg-zinc-800 rounded-md border border-zinc-700 text-white focus:border-blue-500 focus:outline-none"
+                                    className="w-full px-3 py-2 bg-[var(--input-bg)] rounded-md border border-zinc-700 text-white focus:border-blue-500 focus:outline-none"
                                 />
                             </div>
                             <div>
@@ -646,7 +646,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                                     value={baseUrl}
                                     onChange={(e) => setBaseUrl(e.target.value)}
                                     placeholder="https://api.z.ai/api/coding/paas/v4"
-                                    className="w-full px-3 py-2 bg-zinc-800 rounded-md border border-zinc-700 text-white focus:border-blue-500 focus:outline-none"
+                                    className="w-full px-3 py-2 bg-[var(--input-bg)] rounded-md border border-zinc-700 text-white focus:border-blue-500 focus:outline-none"
                                 />
                             </div>
                             <div>
@@ -656,7 +656,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                                     value={modelName}
                                     onChange={(e) => setModelName(e.target.value)}
                                     placeholder="glm-5"
-                                    className="w-full px-3 py-2 bg-zinc-800 rounded-md border border-zinc-700 text-white focus:border-blue-500 focus:outline-none"
+                                    className="w-full px-3 py-2 bg-[var(--input-bg)] rounded-md border border-zinc-700 text-white focus:border-blue-500 focus:outline-none"
                                 />
                             </div>
                         </>
@@ -671,7 +671,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                                     value={baseUrl}
                                     onChange={(e) => setBaseUrl(e.target.value)}
                                     placeholder="http://localhost:11434/v1"
-                                    className="w-full px-3 py-2 bg-zinc-800 rounded-md border border-zinc-700 text-white focus:border-orange-500 focus:outline-none"
+                                    className="w-full px-3 py-2 bg-[var(--input-bg)] rounded-md border border-zinc-700 text-white focus:border-orange-500 focus:outline-none"
                                 />
                             </div>
                             <div>
@@ -681,7 +681,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                                     value={modelName}
                                     onChange={(e) => setModelName(e.target.value)}
                                     placeholder="llama3"
-                                    className="w-full px-3 py-2 bg-zinc-800 rounded-md border border-zinc-700 text-white focus:border-orange-500 focus:outline-none"
+                                    className="w-full px-3 py-2 bg-[var(--input-bg)] rounded-md border border-zinc-700 text-white focus:border-orange-500 focus:outline-none"
                                 />
                             </div>
                         </div>
@@ -696,7 +696,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                                     value={baseUrl}
                                     onChange={(e) => setBaseUrl(e.target.value)}
                                     placeholder="https://api.openai.com/v1"
-                                    className="w-full px-3 py-2 bg-zinc-800 rounded-md border border-zinc-700 text-white focus:border-purple-500 focus:outline-none"
+                                    className="w-full px-3 py-2 bg-[var(--input-bg)] rounded-md border border-zinc-700 text-white focus:border-purple-500 focus:outline-none"
                                 />
                             </div>
                             <div>
@@ -706,7 +706,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                                     value={apiKey}
                                     onChange={(e) => setApiKey(e.target.value)}
                                     placeholder="sk-..."
-                                    className="w-full px-3 py-2 bg-zinc-800 rounded-md border border-zinc-700 text-white focus:border-purple-500 focus:outline-none"
+                                    className="w-full px-3 py-2 bg-[var(--input-bg)] rounded-md border border-zinc-700 text-white focus:border-purple-500 focus:outline-none"
                                 />
                             </div>
                             <div>
@@ -716,7 +716,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                                     value={modelName}
                                     onChange={(e) => setModelName(e.target.value)}
                                     placeholder="gpt-4o"
-                                    className="w-full px-3 py-2 bg-zinc-800 rounded-md border border-zinc-700 text-white focus:border-purple-500 focus:outline-none"
+                                    className="w-full px-3 py-2 bg-[var(--input-bg)] rounded-md border border-zinc-700 text-white focus:border-purple-500 focus:outline-none"
                                 />
                             </div>
                         </>
@@ -834,7 +834,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                         value={naparnikToken}
                         onChange={(e) => setNaparnikToken(e.target.value)}
                         placeholder="Введите ваш токен..."
-                        className="w-full px-4 py-3 bg-zinc-900 rounded-xl border border-zinc-700 text-white focus:border-yellow-500 focus:outline-none placeholder-zinc-700 transition-all font-mono"
+                        className="w-full px-4 py-3 bg-[var(--input-bg)] rounded-xl border border-zinc-700 text-white focus:border-yellow-500 focus:outline-none placeholder:text-zinc-500 transition-all font-mono"
                     />
                     <div className="flex justify-between items-center text-[10px]">
                         <span className="text-zinc-600">Опционально. Можно добавить позже в настройках.</span>

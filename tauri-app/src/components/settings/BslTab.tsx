@@ -77,7 +77,7 @@ export function BslTab({
                                         ...settings,
                                         bsl_server: { ...settings.bsl_server, jar_path: e.target.value }
                                     })}
-                                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100"
+                                    className="flex-1 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100"
                                 />
                                 <div className="flex gap-2">
                                     <button onClick={browseJar} className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-200 transition-colors">Browse</button>
@@ -146,7 +146,7 @@ export function BslTab({
                                     ...settings,
                                     bsl_server: { ...settings.bsl_server, java_path: e.target.value }
                                 })}
-                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100"
+                                className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100"
                             />
                         </div>
 
@@ -180,7 +180,7 @@ export function BslTab({
                                             bsl_server: { ...settings.bsl_server, remote_url: e.target.value }
                                         })}
                                         placeholder="ws://192.168.1.100:8025/lsp"
-                                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100 font-mono"
+                                        className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100 font-mono"
                                     />
                                 </div>
                             ) : (
@@ -194,7 +194,7 @@ export function BslTab({
                                                 ...settings,
                                                 bsl_server: { ...settings.bsl_server, websocket_port: parseInt(e.target.value) || 8025 }
                                             })}
-                                            className="w-32 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100"
+                                            className="w-32 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-zinc-100"
                                         />
                                     </div>
                                 </>

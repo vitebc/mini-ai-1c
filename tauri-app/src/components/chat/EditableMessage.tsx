@@ -38,7 +38,7 @@ export function EditableMessage({ content, isUser, onEdit }: EditableMessageProp
                     value={editText}
                     onChange={(e) => setEditText(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-zinc-300 text-[13px] font-sans resize-none focus:outline-none focus:border-blue-500/50 transition-colors"
+                    className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg p-3 text-zinc-300 text-[13px] font-sans resize-none focus:outline-none focus:border-blue-500/50 transition-colors"
                     rows={Math.min(10, Math.max(3, editText.split('\n').length))}
                     autoFocus
                 />

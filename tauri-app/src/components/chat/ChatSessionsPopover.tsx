@@ -122,7 +122,7 @@ export function ChatSessionsPopover({
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
                         placeholder="Поиск по истории..."
-                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950/70 py-2.5 pl-9 pr-3 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-700 focus:bg-zinc-950"
+                        className="w-full rounded-xl border border-zinc-800 bg-[var(--input-bg)] py-2.5 pl-9 pr-3 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-500 focus:border-zinc-700 focus:bg-zinc-950"
                     />
                 </label>
             </div>

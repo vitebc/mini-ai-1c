@@ -222,7 +222,7 @@ export function PromptsTab({ settings, onSettingsChange, onSave, saving }: Promp
                                                                 rows={5}
                                                                 value={marker.value}
                                                                 onChange={(e) => updateCodeGenSettings({ [marker.field]: e.target.value })}
-                                                                className="w-full bg-zinc-900 border border-zinc-700/50 rounded-xl p-3 text-zinc-300 text-[11px] focus:border-blue-500 outline-none font-mono resize-none leading-relaxed transition-all shadow-inner"
+                                                                className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-xl p-3 text-zinc-300 text-[11px] focus:border-blue-500 outline-none font-mono resize-none leading-relaxed transition-all shadow-inner"
                                                                 placeholder={`Введите шаблон... (${marker.id === 'modification' ? '{datetime}, {oldCode}, {newCode}' : marker.id === 'deletion' ? '{datetime}, {oldCode}' : '{datetime}, {newCode}'})`}
                                                             />
                                                             <div className="flex flex-wrap gap-2 px-1 items-center">
@@ -317,7 +317,7 @@ export function PromptsTab({ settings, onSettingsChange, onSave, saving }: Promp
                                                 type="text"
                                                 value={template.name}
                                                 onChange={(e) => updateTemplate(idx, { name: e.target.value })}
-                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-zinc-300 text-xs focus:border-blue-500 outline-none"
+                                                className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg p-2 text-zinc-300 text-xs focus:border-blue-500 outline-none"
                                             />
                                         </div>
                                         <div className="space-y-1">
@@ -326,7 +326,7 @@ export function PromptsTab({ settings, onSettingsChange, onSave, saving }: Promp
                                                 type="text"
                                                 value={template.description}
                                                 onChange={(e) => updateTemplate(idx, { description: e.target.value })}
-                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-zinc-300 text-xs focus:border-blue-500 outline-none"
+                                                className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg p-2 text-zinc-300 text-xs focus:border-blue-500 outline-none"
                                             />
                                         </div>
                                     </div>
@@ -335,7 +335,7 @@ export function PromptsTab({ settings, onSettingsChange, onSave, saving }: Promp
                                         <textarea
                                             value={template.content}
                                             onChange={(e) => updateTemplate(idx, { content: e.target.value })}
-                                            className="w-full h-32 bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-zinc-300 text-xs resize-none focus:border-blue-500 outline-none font-mono leading-relaxed"
+                                            className="w-full h-32 bg-[var(--input-bg)] border border-zinc-700 rounded-lg p-3 text-zinc-300 text-xs resize-none focus:border-blue-500 outline-none font-mono leading-relaxed"
                                         />
                                     </div>
                                 </div>
@@ -366,7 +366,7 @@ export function PromptsTab({ settings, onSettingsChange, onSave, saving }: Promp
                             <textarea
                                 value={localSettings.system_prefix}
                                 onChange={(e) => updateLocalSettings({ system_prefix: e.target.value })}
-                                className="w-full h-24 bg-zinc-800/30 border border-zinc-700 rounded-xl p-3 text-zinc-300 text-[11px] resize-none focus:border-blue-500 outline-none leading-relaxed"
+                                className="w-full h-24 bg-[var(--input-bg)] border border-zinc-700 rounded-xl p-3 text-zinc-300 text-[11px] resize-none focus:border-blue-500 outline-none leading-relaxed"
                                 placeholder="Опишите общую роль ИИ. Перекрывает стандартные промпты."
                             />
                         </div>

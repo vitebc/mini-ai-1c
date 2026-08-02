@@ -825,7 +825,7 @@ export function MCPSettings({
                                                             const newEnv = { ...(server.env || {}), 'ONEC_AI_TOKEN': e.target.value };
                                                             handleUpdateServer(server.id, { env: newEnv });
                                                         }}
-                                                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                        className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                         placeholder="Вставьте ваш токен 1C.ai"
                                                     />
                                                 </div>
@@ -889,7 +889,7 @@ export function MCPSettings({
                                                                         handleUpdateServer(server.id, { env: newEnv });
                                                                     }}
                                                                     placeholder="Авто: C:\Program Files\1cv8"
-                                                                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 font-mono min-w-0"
+                                                                    className="flex-1 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 font-mono min-w-0"
                                                                 />
                                                                 <button
                                                                     onClick={() => void browseHelpDir()}
@@ -1105,8 +1105,8 @@ export function MCPSettings({
                                                                         type="text"
                                                                         value={searchIndexDir}
                                                                         onChange={(e) => onSearchIndexDirChange(e.target.value)}
-                                                                        className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono min-w-0"
-                                                                        placeholder="По умолчанию: ~/.config/mini-ai-1c/search-index"
+className="flex-1 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono min-w-0"
+                                                                    placeholder="По умолчанию: ~/.config/mini-ai-1c/search-index"
                                                                     />
                                                                     <button
                                                                         onClick={browseSearchIndexDir}
@@ -1128,7 +1128,7 @@ export function MCPSettings({
                                                                     <select
                                                                         value={activeId}
                                                                         onChange={(e) => commitProfiles(profiles, e.target.value)}
-                                                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                        className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                                     >
                                                                         {profiles.map(profile => (
                                                                             <option key={profile.id} value={profile.id}>{profile.name || 'Без названия'}</option>
@@ -1161,7 +1161,7 @@ export function MCPSettings({
                                                                     type="text"
                                                                     value={activeProfile?.name ?? ''}
                                                                     onChange={(e) => updateActiveProfile({ name: e.target.value })}
-                                                                    className={`w-full bg-zinc-800 border rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:outline-none ${
+                                                                    className={`w-full bg-[var(--input-bg)] border rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:outline-none ${
                                                                         !activeProfile?.name?.trim()
                                                                             ? 'border-red-500/60 focus:ring-red-500'
                                                                             : 'border-zinc-700 focus:ring-blue-500'
@@ -1185,7 +1185,7 @@ export function MCPSettings({
                                                                         }}
                                                                         onBlur={() => { if (configPath) addToSearchHistory(configPath); }}
                                                                         onKeyDown={(e) => { if (e.key === 'Enter' && configPath) addToSearchHistory(configPath); }}
-                                                                        className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono min-w-0"
+                                                                        className="flex-1 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono min-w-0"
                                                                         placeholder="C:\1C\configs\MyConfig"
                                                                     />
                                                                     <button
@@ -1260,7 +1260,7 @@ export function MCPSettings({
                                                                                         type="text"
                                                                                         value={ext.name}
                                                                                         onChange={(e) => updateExtension(ext.id, { name: e.target.value })}
-                                                                                        className={`bg-zinc-950 border rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:outline-none ${
+                                                                                        className={`bg-[var(--input-bg)] border rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:outline-none ${
                                                                                             nameEmpty
                                                                                                 ? 'border-red-500/60 focus:ring-red-500'
                                                                                                 : 'border-zinc-700 focus:ring-blue-500'
@@ -1272,7 +1272,7 @@ export function MCPSettings({
                                                                                         value={ext.path}
                                                                                         onChange={(e) => updateExtension(ext.id, { path: e.target.value })}
                                                                                         onBlur={() => { if (ext.path) addToSearchHistory(ext.path); }}
-                                                                                        className="bg-zinc-950 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none min-w-0"
+                                                                                        className="bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none min-w-0"
                                                                                         placeholder="C:\1C\extensions\MyExtension"
                                                                                     />
                                                                                     <div className="flex items-center gap-1">
@@ -1500,7 +1500,7 @@ export function MCPSettings({
                                                                             handleUpdateServer(server.id, { env: newEnv });
                                                                         }}
                                                                         placeholder="Укажите путь к папке..."
-                                                                        className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 font-mono min-w-0"
+className="flex-1 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 font-mono min-w-0"
                                                                     />
                                                                     <button
                                                                         onClick={() => void browseSandboxDir()}
@@ -1556,7 +1556,7 @@ export function MCPSettings({
                                                                     const newEnv = { ...(server.env || {}), 'ONEC_METADATA_URL': newUrl };
                                                                     handleUpdateServer(server.id, { env: newEnv });
                                                                 }}
-                                                                className="w-full bg-zinc-800 border border-zinc-700 font-bold rounded-lg px-2 py-1.5 text-[11px] focus:ring-1 focus:ring-yellow-500 focus:outline-none text-yellow-500 bg-yellow-500/5"
+                                                                className="w-full bg-[var(--input-bg)] border border-zinc-700 font-bold rounded-lg px-2 py-1.5 text-[11px] focus:ring-1 focus:ring-yellow-500 focus:outline-none text-yellow-500 bg-yellow-500/5"
                                                             >
                                                                 <option value="http">HTTP</option>
                                                                 <option value="https">HTTPS</option>
@@ -1578,7 +1578,7 @@ export function MCPSettings({
                                                                     const newEnv = { ...(server.env || {}), 'ONEC_METADATA_URL': newUrl };
                                                                     handleUpdateServer(server.id, { env: newEnv });
                                                                 }}
-                                                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-yellow-500 focus:outline-none"
+                                                                className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-yellow-500 focus:outline-none"
                                                                 placeholder="localhost"
                                                             />
                                                         </div>
@@ -1597,7 +1597,7 @@ export function MCPSettings({
                                                                     const newEnv = { ...(server.env || {}), 'ONEC_METADATA_URL': newUrl };
                                                                     handleUpdateServer(server.id, { env: newEnv });
                                                                 }}
-                                                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-yellow-500 focus:outline-none"
+                                                                className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-yellow-500 focus:outline-none"
                                                                 placeholder="demo"
                                                             />
                                                         </div>
@@ -1618,7 +1618,7 @@ export function MCPSettings({
                                                                     const newEnv = { ...(server.env || {}), 'ONEC_USERNAME': e.target.value };
                                                                     handleUpdateServer(server.id, { env: newEnv });
                                                                 }}
-                                                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                                className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                                 placeholder="Администратор"
                                                             />
                                                         </div>
@@ -1633,7 +1633,7 @@ export function MCPSettings({
                                                                     const newEnv = { ...(server.env || {}), 'ONEC_PASSWORD': e.target.value };
                                                                     handleUpdateServer(server.id, { env: newEnv });
                                                                 }}
-                                                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                                className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                                 placeholder="••••••"
                                                             />
                                                         </div>
@@ -1654,7 +1654,7 @@ export function MCPSettings({
                                                             value={server.url || ''}
                                                             onChange={(e) => handleUpdateServer(server.id, { url: e.target.value })}
                                                             placeholder="http://example.com/mcp"
-                                                            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                            className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                         />
                                                     </div>
 
@@ -1667,7 +1667,7 @@ export function MCPSettings({
                                                                 type="text"
                                                                 value={server.login || ''}
                                                                 onChange={(e) => handleUpdateServer(server.id, { login: e.target.value || null })}
-                                                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                                className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                             />
                                                         </div>
                                                         <div>
@@ -1678,7 +1678,7 @@ export function MCPSettings({
                                                                 type="password"
                                                                 value={server.password || ''}
                                                                 onChange={(e) => handleUpdateServer(server.id, { password: e.target.value || null })}
-                                                                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                                className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                             />
                                                         </div>
                                                     </div>
@@ -1694,7 +1694,7 @@ export function MCPSettings({
                                                             value={server.command || ''}
                                                             onChange={(e) => handleUpdateServer(server.id, { command: e.target.value })}
                                                             placeholder="npx"
-                                                            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono"
+                                                            className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono"
                                                         />
                                                     </div>
                                                     <div>
@@ -1711,7 +1711,7 @@ export function MCPSettings({
                                                                 handleUpdateServer(server.id, { args: parsed });
                                                             }}
                                                             placeholder="chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222 -y"
-                                                            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono"
+                                                            className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono"
                                                         />
                                                     </div>
                                                 </>
@@ -1871,7 +1871,7 @@ export function MCPSettings({
                                             if (e.key === 'Enter') handleSmartImport(smartImportId, smartImportUrl);
                                             if (e.key === 'Escape') setSmartImportId(null);
                                         }}
-                                        className="w-full bg-zinc-950 border border-zinc-800 group-focus-within:border-blue-500/50 rounded-xl px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:ring-4 focus:ring-blue-500/5 transition-all placeholder:text-zinc-700"
+                                        className="w-full bg-[var(--input-bg)] border border-zinc-800 group-focus-within:border-blue-500/50 rounded-xl px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:ring-4 focus:ring-blue-500/5 transition-all placeholder:text-zinc-700"
                                         placeholder="http://myserver/demo_base"
                                     />
                                     <Globe className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-800 group-focus-within:text-blue-500/30 transition-colors" />
@@ -1942,7 +1942,7 @@ export function MCPSettings({
                                     onKeyDown={(e) => { if (e.key === 'Escape') setShowJsonImport(false); }}
                                     rows={8}
                                     spellCheck={false}
-                                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-blue-500/50 rounded-xl px-4 py-3 text-xs text-zinc-100 font-mono focus:outline-none focus:ring-4 focus:ring-blue-500/5 transition-all resize-none placeholder:text-zinc-700"
+                                    className="w-full bg-[var(--input-bg)] border border-zinc-800 focus:border-blue-500/50 rounded-xl px-4 py-3 text-xs text-zinc-100 font-mono focus:outline-none focus:ring-4 focus:ring-blue-500/5 transition-all resize-none placeholder:text-zinc-700"
                                     placeholder={`{\n  "mcpServers": {\n    "chrome-devtools": {\n      "command": "npx",\n      "args": ["-y", "chrome-devtools-mcp@latest"]\n    }\n  }\n}`}
                                 />
                             </div>

@@ -157,7 +157,7 @@ export function DebugTab({
                                                 })}
                                                 className="flex-1 accent-blue-500"
                                             />
-                                            <span className="w-8 rounded bg-zinc-800 px-2 py-1 text-right font-mono text-sm text-zinc-300">
+                                            <span className="w-8 rounded bg-[var(--input-bg)] px-2 py-1 text-right font-mono text-sm text-zinc-300">
                                                 {settings.max_agent_iterations}
                                             </span>
                                         </div>
