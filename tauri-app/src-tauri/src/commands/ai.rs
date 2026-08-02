@@ -54,13 +54,21 @@ const CONTEXT_PRUNE_THRESHOLD: usize = 7000;
 /// 8000 chars ≈ 2000 tokens per tool result.
 const MAX_TOOL_RESULT_CHARS: usize = 8000;
 const MAX_CODEX_TOOL_NAME_LEN: usize = 64;
+const HARD_CONTEXT_LIMIT_FACTOR: f64 = 0.85;
 
 fn build_initial_chat_status() -> String {
     "Подготавливаю запрос...".to_string()
 }
 
 fn is_tool_result_cacheable(server_id: &str) -> bool {
-    matches!(server_id, "builtin-1c-metadata")
+    matches!(
+        server_id,
+        "builtin-1c-metadata"
+            | "builtin-mcp-skills"
+            | "builtin-1c-help"
+            | "builtin-1c-filesystem"
+            | "builtin-1c-search"
+    )
 }
 
 fn canonicalize_json_value(value: &serde_json::Value) -> serde_json::Value {
@@ -248,6 +256,100 @@ fn prune_tool_context(messages: &mut Vec<ApiMessage>, max_tokens: usize) {
         if estimate_tokens(messages) <= max_tokens {
             break;
         }
+    }
+}
+
+/// Deduplicate identical tool results in the message history.
+/// When the same tool is called with the same arguments multiple times,
+/// replace duplicates with a short reference to the first occurrence.
+/// This prevents context explosion when the agent repeatedly reads the same file/skill.
+fn deduplicate_tool_results(messages: &mut Vec<ApiMessage>) {
+    // Map: (server_id::tool_name::normalized_args) -> (first index, short preview)
+    let mut seen: std::collections::HashMap<String, (usize, String)> = std::collections::HashMap::new();
+    let mut duplicates_removed = 0usize;
+
+    for i in 0..messages.len() {
+        if messages[i].role != "tool" {
+            continue;
+        }
+        // Build a key from tool_call_id prefix (before timestamp) or content hash
+        let key = messages[i]
+            .content
+            .as_deref()
+            .map(|c| {
+                // Use first 200 chars as fingerprint for dedup
+                if c.len() > 200 {
+                    c[..200].to_string()
+                } else {
+                    c.to_string()
+                }
+            })
+            .unwrap_or_default();
+
+        if key.is_empty() {
+            continue;
+        }
+
+        if let Some(&(first_idx, ref preview)) = seen.get(&key) {
+            // This is a duplicate — replace with short reference
+            let short_preview: String = preview.chars().take(80).collect();
+            messages[i].content = Some(format!(
+                "[Результат уже выше (вызов #{})] {}...",
+                first_idx, short_preview
+            ));
+            duplicates_removed += 1;
+        } else {
+            seen.insert(key, (i, messages[i].content.clone().unwrap_or_default()));
+        }
+    }
+
+    if duplicates_removed > 0 {
+        crate::app_log!(
+            "[AI][DEDUP] Replaced {} duplicate tool results with short references. Tokens now ~{}t",
+            duplicates_removed,
+            estimate_tokens(messages)
+        );
+    }
+}
+
+/// Hard context limit: if messages exceed 85% of context window,
+/// aggressively trim old user/assistant messages (keep system + recent).
+fn hard_prune_context(messages: &mut Vec<ApiMessage>, context_window: usize) {
+    let max_tokens = (context_window as f64 * 0.85) as usize;
+    let current = estimate_tokens(messages);
+    if current <= max_tokens {
+        return;
+    }
+
+    crate::app_log!(
+        "[AI][HARD-PRUNE] Context {} tokens exceeds {} limit (85% of {}). Trimming...",
+        current, max_tokens, context_window
+    );
+
+    // Keep: system messages + last N messages (most recent user/assistant/tool)
+    // Strategy: remove oldest non-system messages until under limit
+    let mut removed = 0usize;
+    let mut i = 0;
+    while i < messages.len() && estimate_tokens(messages) > max_tokens {
+        if messages[i].role == "system" {
+            i += 1;
+            continue;
+        }
+        // Never remove the last 5 messages (safety buffer)
+        if messages.len() - i <= 5 {
+            break;
+        }
+        messages.remove(i);
+        removed += 1;
+        // Don't increment i since we removed the current element
+    }
+
+    if removed > 0 {
+        crate::app_log!(
+            "[AI][HARD-PRUNE] Removed {} old messages. Tokens now ~{}t",
+            removed,
+            estimate_tokens(messages)
+        );
     }
 }
 
@@ -629,6 +731,13 @@ pub async fn stream_chat(
 
             // Prune old tool rounds to keep context under threshold
             prune_tool_context(&mut api_messages, CONTEXT_PRUNE_THRESHOLD);
+
+            // Deduplicate identical tool results (e.g. repeated skill reads)
+            deduplicate_tool_results(&mut api_messages);
+
+            // Hard context limit: trim old messages if over 85% of window
+            hard_prune_context(&mut api_messages, effective_context_window);
+
             emit_context_usage(&task_app_handle, &api_messages, effective_context_window);
 
             // Stream chat completion
