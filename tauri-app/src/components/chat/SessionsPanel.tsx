@@ -3,9 +3,10 @@ import { useChat, ChatSession } from '../../contexts/ChatContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { ChevronRight, MessageSquare, MessageSquarePlus, FolderClosed, FolderOpen, FileText, X } from 'lucide-react';
 
-const PANEL_MIN = 280;
-const PANEL_MAX = 480;
+const PANEL_MIN = 300;
+const PANEL_MAX = 520;
 const PANEL_WIDTH_KEY = 'sessions_panel_width';
+const PANEL_DEFAULT = 340;
 
 const KNOWN_MODULE_SUFFIXES = [
   'МодульМенеджера', 'МодульОбъекта', 'МодульФормы', 'МодульНабораЗаписей',
@@ -103,8 +104,8 @@ export function SessionsPanel() {
   const [panelWidth, setPanelWidth] = useState(() => {
     try {
       const saved = localStorage.getItem(PANEL_WIDTH_KEY);
-      return saved ? Math.max(PANEL_MIN, Math.min(PANEL_MAX, Number(saved))) : PANEL_MIN;
-    } catch { return PANEL_MIN; }
+      return saved ? Math.max(PANEL_MIN, Math.min(PANEL_MAX, Number(saved))) : PANEL_DEFAULT;
+    } catch { return PANEL_DEFAULT; }
   });
 
   const resizeRef = useRef<{ startX: number; startW: number } | null>(null);

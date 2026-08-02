@@ -350,6 +350,14 @@ pub fn run() {
                 )
                 .await;
 
+                // Start enabled MCP servers at startup (not only on settings change)
+                let startup_settings = crate::settings::load_settings();
+                crate::mcp_client::McpManager::reconfigure(
+                    startup_settings,
+                    &app_handle,
+                )
+                .await;
+
                 let mut client = client_inner.lock().await;
 
                 if let Err(e) = client.start_server() {
