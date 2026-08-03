@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, ChevronDown, Check, Link, Unlink, MonitorOff } from 'lucide-react';
+import { Search, ChevronDown, Check, Link, Unlink, MonitorOff, AlertTriangle } from 'lucide-react';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useConfigurator } from '../../contexts/ConfiguratorContext';
 import {
@@ -114,6 +114,9 @@ export function SearchProfileBar() {
   // Hide completely if MCP search is disabled
   if (!searchServer || profiles.length === 0) return null;
 
+  // Profile mismatch: configurator is open, profile is selected, but no binding exists
+  const isMismatch = !!selectedPid && !isBound && activeProfile != null;
+
   const handleSelect = (profileId: string) => {
     if (!settings) return;
     const newEnv = buildSearchEnv(searchServer, profiles, profileId);
@@ -138,17 +141,23 @@ export function SearchProfileBar() {
           className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-all text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
         >
           {selectedPid
-            ? <Search className="w-3 h-3" />
+            ? isMismatch
+              ? <AlertTriangle className="w-3 h-3 text-amber-400" />
+              : <Search className="w-3 h-3" />
             : <MonitorOff className="w-3 h-3 text-zinc-500" />
           }
           {isBound && <Link className="w-2.5 h-2.5 text-green-400 shrink-0" />}
-          <span className={`truncate max-w-[200px] ${activeProfile ? 'text-blue-400' : 'text-zinc-500'}`}>
+          <span className={`truncate max-w-[200px] ${
+            isMismatch ? 'text-amber-400'
+              : activeProfile ? 'text-blue-400'
+              : 'text-zinc-500'
+          }`}>
             {activeProfile?.name || 'Выберите профиль'}
           </span>
           <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
-        <span className="text-[10px] text-zinc-600">
-          {selectedPid ? 'конфигурация для поиска' : 'ручной выбор'}
+        <span className={`text-[10px] ${isMismatch ? 'text-amber-500' : 'text-zinc-600'}`}>
+          {isMismatch ? 'профиль не соответствует' : selectedPid ? 'конфигурация для поиска' : 'ручной выбор'}
         </span>
         {selectedPid && isBound && (
           <button
