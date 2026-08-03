@@ -15,6 +15,11 @@ export interface SearchConfigProfile {
     name: string;
     main_path: string;
     extensions: SearchExtensionProfile[];
+    bound_infobase?: {
+        name: string;
+        connection: string;
+        type: 'file' | 'server';
+    };
 }
 
 export function normalizeSearchProfiles(

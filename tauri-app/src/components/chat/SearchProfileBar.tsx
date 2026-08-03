@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, ChevronDown, Check, Link, Unlink, MonitorOff, AlertTriangle } from 'lucide-react';
+import { Search, ChevronDown, Check, Link, Unlink, MonitorOff, AlertTriangle, Play, FolderOpen, Server } from 'lucide-react';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useConfigurator } from '../../contexts/ConfiguratorContext';
 import {
@@ -7,6 +7,7 @@ import {
   normalizeSearchProfiles,
   buildSearchEnv,
 } from '../../utils/searchProfiles';
+import { launchConfigurator, get1cInfobases, get1cPlatformPath } from '../../api/mcp';
 
 const BINDINGS_KEY = 'mcp_search_profile_bindings';
 
@@ -23,11 +24,23 @@ function saveBindings(bindings: Record<string, Record<number, string>>): void {
   localStorage.setItem(BINDINGS_KEY, JSON.stringify(bindings));
 }
 
+interface Infobase {
+  name: string;
+  connection: string;
+  type: 'file' | 'server';
+  id: string | null;
+  folder: string | null;
+}
+
 export function SearchProfileBar() {
   const { settings, updateSettings } = useSettings();
   const { selectedPid } = useConfigurator();
   const [isOpen, setIsOpen] = useState(false);
+  const [showDatabases, setShowDatabases] = useState(false);
   const [isBound, setIsBound] = useState(false);
+  const [infobases, setInfobases] = useState<Infobase[]>([]);
+  const [platformPath, setPlatformPath] = useState<string>('');
+  const [launching, setLaunching] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const searchServer = settings?.mcp_servers.find(
@@ -37,6 +50,29 @@ export function SearchProfileBar() {
     ? normalizeSearchProfiles(searchServer)
     : { profiles: [], activeId: '' };
   const activeProfile = profiles.find(p => p.id === activeId) || profiles[0];
+
+  const jvvEnabled = settings?.mcp_servers.some(
+    s => s.id === 'builtin-jvv-1c' && s.enabled,
+  );
+
+  // Fetch infobases and platform path on mount
+  useEffect(() => {
+    if (!jvvEnabled) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [bases, platform] = await Promise.all([
+          get1cInfobases().catch(() => []),
+          get1cPlatformPath().catch(() => ''),
+        ]);
+        if (!cancelled) {
+          setInfobases(bases);
+          setPlatformPath(platform);
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [jvvEnabled]);
 
   // Save binding: currentPid → profileId
   const saveBinding = useCallback((pid: number, profileId: string) => {
@@ -105,6 +141,7 @@ export function SearchProfileBar() {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        setShowDatabases(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -133,11 +170,118 @@ export function SearchProfileBar() {
     setIsOpen(false);
   };
 
+  const handleLaunch = async (base: Infobase) => {
+    if (!platformPath || !settings) return;
+    setLaunching(base.name);
+    try {
+      // Bind the profile to this database before launching
+      if (activeProfile) {
+        updateSettings({
+          ...settings,
+          mcp_servers: settings.mcp_servers.map(s => {
+            if (s.id !== BUILTIN_1C_SEARCH_ID) return s;
+            const env = s.env || {};
+            const profilesJson = env['ONEC_CONFIG_PROFILES_JSON'] || '[]';
+            try {
+              const profilesArr = JSON.parse(profilesJson);
+              const updated = profilesArr.map((p: any) =>
+                p.id === activeProfile.id
+                  ? { ...p, bound_infobase: { name: base.name, connection: base.connection, type: base.type } }
+                  : p
+              );
+              return {
+                ...s,
+                env: { ...env, 'ONEC_CONFIG_PROFILES_JSON': JSON.stringify(updated) },
+              };
+            } catch { return s; }
+          }),
+        });
+      }
+      await launchConfigurator(platformPath, base.connection, base.type === 'server');
+      setShowDatabases(false);
+    } catch (e) {
+      console.error('Launch failed:', e);
+    } finally {
+      setLaunching(null);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto w-full px-1 mb-2 relative" ref={dropdownRef}>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
+        {/* ── Кнопка баз 1С ── */}
+        {jvvEnabled && (
+          <div className="relative">
+            <button
+              onClick={() => { setShowDatabases(!showDatabases); setIsOpen(false); }}
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition-all text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+              title="Базы 1С на этом компьютере"
+            >
+              <Play className="w-3 h-3" />
+              <span className="hidden min-[500px]:inline">Базы</span>
+              {infobases.length > 0 && (
+                <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+                  {infobases.length}
+                </span>
+              )}
+              <ChevronDown className={`w-2.5 h-2.5 transition-transform ${showDatabases ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showDatabases && (
+              <div className="absolute bottom-full left-0 mb-1 w-80 bg-zinc-800 border border-zinc-700 rounded-lg shadow-2xl z-50 py-1 animate-in slide-in-from-bottom-2 duration-200">
+                <div className="px-3 py-1.5 border-b border-zinc-700 mb-1">
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                    Базы 1С на этом компьютере
+                  </span>
+                </div>
+                <div className="max-h-[220px] overflow-y-auto custom-scrollbar">
+                  {infobases.length === 0 ? (
+                    <div className="px-3 py-3 text-[11px] text-zinc-500 italic">
+                      Базы не найдены. Включите MCP «1С:Платформа и базы».
+                    </div>
+                  ) : (
+                    infobases.map((base, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-zinc-700/50 transition-colors group"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {base.type === 'file'
+                            ? <FolderOpen className="w-3 h-3 text-zinc-500 shrink-0" />
+                            : <Server className="w-3 h-3 text-blue-400 shrink-0" />}
+                          <div className="min-w-0">
+                            <div className="text-[12px] text-zinc-200 font-medium truncate">{base.name}</div>
+                            <div className="text-[9px] text-zinc-500 truncate">{base.connection}</div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleLaunch(base)}
+                          disabled={!platformPath || launching === base.name}
+                          className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[10px] font-medium rounded transition-colors shrink-0"
+                          title={platformPath ? `Запустить ${base.name}` : 'Платформа не найдена'}
+                        >
+                          {launching === base.name
+                            ? <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                            : <><Play className="w-2.5 h-2.5" /> Запустить</>
+                          }
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {!platformPath && infobases.length > 0 && (
+                  <div className="px-3 py-1.5 border-t border-zinc-700 text-[9px] text-amber-400">
+                    Платформа 1С не найдена. Включите MCP «1С:Платформа и базы».
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Выбор профиля поиска ── */}
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => { setIsOpen(!isOpen); setShowDatabases(false); }}
           className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-all text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
         >
           {selectedPid
@@ -156,9 +300,11 @@ export function SearchProfileBar() {
           </span>
           <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
+
         <span className={`text-[10px] ${isMismatch ? 'text-amber-500' : 'text-zinc-600'}`}>
           {isMismatch ? 'профиль не соответствует' : selectedPid ? 'конфигурация для поиска' : 'ручной выбор'}
         </span>
+
         {selectedPid && isBound && (
           <button
             onClick={removeBinding}
@@ -169,6 +315,8 @@ export function SearchProfileBar() {
           </button>
         )}
       </div>
+
+      {/* ── Дропдаун профилей ── */}
       {isOpen && (
         <div className="absolute bottom-full left-0 mb-1 w-56 bg-zinc-800 border border-zinc-700 rounded-lg shadow-2xl z-50 py-1 animate-in slide-in-from-bottom-2 duration-200">
           <div className="px-3 py-1.5 border-b border-zinc-700 mb-1">

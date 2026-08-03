@@ -418,6 +418,130 @@ fn fnv_hash_path(s: &str) -> u64 {
     hash
 }
 
+/// Get list of 1C infobases from builtin-jvv-1c MCP server.
+#[tauri::command]
+pub async fn get_1c_infobases_cmd() -> Result<Vec<serde_json::Value>, String> {
+    let settings = load_settings();
+    let jvv_config = settings
+        .mcp_servers
+        .iter()
+        .find(|s| s.id == "builtin-jvv-1c" && s.enabled)
+        .ok_or("builtin-jvv-1c не включён")?;
+
+    let client = McpClient::new(jvv_config.clone()).await?;
+    let tools = client.list_tools().await?;
+    let list_tool = tools
+        .iter()
+        .find(|t| t.name == "list_infobases")
+        .ok_or("Инструмент list_infobases не найден")?;
+
+    let result = client.call_tool(&list_tool.name, serde_json::json!({})).await?;
+    // Parse the result content
+    if let Some(text) = result.get("content").and_then(|c| c.get(0)).and_then(|c| c.get("text")) {
+        let parsed: serde_json::Value =
+            serde_json::from_str(text.as_str().unwrap_or("[]")).unwrap_or(serde_json::json!([]));
+        if let Some(arr) = parsed.as_array() {
+            return Ok(arr.clone());
+        }
+    }
+    Ok(vec![])
+}
+
+/// Get 1C platform path (latest version's 1cv8.exe) from builtin-jvv-1c MCP server.
+#[tauri::command]
+pub async fn get_1c_platform_path_cmd() -> Result<String, String> {
+    let settings = load_settings();
+    let jvv_config = settings
+        .mcp_servers
+        .iter()
+        .find(|s| s.id == "builtin-jvv-1c" && s.enabled)
+        .ok_or("builtin-jvv-1c не включён")?;
+
+    let client = McpClient::new(jvv_config.clone()).await?;
+    let tools = client.list_tools().await?;
+    let find_tool = tools
+        .iter()
+        .find(|t| t.name == "find_platform")
+        .ok_or("Инструмент find_platform не найден")?;
+
+    let result = client.call_tool(&find_tool.name, serde_json::json!({})).await?;
+    if let Some(text) = result.get("content").and_then(|c| c.get(0)).and_then(|c| c.get("text")) {
+        let parsed: serde_json::Value =
+            serde_json::from_str(text.as_str().unwrap_or("[]")).unwrap_or(serde_json::json!([]));
+        if let Some(arr) = parsed.as_array() {
+            // Get the first (latest) platform's exe_path
+            if let Some(first) = arr.first() {
+                if let Some(exe) = first.get("exe_path").and_then(|e| e.as_str()) {
+                    return Ok(exe.to_string());
+                }
+            }
+        }
+    }
+    Err("Не удалось определить путь к платформе".to_string())
+}
+
+/// Launch 1C Configurator for a given infobase.
+#[tauri::command]
+pub async fn launch_configurator_cmd(
+    platform_path: String,
+    infobase_path: String,
+    is_server: bool,
+) -> Result<(), String> {
+    use std::process::Command;
+
+    let platform = std::path::PathBuf::from(&platform_path);
+    if !platform.exists() {
+        return Err(format!("Платформа не найдена: {}", platform_path));
+    }
+
+    let mut args = vec!["DESIGNER".to_string()];
+
+    if is_server {
+        // Srvr="server\ref" format
+        args.push("/S".to_string());
+        args.push(format!("\"{}\"", infobase_path));
+    } else {
+        // File="..." format — extract path from connection string
+        let path = if infobase_path.starts_with("File=\"") {
+            infobase_path
+                .trim_start_matches("File=\"")
+                .trim_end_matches("\"")
+                .to_string()
+        } else {
+            infobase_path.clone()
+        };
+        args.push("/F".to_string());
+        args.push(format!("\"{}\"", path));
+    }
+
+    args.push("/DisableStartupDialogs".to_string());
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        Command::new(&platform)
+            .args(&args)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| format!("Не удалось запустить {}: {}", platform_path, e))?;
+    }
+    #[cfg(not(windows))]
+    {
+        Command::new(&platform)
+            .args(&args)
+            .spawn()
+            .map_err(|e| format!("Не удалось запустить {}: {}", platform_path, e))?;
+    }
+
+    crate::app_log!(
+        "[LAUNCH] Запущен Конфигуратор: {} {}",
+        platform_path,
+        args.join(" ")
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
