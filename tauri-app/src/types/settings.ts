@@ -83,6 +83,7 @@ export interface CliProviderInfo {
 export interface CodeGenerationSettings {
     mode: CodeGenerationMode;
     behavior_preset: PromptBehaviorPreset;
+    ask_before_action: boolean;
     mark_changes: boolean;
     addition_marker_template: string;
     modification_marker_template: string;
@@ -334,6 +335,7 @@ export const DEFAULT_CUSTOM_PROMPTS: CustomPromptsSettings = {
 export const DEFAULT_CODE_GENERATION: CodeGenerationSettings = {
     mode: "diff",
     behavior_preset: "project",
+    ask_before_action: false,
     mark_changes: true,
     addition_marker_template: DEFAULT_ADDITION_MARKER_TEMPLATE,
     modification_marker_template: DEFAULT_MODIFICATION_MARKER_TEMPLATE,

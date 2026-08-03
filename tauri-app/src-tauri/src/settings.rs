@@ -602,6 +602,10 @@ pub struct CodeGenerationSettings {
     #[serde(default)]
     pub behavior_preset: PromptBehaviorPreset,
 
+    /// Спрашивать перед длительными операциями (режим Ask)
+    #[serde(default)]
+    pub ask_before_action: bool,
+
     /// Маркировать изменения
     #[serde(default = "default_true")]
     pub mark_changes: bool,
@@ -624,6 +628,7 @@ impl Default for CodeGenerationSettings {
         Self {
             mode: CodeGenerationMode::Diff,
             behavior_preset: PromptBehaviorPreset::Project,
+            ask_before_action: false,
             mark_changes: true,
             addition_marker_template: default_addition_marker(),
             modification_marker_template: default_modification_marker(),

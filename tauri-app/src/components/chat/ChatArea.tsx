@@ -7,7 +7,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useConfigurator } from '../../contexts/ConfiguratorContext';
 import { parseConfiguratorTitle, ConfiguratorTitleContext } from '../../utils/configurator';
 import { MarkdownRenderer, cleanDiffArtifacts } from '../MarkdownRenderer';
-import { Loader2, Square, ArrowUp, Settings, ChevronDown, ChevronRight, Monitor, RefreshCw, FileText, MousePointerClick, Brain, BrainCircuit, Check, X, Terminal, Pencil, Play, Send, User, HardHat, Mic, MoreHorizontal, Info, Wrench } from 'lucide-react';
+import { Loader2, Square, ArrowUp, Settings, ChevronDown, ChevronRight, Monitor, RefreshCw, FileText, MousePointerClick, Brain, BrainCircuit, Check, X, Terminal, Pencil, Play, Send, User, HardHat, Mic, MoreHorizontal, Info, Wrench, BellRing, BellOff, SlidersHorizontal } from 'lucide-react';
 import logo from '../../assets/logo.png';
 import ToolCallBlock from './ToolCallBlock';
 import { MessageActions } from './MessageActions';
@@ -1774,72 +1774,78 @@ export const ChatArea = memo(function ChatArea({
                         />
                     )}
 
-                    <div ref={dropdownRef} className="px-3 pb-2 pt-0 flex items-end gap-2 pointer-events-auto flex-nowrap w-full">
+                    <div ref={dropdownRef} className="px-3 pb-2 pt-0 flex items-end gap-1.5 pointer-events-auto flex-nowrap w-full">
                         <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                            {/* Кнопка [+] (Опции) */}
+                            {/* ── Кнопка режима генерации: СВОЙ / ЧУЖОЙ / CLI ── */}
+                            {(() => {
+                                const behavior = settings?.code_generation?.behavior_preset ?? 'project';
+                                const modes: Array<{ id: 'project' | 'maintenance' | 'cli'; label: string; icon: typeof User; color: string }> = [
+                                    { id: 'project', label: 'СВОЙ', icon: User, color: 'blue' },
+                                    { id: 'maintenance', label: 'ЧУЖОЙ', icon: HardHat, color: 'orange' },
+                                    { id: 'cli', label: 'CLI', icon: Terminal, color: 'green' },
+                                ];
+                                const current = modes.find(m => m.id === behavior) || modes[0];
+                                const Icon = current.icon;
+                                return (
+                                    <button
+                                        onClick={() => {
+                                            const modesArr = modes.map(m => m.id);
+                                            const idx = modesArr.indexOf(behavior);
+                                            const next = modesArr[(idx + 1) % 3];
+                                            updateSettings({
+                                                ...settings!,
+                                                code_generation: { ...settings!.code_generation, behavior_preset: next }
+                                            });
+                                        }}
+                                        className={`h-8 flex items-center gap-1 px-2 rounded-lg border text-[11px] font-medium transition-all active:scale-95 flex-shrink-0 ${
+                                            current.color === 'blue' ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
+                                                : current.color === 'orange' ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
+                                                : 'bg-green-500/10 border-green-500/30 text-green-400'
+                                        }`}
+                                        title="Режим: СВОЙ — свой код, ЧУЖОЙ — чужой код, CLI — экономный режим (клик переключает)"
+                                    >
+                                        <Icon className="w-3 h-3" />
+                                        <span>{current.label}</span>
+                                    </button>
+                                );
+                            })()}
+
+                            {/* ── Тумблер Ask (спрашивать перед операциями) ── */}
+                            <button
+                                onClick={() => {
+                                    if (!settings) return;
+                                    const next = !(settings.code_generation.ask_before_action ?? false);
+                                    updateSettings({
+                                        ...settings,
+                                        code_generation: { ...settings.code_generation, ask_before_action: next }
+                                    });
+                                }}
+                                className={`h-8 flex items-center gap-1 px-2 rounded-lg border text-[11px] font-medium transition-all active:scale-95 flex-shrink-0 ${
+                                    (settings?.code_generation?.ask_before_action ?? false)
+                                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                                        : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:bg-zinc-700'
+                                }`}
+                                title="Спрашивать — агент уточняет перед длительными операциями"
+                            >
+                                {(settings?.code_generation?.ask_before_action ?? false)
+                                    ? <><BellRing className="w-3 h-3" /> Ask</>
+                                    : <><BellOff className="w-3 h-3" /> Ask</>}
+                            </button>
+
+                            {/* ── Дропдаун профилей [+] ── */}
                             <div className="relative">
                                 <button
                                     data-testid="profile-selector-trigger"
                                     onClick={() => setShowModelDropdown(!showModelDropdown)}
                                     className="h-8 w-12 flex items-center justify-center gap-1 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 transition-all active:scale-95 flex-shrink-0"
-                                    title="Настройки профиля и генерации"
+                                    title="Выбор модели и профиля"
                                 >
-                                    {(() => {
-                                        const behavior = settings?.code_generation?.behavior_preset;
-                                        if (behavior === 'maintenance') return <HardHat className="w-4 h-4 text-orange-400" />;
-                                        if (behavior === 'project') return <User className="w-4 h-4 text-blue-400" />;
-                                        return <Brain className="w-4 h-4 text-blue-400" />;
-                                    })()}
-                                    <MoreHorizontal className="w-3.5 h-3.5 text-zinc-500" />
+                                    <SlidersHorizontal className="w-4 h-4 text-zinc-400" />
+                                    <span className="text-[10px] text-zinc-400">+</span>
                                 </button>
 
                                 {showModelDropdown && (
                                     <div className="absolute bottom-full left-0 mb-2 w-64 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl z-50 overflow-hidden py-1 animate-in slide-in-from-bottom-2 duration-200">
-                                        {/* Behavior Preset Toggle (Перенесено в меню) */}
-                                        {settings?.code_generation && (
-                                            <>
-                                                <div className="px-3 py-1.5 border-b border-zinc-700 mb-1">
-                                                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Режим генерации</span>
-                                                </div>
-                                                <div className="px-3 py-1 flex gap-2">
-                                                    <button
-                                                        onClick={() => {
-                                                            updateSettings({
-                                                                ...settings,
-                                                                code_generation: {
-                                                                    ...settings.code_generation,
-                                                                    behavior_preset: 'project'
-                                                                }
-                                                            });
-                                                        }}
-                                                        className={`flex-1 flex items-center justify-center gap-1.5 p-2 rounded-md text-[11px] font-bold transition-all ${settings.code_generation.behavior_preset === 'project'
-                                                            ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30 shadow-sm'
-                                                            : 'bg-zinc-800/50 text-zinc-500 hover:bg-zinc-800'
-                                                            }`}
-                                                    >
-                                                        <User className="w-3.5 h-3.5" /> СВОЙ
-                                                    </button>
-                                                    <button
-                                                        onClick={() => {
-                                                            updateSettings({
-                                                                ...settings,
-                                                                code_generation: {
-                                                                    ...settings.code_generation,
-                                                                    behavior_preset: 'maintenance'
-                                                                }
-                                                            });
-                                                        }}
-                                                        className={`flex-1 flex items-center justify-center gap-1.5 p-2 rounded-md text-[11px] font-bold transition-all ${settings.code_generation.behavior_preset === 'maintenance'
-                                                            ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30 shadow-sm'
-                                                            : 'bg-zinc-800/50 text-zinc-500 hover:bg-zinc-800'
-                                                            }`}
-                                                    >
-                                                        <HardHat className="w-3.5 h-3.5" /> ЧУЖОЙ
-                                                    </button>
-                                                </div>
-                                            </>
-                                        )}
-
                                         <div className="px-3 py-1.5 border-b border-zinc-700 mb-1 mt-1">
                                             <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Ваши профили</span>
                                         </div>
