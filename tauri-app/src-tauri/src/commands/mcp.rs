@@ -436,12 +436,12 @@ pub async fn get_1c_infobases_cmd() -> Result<Vec<serde_json::Value>, String> {
         .ok_or("Инструмент list_infobases не найден")?;
 
     let result = client.call_tool(&list_tool.name, serde_json::json!({})).await?;
-    // Parse the result content
+    // MCP server returns { count, v8i_path, bases: [...] }
     if let Some(text) = result.get("content").and_then(|c| c.get(0)).and_then(|c| c.get("text")) {
         let parsed: serde_json::Value =
-            serde_json::from_str(text.as_str().unwrap_or("[]")).unwrap_or(serde_json::json!([]));
-        if let Some(arr) = parsed.as_array() {
-            return Ok(arr.clone());
+            serde_json::from_str(text.as_str().unwrap_or("{}")).unwrap_or(serde_json::json!({}));
+        if let Some(bases) = parsed.get("bases").and_then(|b| b.as_array()) {
+            return Ok(bases.clone());
         }
     }
     Ok(vec![])
@@ -467,10 +467,10 @@ pub async fn get_1c_platform_path_cmd() -> Result<String, String> {
     let result = client.call_tool(&find_tool.name, serde_json::json!({})).await?;
     if let Some(text) = result.get("content").and_then(|c| c.get(0)).and_then(|c| c.get("text")) {
         let parsed: serde_json::Value =
-            serde_json::from_str(text.as_str().unwrap_or("[]")).unwrap_or(serde_json::json!([]));
-        if let Some(arr) = parsed.as_array() {
-            // Get the first (latest) platform's exe_path
-            if let Some(first) = arr.first() {
+            serde_json::from_str(text.as_str().unwrap_or("{}")).unwrap_or(serde_json::json!({}));
+        // MCP server returns { count, latest, platforms: [...] }
+        if let Some(platforms) = parsed.get("platforms").and_then(|p| p.as_array()) {
+            if let Some(first) = platforms.first() {
                 if let Some(exe) = first.get("exe_path").and_then(|e| e.as_str()) {
                     return Ok(exe.to_string());
                 }

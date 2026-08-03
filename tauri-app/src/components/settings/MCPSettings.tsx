@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { Database, Link2, Key, ShieldCheck, Activity, CheckCircle2, AlertCircle, Plus, Trash2, Globe, Settings2, Terminal, Cpu, FileText, X, Sparkles, FolderOpen, ChevronDown, Code, Wrench } from 'lucide-react';
+import { Database, Link2, Key, ShieldCheck, Activity, CheckCircle2, AlertCircle, Plus, Trash2, Globe, Settings2, Terminal, Cpu, FileText, X, Sparkles, FolderOpen, ChevronDown, Code, Wrench, Server } from 'lucide-react';
 import McpToolsView from '../CodeSidePanel/McpToolsView';
 import { isBuiltinNodeLauncher, normalizeNodePath } from '../../utils/mcpNodePath';
 import {
@@ -1235,6 +1235,34 @@ className="flex-1 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py
                                                                     </div>
                                                                 )}
                                                                 <p className="text-[10px] text-zinc-600 mt-1">Корневая директория основной выгрузки (содержит CommonModules, Documents и т.д.)</p>
+                                                            </div>
+                                                            {/* ── Привязка информационной базы 1С ── */}
+                                                            <div>
+                                                                <label className="text-[10px] text-zinc-500 uppercase font-bold flex items-center gap-1 mb-1">
+                                                                    <Server className="w-3 h-3" /> Привязать информационную базу 1С
+                                                                </label>
+                                                                <div className="flex items-center gap-2">
+                                                                    {activeProfile?.bound_infobase ? (
+                                                                        <div className="flex items-center gap-2 flex-1 min-w-0 bg-zinc-800/30 border border-zinc-700/50 rounded-lg px-3 py-1.5">
+                                                                            <Server className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                                                                            <span className="text-xs text-zinc-300 truncate flex-1">{activeProfile.bound_infobase.name}</span>
+                                                                            <span className={`text-[9px] px-1.5 py-0.5 rounded border shrink-0 ${
+                                                                                activeProfile.bound_infobase.type === 'file'
+                                                                                    ? 'text-zinc-400 border-zinc-700'
+                                                                                    : 'text-blue-400 border-blue-500/30'
+                                                                            }`}>{activeProfile.bound_infobase.type === 'file' ? 'Файловая' : 'Серверная'}</span>
+                                                                            <button
+                                                                                onClick={() => updateActiveProfile({ bound_infobase: undefined })}
+                                                                                className="p-0.5 rounded hover:bg-red-500/10 text-zinc-500 hover:text-red-400 transition-colors"
+                                                                                title="Отвязать базу"
+                                                                            >
+                                                                                <X className="w-3 h-3" />
+                                                                            </button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="text-[10px] text-zinc-600">Не привязана — при запуске конфигуратора из приложения будет автоматически привязана</span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                             <div className="rounded-lg border border-zinc-700/50 bg-zinc-800/30 p-3 space-y-2">
                                                                 <div className="flex items-center justify-between gap-2">

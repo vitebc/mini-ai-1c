@@ -237,7 +237,7 @@ export function SearchProfileBar() {
                 <div className="max-h-[220px] overflow-y-auto custom-scrollbar">
                   {infobases.length === 0 ? (
                     <div className="px-3 py-3 text-[11px] text-zinc-500 italic">
-                      Базы не найдены. Включите MCP «1С:Платформа и базы».
+                      {platformPath ? 'Базы 1С не найдены в ibases.v8i.' : 'Платформа и базы не найдены. Включите MCP «1С:Платформа и базы».'}
                     </div>
                   ) : (
                     infobases.map((base, idx) => (
