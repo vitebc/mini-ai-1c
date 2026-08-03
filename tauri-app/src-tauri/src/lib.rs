@@ -216,55 +216,6 @@ pub fn run() {
                 });
             }
 
-            // Migration: old paths → .config/mini-ai-1c
-            // Migrate from:
-            //   %LOCALAPPDATA%\MiniAI1C       (settings, profiles, keys, binaries)
-            //   %APPDATA%\com.mini-ai-1c      (search index, legacy migration target)
-            // To:
-            //   $HOME/.config/mini-ai-1c/     (unified cross-platform path)
-            let new_dir = crate::settings::get_settings_dir();
-            for (label, old) in [
-                ("%LOCALAPPDATA%\\MiniAI1C", dirs::data_local_dir().map(|p| p.join("MiniAI1C"))),
-                ("%APPDATA%\\com.mini-ai-1c", dirs::data_dir().map(|p| p.join("com.mini-ai-1c"))),
-                ("%APPDATA%\\mini-ai-1c", dirs::data_dir().map(|p| p.join("mini-ai-1c"))),
-            ] {
-                if let Some(old_dir) = old {
-                    if old_dir.exists() && old_dir.is_dir() && old_dir != new_dir {
-                        crate::app_log!(
-                            force: true,
-                            "[MIGRATE] Migrating from {:?} to {:?}",
-                            old_dir, new_dir
-                        );
-                        if let Err(e) = migrate_dir(&old_dir, &new_dir) {
-                            crate::app_log!("[MIGRATE] Migration error: {}", e);
-                        } else {
-                            // Remove old dir only if migration succeeded
-                            let _ = std::fs::remove_dir_all(&old_dir);
-                            crate::app_log!("[MIGRATE] Removed old dir {:?}", old_dir);
-                        }
-                    }
-                }
-            }
-
-            // Migration: update EditorBridge path in settings if it points to old location
-            {
-                let new_settings_dir = crate::settings::get_settings_dir();
-                let expected_path = new_settings_dir.join("bin").join("EditorBridge.exe");
-                let mut settings = crate::settings::load_settings();
-                if !settings.configurator.editor_bridge_exe_path.is_empty() {
-                    let current = std::path::PathBuf::from(&settings.configurator.editor_bridge_exe_path);
-                    // If the saved path doesn't exist but the new path does, update
-                    if !current.exists() && expected_path.exists() {
-                        crate::app_log!(force: true,
-                            "[MIGRATE] Updating EditorBridge path: {:?} → {:?}",
-                            current, expected_path
-                        );
-                        settings.configurator.editor_bridge_exe_path = expected_path.to_string_lossy().to_string();
-                        let _ = crate::settings::save_settings(&settings);
-                    }
-                }
-            }
-
             // Enterprise mode: if enterprise.json exists, fetch remote config
             {
                 let enterprise_path = crate::settings::get_enterprise_config_path();
@@ -377,20 +328,4 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-/// Recursively copy all files from `src` to `dst`, skipping files that already exist in `dst`.
-fn migrate_dir(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
-    std::fs::create_dir_all(dst).map_err(|e| e.to_string())?;
-    for entry in std::fs::read_dir(src).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
-            migrate_dir(&src_path, &dst_path)?;
-        } else if !dst_path.exists() {
-            std::fs::copy(&src_path, &dst_path).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
 }
