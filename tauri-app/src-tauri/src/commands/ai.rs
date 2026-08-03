@@ -563,6 +563,7 @@ pub async fn stream_chat(
 
             ApiMessage {
                 role: m.role,
+                reasoning_content: None,
                 content: if m.content.is_empty() && tool_calls.is_some() {
                     // assistant message with tool_calls may have empty content (valid)
                     None
@@ -615,6 +616,7 @@ pub async fn stream_chat(
 
                     api_messages.push(ApiMessage {
                         role: "assistant".to_string(),
+                        reasoning_content: None,
                         content: None,
                         tool_calls: Some(vec![tool_call]),
                         tool_call_id: None,
@@ -703,6 +705,7 @@ pub async fn stream_chat(
 
                     api_messages.push(ApiMessage {
                         role: "tool".to_string(),
+                        reasoning_content: None,
                         content: Some(tool_result),
                         tool_call_id: Some(tool_call_id),
                         tool_calls: None,
@@ -793,6 +796,7 @@ pub async fn stream_chat(
                     for tool_call in &tool_calls_limited {
                         api_messages.push(ApiMessage {
                             role: "tool".to_string(),
+                            reasoning_content: None,
                             content: Some("Error: Action rejected by user".to_string()),
                             tool_call_id: Some(tool_call.id.clone()),
                             tool_calls: None,
@@ -940,6 +944,7 @@ pub async fn stream_chat(
                     }
                     api_messages.push(ApiMessage {
                         role: "tool".to_string(),
+                        reasoning_content: None,
                         content: Some(tool_result),
                         tool_call_id: Some(tool_call.id.clone()),
                         tool_calls: None,
@@ -957,6 +962,7 @@ pub async fn stream_chat(
                     );
                     api_messages.push(ApiMessage {
                         role: "user".to_string(),
+                        reasoning_content: None,
                         content: Some(wrapped),
                         tool_calls: None,
                         tool_call_id: None,
@@ -976,6 +982,7 @@ pub async fn stream_chat(
                     let _ = task_app_handle.emit("chat-status", "Запрашиваю текстовый ответ...");
                     api_messages.push(ApiMessage {
                         role: "user".to_string(),
+                        reasoning_content: None,
                         content: Some("Напиши свой ответ текстом.".to_string()),
                         tool_calls: None,
                         tool_call_id: None,
@@ -1004,6 +1011,7 @@ pub async fn stream_chat(
                     );
                     api_messages.push(ApiMessage {
                         role: "user".to_string(),
+                        reasoning_content: None,
                         content: Some(wrapped),
                         tool_calls: None,
                         tool_call_id: None,
@@ -1113,6 +1121,7 @@ pub async fn stream_chat(
                     );
                     api_messages.push(ApiMessage {
                         role: "user".to_string(),
+                        reasoning_content: None,
                         content: Some(wrapped),
                         tool_calls: None,
                         tool_call_id: None,
@@ -1132,6 +1141,7 @@ pub async fn stream_chat(
                 );
                 api_messages.push(ApiMessage {
                     role: "user".to_string(),
+                    reasoning_content: None,
                     content: Some(wrapped),
                     tool_calls: None,
                     tool_call_id: None,
@@ -1213,6 +1223,7 @@ pub async fn compact_context(messages_json: String) -> Result<String, String> {
     let summarize_messages = vec![
         ApiMessage {
             role: "system".to_string(),
+            reasoning_content: None,
             content: Some(system_prompt.to_string()),
             tool_calls: None,
             tool_call_id: None,
@@ -1220,6 +1231,7 @@ pub async fn compact_context(messages_json: String) -> Result<String, String> {
         },
         ApiMessage {
             role: "user".to_string(),
+            reasoning_content: None,
             content: Some(format!(
                 "Сожми следующий диалог в краткий конспект:\n\n{}",
                 conv_text
@@ -1407,6 +1419,7 @@ mod tests {
     fn empty_assistant_message_is_not_meaningful_for_history() {
         let message = ApiMessage {
             role: "assistant".to_string(),
+            reasoning_content: None,
             content: None,
             tool_calls: None,
             tool_call_id: None,
@@ -1420,6 +1433,7 @@ mod tests {
     fn assistant_tool_call_message_is_meaningful_for_history_even_without_content() {
         let message = ApiMessage {
             role: "assistant".to_string(),
+            reasoning_content: None,
             content: None,
             tool_calls: Some(vec![crate::ai::models::ToolCall {
                 id: "call_1".to_string(),
@@ -1494,6 +1508,7 @@ mod tests {
         let messages = vec![
             ApiMessage {
                 role: "user".to_string(),
+                reasoning_content: None,
                 content: Some("```bsl\nПроцедура СтарыйКод()\nКонецПроцедуры\n```".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
@@ -1501,6 +1516,7 @@ mod tests {
             },
             ApiMessage {
                 role: "assistant".to_string(),
+                reasoning_content: None,
                 content: Some("ответ".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
@@ -1508,6 +1524,7 @@ mod tests {
             },
             ApiMessage {
                 role: "user".to_string(),
+                reasoning_content: None,
                 content: Some("```bsl\nПроцедура НовыйКод()\nКонецПроцедуры\n```".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
@@ -1545,6 +1562,7 @@ mod tests {
         let mut messages = vec![
             ApiMessage {
                 role: "user".to_string(),
+                reasoning_content: None,
                 content: Some("get_skill".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
@@ -1552,6 +1570,7 @@ mod tests {
             },
             ApiMessage {
                 role: "tool".to_string(),
+                reasoning_content: None,
                 content: Some(russian_content.clone()),
                 tool_calls: None,
                 tool_call_id: Some("call_1".to_string()),
@@ -1559,6 +1578,7 @@ mod tests {
             },
             ApiMessage {
                 role: "tool".to_string(),
+                reasoning_content: None,
                 content: Some(russian_content.clone()),
                 tool_calls: None,
                 tool_call_id: Some("call_2".to_string()),
@@ -1580,6 +1600,7 @@ mod tests {
         let mut messages = vec![
             ApiMessage {
                 role: "tool".to_string(),
+                reasoning_content: None,
                 content: Some("short".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("call_1".to_string()),
@@ -1587,6 +1608,7 @@ mod tests {
             },
             ApiMessage {
                 role: "tool".to_string(),
+                reasoning_content: None,
                 content: None,
                 tool_calls: None,
                 tool_call_id: Some("call_2".to_string()),

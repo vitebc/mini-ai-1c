@@ -466,6 +466,7 @@ pub async fn quick_codex_invoke(prompt: String) -> Result<String, String> {
     let stream_timeout_secs = resolve_codex_stream_timeout_secs(profile.stream_timeout_secs);
     let messages = vec![ApiMessage {
         role: "user".to_string(),
+        reasoning_content: None,
         content: Some(prompt),
         tool_calls: None,
         tool_call_id: None,
@@ -962,6 +963,7 @@ pub async fn stream_codex_completion(
 
     Ok(ApiMessage {
         role: "assistant".to_string(),
+        reasoning_content: None,
         content: if full_content.is_empty() {
             None
         } else {
@@ -996,6 +998,7 @@ mod tests {
         let messages = vec![
             ApiMessage {
                 role: "system".to_string(),
+                reasoning_content: None,
                 content: Some("system instructions".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
@@ -1003,6 +1006,7 @@ mod tests {
             },
             ApiMessage {
                 role: "developer".to_string(),
+                reasoning_content: None,
                 content: Some("developer instructions".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
@@ -1010,6 +1014,7 @@ mod tests {
             },
             ApiMessage {
                 role: "user".to_string(),
+                reasoning_content: None,
                 content: Some("user request".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
@@ -1034,6 +1039,7 @@ mod tests {
     fn messages_to_codex_payload_uses_default_instructions_without_system_messages() {
         let messages = vec![ApiMessage {
             role: "user".to_string(),
+            reasoning_content: None,
             content: Some("hello".to_string()),
             tool_calls: None,
             tool_call_id: None,
@@ -1052,6 +1058,7 @@ mod tests {
         let messages = vec![
             ApiMessage {
                 role: "user".to_string(),
+                reasoning_content: None,
                 content: Some("fix it".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
@@ -1059,6 +1066,7 @@ mod tests {
             },
             ApiMessage {
                 role: "assistant".to_string(),
+                reasoning_content: None,
                 content: None,
                 tool_calls: Some(vec![ToolCall {
                     id: "call_orphan".to_string(),
@@ -1084,6 +1092,7 @@ mod tests {
         let messages = vec![
             ApiMessage {
                 role: "assistant".to_string(),
+                reasoning_content: None,
                 content: None,
                 tool_calls: Some(vec![ToolCall {
                     id: "call_done".to_string(),
@@ -1098,6 +1107,7 @@ mod tests {
             },
             ApiMessage {
                 role: "tool".to_string(),
+                reasoning_content: None,
                 content: Some("{\"ok\":true}".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("call_done".to_string()),
@@ -1151,6 +1161,7 @@ mod tests {
 
         let messages = vec![ApiMessage {
             role: "user".to_string(),
+            reasoning_content: None,
             content: Some("describe this method".to_string()),
             tool_calls: None,
             tool_call_id: None,

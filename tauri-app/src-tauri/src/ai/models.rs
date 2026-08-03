@@ -21,6 +21,10 @@ pub struct ApiMessage {
     pub role: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    /// DeepSeek/Qwen3 thinking mode: reasoning_content must be passed back
+    /// in subsequent requests when thinking mode is enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -126,6 +130,8 @@ pub struct NonStreamChoice {
 #[derive(Debug, Deserialize)]
 pub struct NonStreamMessage {
     pub content: Option<String>,
+    #[serde(alias = "reasoning")]
+    pub reasoning_content: Option<String>,
     pub tool_calls: Option<Vec<NonStreamToolCall>>,
 }
 

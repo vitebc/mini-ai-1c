@@ -317,6 +317,7 @@ pub async fn stream_chat_completion(
 
     let mut api_messages = vec![ApiMessage {
         role: "system".to_string(),
+        reasoning_content: None,
         content: Some(system_prompt),
         tool_calls: None,
         tool_call_id: None,
@@ -865,6 +866,7 @@ pub async fn stream_chat_completion(
             .next()
             .ok_or("Empty response from API")?;
         let content = choice.message.content.unwrap_or_default();
+        let reasoning_content = choice.message.reasoning_content;
         let raw_tool_calls = choice.message.tool_calls.unwrap_or_default();
         // Convert NonStreamToolCall → ToolCall, normalising arguments to valid JSON string.
         let tool_calls: Vec<ToolCall> = raw_tool_calls
@@ -906,6 +908,7 @@ pub async fn stream_chat_completion(
             } else {
                 Some(content)
             },
+            reasoning_content,
             tool_calls: if tool_calls.is_empty() {
                 None
             } else {
@@ -919,6 +922,7 @@ pub async fn stream_chat_completion(
     let mut stream = response.bytes_stream();
     let mut byte_buffer = Vec::new();
     let mut full_content = String::new();
+    let mut full_reasoning = String::new();  // DeepSeek/Qwen3 thinking content
     let mut content_search_temp = String::new();
     let mut accumulated_tool_calls: Vec<ToolCall> = Vec::new();
     let mut announced_tool_calls = std::collections::HashSet::new();
@@ -1082,6 +1086,11 @@ pub async fn stream_chat_completion(
                             } else {
                                 Some(full_content)
                             },
+                            reasoning_content: if full_reasoning.is_empty() {
+                                None
+                            } else {
+                                Some(full_reasoning)
+                            },
                             tool_calls: if accumulated_tool_calls.is_empty() {
                                 None
                             } else {
@@ -1101,6 +1110,7 @@ pub async fn stream_chat_completion(
                                         is_thinking = true;
                                         let _ = app_handle.emit("chat-status", "Размышляю...");
                                     }
+                                    full_reasoning.push_str(reasoning);
                                     let _ =
                                         app_handle.emit("chat-thinking-chunk", reasoning.clone());
                                 }
@@ -1461,6 +1471,7 @@ pub async fn stream_chat_completion(
 
     Ok(ApiMessage {
         role: "assistant".to_string(),
+        reasoning_content: None,
         content: if full_content.is_empty() {
             None
         } else {
@@ -1597,6 +1608,7 @@ mod tests {
         let messages = vec![
             ApiMessage {
                 role: "user".to_string(),
+                reasoning_content: None,
                 content: Some("test".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
@@ -1604,6 +1616,7 @@ mod tests {
             },
             ApiMessage {
                 role: "tool".to_string(),
+                reasoning_content: None,
                 content: Some("cached".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("tc_1".to_string()),
@@ -1665,6 +1678,7 @@ mod tests {
         let messages = vec![
             ApiMessage {
                 role: "assistant".to_string(),
+                reasoning_content: None,
                 content: None,
                 tool_calls: Some(vec![ToolCall {
                     id: "call_1".to_string(),
@@ -1679,6 +1693,7 @@ mod tests {
             },
             ApiMessage {
                 role: "tool".to_string(),
+                reasoning_content: None,
                 content: None,
                 tool_calls: None,
                 tool_call_id: Some("call_1".to_string()),
@@ -1696,6 +1711,7 @@ mod tests {
     fn ollama_cloud_sanitizer_keeps_existing_content_unchanged() {
         let messages = vec![ApiMessage {
             role: "assistant".to_string(),
+            reasoning_content: None,
             content: Some("ready".to_string()),
             tool_calls: None,
             tool_call_id: None,

@@ -616,6 +616,7 @@ mod tests {
     fn make_user_message(content: &str) -> ApiMessage {
         ApiMessage {
             role: "user".to_string(),
+            reasoning_content: None,
             content: Some(content.to_string()),
             tool_calls: None,
             tool_call_id: None,
