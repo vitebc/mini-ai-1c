@@ -2,16 +2,20 @@ import { invoke } from '@tauri-apps/api/core';
 
 /**
  * Launch 1C Configurator for a given infobase.
- * @param platformPath - path to 1cv8.exe (e.g. C:\Program Files\1cv8\8.3.27.2130\bin\1cv8.exe)
- * @param infobasePath - connection string or path (e.g. "E:\bases\UPP" or "File=\"E:\\bases\\UPP\"")
- * @param isServer - true for server bases (Srvr/Ref), false for file bases (File=)
+ * @param platformPath - path to 1cv8.exe
+ * @param infobasePath - connection string or path
+ * @param isServer - true for server bases, false for file bases
+ * @param login - optional 1C user login
+ * @param password - optional 1C user password
  */
 export async function launchConfigurator(
     platformPath: string,
     infobasePath: string,
     isServer: boolean,
+    login?: string,
+    password?: string,
 ): Promise<void> {
-    return await invoke('launch_configurator_cmd', { platformPath, infobasePath, isServer });
+    return await invoke('launch_configurator_cmd', { platformPath, infobasePath, isServer, login: login ?? null, password: password ?? null });
 }
 
 /**

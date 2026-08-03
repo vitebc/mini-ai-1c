@@ -197,7 +197,11 @@ export function SearchProfileBar() {
           }),
         });
       }
-      await launchConfigurator(platformPath, base.connection, base.type === 'server');
+      // Read login/password from jvv-1c server config
+      const jvvEnv = settings.mcp_servers.find(s => s.id === 'builtin-jvv-1c')?.env || {};
+      const login = jvvEnv['ONEC_LOGIN'] || '';
+      const password = jvvEnv['ONEC_PASSWORD'] || '';
+      await launchConfigurator(platformPath, base.connection, base.type === 'server', login, password);
       setShowDatabases(false);
     } catch (e) {
       console.error('Launch failed:', e);
@@ -313,6 +317,14 @@ export function SearchProfileBar() {
           >
             <Unlink className="w-3 h-3" />
           </button>
+        )}
+
+        {/* ── Индикатор: выберите окно Конфигуратора ── */}
+        {!selectedPid && (
+          <div className="ml-auto flex items-center gap-1.5 text-[10px] text-amber-500">
+            <AlertTriangle className="w-3 h-3" />
+            <span>Выберите окно Конфигуратора снизу</span>
+          </div>
         )}
       </div>
 

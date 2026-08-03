@@ -1548,11 +1548,43 @@ className="flex-1 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-2.5 
                                                         </div>
                                                     );
                                                 })()
-                                            ) : isEnv ? (
+                                             ) : isEnv ? (
                                                 <div className="space-y-3">
                                                              <div className="bg-zinc-800/50 border border-yellow-500/10 rounded-lg p-3 text-xs text-zinc-400">
                                                         Автоопределение установленных платформ 1С и списка информационных баз (из ibases.v8i).
                                                         Инструменты: <code className="bg-zinc-800 text-zinc-300 px-1 rounded">list_infobases</code>, <code className="bg-zinc-800 text-zinc-300 px-1 rounded">find_platform</code>, <code className="bg-zinc-800 text-zinc-300 px-1 rounded">get_1c_environment</code>.
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="text-[10px] text-zinc-500 uppercase font-bold mb-1 block">
+                                                                Логин пользователя 1С
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={server.env?.['ONEC_LOGIN'] || ''}
+                                                                onChange={(e) => {
+                                                                    const newEnv = { ...(server.env || {}), 'ONEC_LOGIN': e.target.value };
+                                                                    handleUpdateServer(server.id, { env: newEnv });
+                                                                }}
+                                                                className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                                placeholder="Для запуска баз"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] text-zinc-500 uppercase font-bold mb-1 block">
+                                                                Пароль пользователя 1С
+                                                            </label>
+                                                            <input
+                                                                type="password"
+                                                                value={server.env?.['ONEC_PASSWORD'] || ''}
+                                                                onChange={(e) => {
+                                                                    const newEnv = { ...(server.env || {}), 'ONEC_PASSWORD': e.target.value };
+                                                                    handleUpdateServer(server.id, { env: newEnv });
+                                                                }}
+                                                                className="w-full bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                                                placeholder="Для запуска баз"
+                                                            />
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ) : (

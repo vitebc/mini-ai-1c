@@ -486,6 +486,8 @@ pub async fn launch_configurator_cmd(
     platform_path: String,
     infobase_path: String,
     is_server: bool,
+    login: Option<String>,
+    password: Option<String>,
 ) -> Result<(), String> {
     use std::process::Command;
 
@@ -514,7 +516,13 @@ pub async fn launch_configurator_cmd(
         args.push(format!("\"{}\"", path));
     }
 
-    args.push("/DisableStartupDialogs".to_string());
+    // Add login/password if provided
+    if let Some(user) = login.filter(|s| !s.is_empty()) {
+        args.push(format!("/N\"{}\"", user));
+    }
+    if let Some(pass) = password.filter(|s| !s.is_empty()) {
+        args.push(format!("/P\"{}\"", pass));
+    }
 
     #[cfg(windows)]
     {
