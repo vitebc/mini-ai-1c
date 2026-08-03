@@ -471,6 +471,13 @@ pub async fn get_1c_platform_path_cmd() -> Result<String, String> {
         // MCP server returns { count, latest, platforms: [...] }
         if let Some(platforms) = parsed.get("platforms").and_then(|p| p.as_array()) {
             if let Some(first) = platforms.first() {
+                // Prefer 1cestart.exe (handles version selection automatically)
+                if let Some(cestart) = first.get("cestart_path").and_then(|e| e.as_str()) {
+                    if !cestart.is_empty() && std::path::Path::new(cestart).exists() {
+                        return Ok(cestart.to_string());
+                    }
+                }
+                // Fallback to 1cv8.exe
                 if let Some(exe) = first.get("exe_path").and_then(|e| e.as_str()) {
                     return Ok(exe.to_string());
                 }

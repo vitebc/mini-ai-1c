@@ -19,6 +19,7 @@ interface PlatformInfo {
     bin_path: string;
     exe_path: string;
     ibcmd_path: string;
+    cestart_path: string;
     exists: boolean;
 }
 
@@ -187,11 +188,15 @@ function findPlatform(): PlatformInfo[] {
                 const ibcmdPath = join(binDir, 'ibcmd.exe');
 
                 if (existsSync(exePath)) {
+                    // Check for 1cestart.exe in common directory
+                    const commonDir = join(cv8Dir, 'common');
+                    const cestartPath = join(commonDir, '1cestart.exe');
                     platforms.push({
                         version: entry,
                         bin_path: binDir,
                         exe_path: exePath,
                         ibcmd_path: ibcmdPath,
+                        cestart_path: existsSync(cestartPath) ? cestartPath : '',
                         exists: true,
                     });
                 }
@@ -309,6 +314,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         bin_path: p.bin_path,
                         exe_path: p.exe_path,
                         ibcmd_path: p.ibcmd_path,
+                        cestart_path: p.cestart_path || null,
                     })),
                 });
             }

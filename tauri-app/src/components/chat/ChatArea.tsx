@@ -7,7 +7,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useConfigurator } from '../../contexts/ConfiguratorContext';
 import { parseConfiguratorTitle, ConfiguratorTitleContext } from '../../utils/configurator';
 import { MarkdownRenderer, cleanDiffArtifacts } from '../MarkdownRenderer';
-import { Loader2, Square, ArrowUp, Settings, ChevronDown, ChevronRight, Monitor, RefreshCw, FileText, MousePointerClick, Brain, BrainCircuit, Check, X, Terminal, Pencil, Play, Send, User, HardHat, Mic, MoreHorizontal, Info, Wrench, BellRing, BellOff, SlidersHorizontal } from 'lucide-react';
+import { Loader2, Square, ArrowUp, Settings, ChevronDown, ChevronRight, Monitor, RefreshCw, FileText, MousePointerClick, Brain, BrainCircuit, Check, X, Terminal, Pencil, Play, Send, User, HardHat, Mic, MoreHorizontal, Info, Wrench, BellRing, BellOff, SlidersHorizontal, AlertTriangle } from 'lucide-react';
 import logo from '../../assets/logo.png';
 import ToolCallBlock from './ToolCallBlock';
 import { MessageActions } from './MessageActions';
@@ -378,6 +378,7 @@ export const ChatArea = memo(function ChatArea({
         activeConfigTitle,
         getCode,
         parsedTitleContext,
+        selectedPid,
     } = useConfigurator();
 
     const [appliedDiffMessages, setAppliedDiffMessages] = useState<Set<string>>(new Set());
@@ -1711,32 +1712,36 @@ export const ChatArea = memo(function ChatArea({
             <div className="px-6 pb-6 pt-4 bg-zinc-900 border-t border-zinc-700 shadow-2xl z-10">
                 {/* Context Stats Overlay */}
                 <div className="max-w-4xl mx-auto mb-3 flex items-center justify-between px-1">
-                    {messages.length === 0 ? (
-                        <div className="flex items-center gap-2 text-[11px] text-zinc-600 italic transition-all duration-500">
-                            <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
-                            <span>
+                    <div className="flex items-center gap-2 text-[11px] text-zinc-600 italic">
+                        {messages.length === 0 && (
+                            <span className="flex items-center gap-1">
+                                <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
                                 {bindingStatus === 'resolved' || bindingStatus === 'rebound'
                                     ? 'Окно выбрано'
                                     : bindingStatus === 'missing'
                                         ? 'Ждём возвращения выбранного Конфигуратора'
                                         : bindingStatus === 'ambiguous'
                                             ? 'Нужно заново выбрать окно Конфигуратора'
-                                            : 'Выберите окно Конфигуратора снизу'}
+                                            : ''}
                             </span>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-3">
-                            {/* Actions removed */}
-                        </div>
-                    )}
+                        )}
+                    </div>
 
-                    <ContextChips
-                        codeContext={contextCode || modifiedCode}
-                        isSelection={isContextSelection}
-                        diagnostics={diagnostics}
-                        configuratorCtx={configuratorTitleCtx}
-                        onRemoveCode={handleRemoveCodeContext}
-                    />
+                    <div className="flex items-center gap-3">
+                        {!selectedPid && (
+                            <div className="flex items-center gap-1.5 text-[10px] text-amber-500">
+                                <AlertTriangle className="w-3 h-3" />
+                                <span>Выберите окно Конфигуратора снизу</span>
+                            </div>
+                        )}
+                        <ContextChips
+                            codeContext={contextCode || modifiedCode}
+                            isSelection={isContextSelection}
+                            diagnostics={diagnostics}
+                            configuratorCtx={configuratorTitleCtx}
+                            onRemoveCode={handleRemoveCodeContext}
+                        />
+                    </div>
                 </div>
                 <QueuedMessages
                     queue={messageQueue}

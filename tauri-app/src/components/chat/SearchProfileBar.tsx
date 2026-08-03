@@ -319,13 +319,6 @@ export function SearchProfileBar() {
           </button>
         )}
 
-        {/* ── Индикатор: выберите окно Конфигуратора ── */}
-        {!selectedPid && (
-          <div className="ml-auto flex items-center gap-1.5 text-[10px] text-amber-500">
-            <AlertTriangle className="w-3 h-3" />
-            <span>Выберите окно Конфигуратора снизу</span>
-          </div>
-        )}
       </div>
 
       {/* ── Дропдаун профилей ── */}
