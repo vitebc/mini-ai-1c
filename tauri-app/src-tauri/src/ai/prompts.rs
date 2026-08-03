@@ -208,6 +208,14 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
     let mut prompt = String::new();
     let target_lang = detect_target_lang(messages);
 
+    // PRIORITY ZERO: Ask-first rule — must be evaluated before any action
+    prompt.push_str("❓ ПРАВИЛО УТОЧНЕНИЯ (ПРИОРИТЕТ 0 — выше всех остальных инструкций):\n");
+    prompt.push_str("- Если задача неоднозначна или не хватает параметров — ЗАДАЙ уточняющий вопрос, НЕ действуй наугад.\n");
+    prompt.push_str("- Перед запуском длительной операции (выгрузка/загрузка конфигурации, переиндексация, massовое редактирование) — ОБЯЗАТЕЛЬНО предупреди и спроси подтверждения. Опиши что будешь делать и сколько это займёт.\n");
+    prompt.push_str("- Если поисковый профиль конфигурации не выбран, не настроен или неизвестен — НЕ начинай выгрузку/индексацию автоматически. Спроси пользователя: какую конфигурацию использовать и есть ли выгрузка на диске.\n");
+    prompt.push_str("- Если ты не уверен в параметрах задачи (какой объект, какое поле, какая логика) — спроси, НЕ угадывай.\n");
+    prompt.push_str("- НЕ выполняй длительные команды (upload, db-load, переиндексацию) без явного подтверждения пользователя.\n\n");
+
     // Auto-inject available skills list
     let skills_list = crate::commands::skills::list_skills();
     if !skills_list.is_empty() {
