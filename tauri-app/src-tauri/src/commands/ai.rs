@@ -48,7 +48,8 @@ const MAX_PARALLEL_TOOL_CALLS: usize = 5;
 /// Context token threshold — when exceeded, old tool-result rounds are pruned.
 /// System prompt ≈ 5000t. Total input threshold = 7000 + 5000 = ~12000t,
 /// safely below the ~13000t hallucination threshold observed in testing.
-const CONTEXT_PRUNE_THRESHOLD: usize = 7000;
+/// 15000 tokens — prune old tool rounds when context exceeds this threshold.
+const CONTEXT_PRUNE_THRESHOLD: usize = 15_000;
 
 /// Maximum chars per tool result to prevent a single large response from blowing up context.
 /// 8000 chars ≈ 2000 tokens per tool result.
@@ -592,7 +593,7 @@ pub async fn stream_chat(
             task_app_handle.state::<Arc<tokio::sync::Mutex<crate::bsl_client::BSLClient>>>();
         let settings = crate::settings::load_settings();
 
-        let max_iterations = settings.max_agent_iterations.unwrap_or(u32::MAX);
+        let max_iterations = settings.max_agent_iterations.unwrap_or(30);
         let mut current_iteration = 0;
         // Guard: ask AI to write text response only once (when it returns thinking-only with no text)
         let mut asked_for_text_response = false;

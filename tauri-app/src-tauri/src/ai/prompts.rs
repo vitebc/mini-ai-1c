@@ -223,6 +223,13 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
         prompt.push_str("Если задача соответствует скиллу — получи его через `get_skill(id)` и СЛЕДУЙ инструкциям из SKILL.md.\n\n");
     }
 
+    // CRITICAL: Stop rule to prevent infinite search loops
+    prompt.push_str("🚫 СТОП-ПРАВИЛО (НАРУШИТЬ НЕЛЬЗЯ):\n");
+    prompt.push_str("- Максимум 15 вызовов инструментов на всю задачу.\n");
+    prompt.push_str("- Если ты уже получил достаточно информации или выполнил действие — НЕМЕДЛЕННО напиши итоговый ответ пользователю.\n");
+    prompt.push_str("- НЕ продолжай поиск бесконечно. НЕ повторяй одни и те же вызовы.\n");
+    prompt.push_str("- После каждого tool call спроси себя: «Есть ли у меня достаточно информации для ответа?» Если да — отвечай.\n\n");
+
     match code_gen.behavior_preset {
         PromptBehaviorPreset::Project => {
             prompt.push_str("Ты - эксперт-разработчик 1С. Твоя задача - писать чистый, поддерживаемый код, следуя стандартам 1С и БСП. Можешь исправлять ошибки и предлагать оптимальные решения в рамках запроса.\n\n");
