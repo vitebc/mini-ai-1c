@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, ChevronDown, Check, Link, Unlink } from 'lucide-react';
+import { Search, ChevronDown, Check, Link, Unlink, MonitorOff } from 'lucide-react';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useConfigurator } from '../../contexts/ConfiguratorContext';
 import {
@@ -60,7 +60,25 @@ export function SearchProfileBar() {
 
   // When selectedPid changes, check if there's a bound profile and auto-switch
   useEffect(() => {
-    if (!selectedPid || !searchServer || profiles.length === 0) {
+    if (!searchServer || profiles.length === 0) {
+      setIsBound(false);
+      return;
+    }
+
+    // Auto-select if only one profile exists and no active profile
+    if (profiles.length === 1 && activeId !== profiles[0].id) {
+      const newEnv = buildSearchEnv(searchServer, profiles, profiles[0].id);
+      updateSettings({
+        ...settings!,
+        mcp_servers: settings!.mcp_servers.map(s =>
+          s.id === BUILTIN_1C_SEARCH_ID ? { ...s, env: newEnv } : s,
+        ),
+      });
+      setIsBound(false);
+      return;
+    }
+
+    if (!selectedPid) {
       setIsBound(false);
       return;
     }
@@ -117,24 +135,21 @@ export function SearchProfileBar() {
       <div className="flex items-center gap-2">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-all ${
-            !selectedPid
-              ? 'text-red-400 hover:text-red-300 hover:bg-red-500/10'
-              : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
-          }`}
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-all text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
         >
-          <Search className="w-3 h-3" />
-          {selectedPid ? (
-            <>
-              {isBound && <Link className="w-2.5 h-2.5 text-green-400 shrink-0" />}
-              <span className="truncate max-w-[200px] text-blue-400">{activeProfile?.name || 'Нет профиля'}</span>
-            </>
-          ) : (
-            <span className="text-red-400 font-medium">Профиль не выбран</span>
-          )}
+          {selectedPid
+            ? <Search className="w-3 h-3" />
+            : <MonitorOff className="w-3 h-3 text-zinc-500" />
+          }
+          {isBound && <Link className="w-2.5 h-2.5 text-green-400 shrink-0" />}
+          <span className={`truncate max-w-[200px] ${activeProfile ? 'text-blue-400' : 'text-zinc-500'}`}>
+            {activeProfile?.name || 'Выберите профиль'}
+          </span>
           <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
-        <span className="text-[10px] text-zinc-600">конфигурация для поиска</span>
+        <span className="text-[10px] text-zinc-600">
+          {selectedPid ? 'конфигурация для поиска' : 'ручной выбор'}
+        </span>
         {selectedPid && isBound && (
           <button
             onClick={removeBinding}
