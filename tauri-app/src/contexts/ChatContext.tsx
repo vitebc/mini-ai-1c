@@ -663,11 +663,20 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             const dialogMsgs = previousMessages.filter(m => m.role !== 'system');
 
             if (estimateMsgTokens(dialogMsgs) > maxTokens) {
+                // Keep last 3 assistant responses — they carry the immediate context
+                const lastAssistantMsgs: ChatMessage[] = [];
+                for (let i = dialogMsgs.length - 1; i >= 0 && lastAssistantMsgs.length < 3; i--) {
+                    if (dialogMsgs[i].role === 'assistant') {
+                        lastAssistantMsgs.unshift(dialogMsgs[i]);
+                    }
+                }
                 try {
-                    const toSummarize: api.ChatMessage[] = dialogMsgs.map(m => ({
-                        role: m.role as api.ChatMessage['role'],
-                        content: m.content || '',
-                    }));
+                    const toSummarize: api.ChatMessage[] = dialogMsgs
+                        .filter(m => !lastAssistantMsgs.includes(m))
+                        .map(m => ({
+                            role: m.role as api.ChatMessage['role'],
+                            content: m.content || '',
+                        }));
 
                     const summary = (await api.compactContext(JSON.stringify(toSummarize))).trim();
                     if (!summary) {
@@ -689,7 +698,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         msg => msg.role === 'system' && msg.includeInPayload
                     );
 
-                    payloadSourceMessages = [...payloadSystemMessages, summaryMsg, userMessage];
+                    // Preserve last 3 assistant responses after the summary
+                    payloadSourceMessages = [...payloadSystemMessages, summaryMsg, ...lastAssistantMsgs, userMessage];
                     indicator = {
                         anchorMessageId: userMessage.id,
                         label: 'Контекст сжат',
