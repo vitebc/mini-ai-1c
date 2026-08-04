@@ -45,6 +45,13 @@ export function normalizeSearchProfiles(
                             path: String(e.path || ''),
                         }))
                         : [],
+                    bound_infobase: p.bound_infobase && typeof p.bound_infobase === 'object'
+                        ? {
+                            name: String(p.bound_infobase.name || ''),
+                            connection: String(p.bound_infobase.connection || ''),
+                            type: p.bound_infobase.type === 'server' ? 'server' : 'file',
+                        }
+                        : undefined,
                 }));
         }
     } catch {
