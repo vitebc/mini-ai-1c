@@ -148,6 +148,39 @@ export function SearchProfileBar() {
       });
       setIsBound(true);
     } else if (!boundId) {
+      // Check if the selected window matches a profile's bound_infobase
+      const selectedWindow = detectedWindows?.find(w => w.process_id === selectedPid);
+      const ctx = selectedWindow ? parseConfiguratorTitleFull(selectedWindow.title || '') : null;
+      const configName = (ctx?.config_name || '').trim().toLowerCase();
+
+      const matchedProfile = configName
+        ? profiles.find(p => {
+            const bound = p.bound_infobase;
+            if (!bound) return false;
+            const boundName = bound.name.trim().toLowerCase();
+            if (boundName === configName) return true;
+            if (configName.includes(boundName) || boundName.includes(configName)) return true;
+            const folderMatch = bound.connection.match(/File="[^"]*\\([^\\"]+)"/);
+            if (folderMatch && configName.includes(folderMatch[1].toLowerCase())) return true;
+            return false;
+          })
+        : null;
+
+      if (matchedProfile && matchedProfile.id !== activeId) {
+        // Auto-switch to matching profile + bind PID
+        const newEnv = buildSearchEnv(searchServer, profiles, matchedProfile.id);
+        updateSettings({
+          ...settings!,
+          mcp_servers: settings!.mcp_servers.map(s =>
+            s.id === BUILTIN_1C_SEARCH_ID ? { ...s, env: newEnv } : s,
+          ),
+        });
+        const newBindings = loadBindings();
+        if (!newBindings[BUILTIN_1C_SEARCH_ID]) newBindings[BUILTIN_1C_SEARCH_ID] = {};
+        newBindings[BUILTIN_1C_SEARCH_ID][selectedPid] = matchedProfile.id;
+        saveBindings(newBindings);
+        setIsBound(true);
+      } else {
       // No existing PID binding — check if there's a pending launch to auto-bind
       const pending = loadPendingLaunch();
       const now = Date.now();
@@ -181,6 +214,7 @@ export function SearchProfileBar() {
         setIsBound(true);
       } else {
         setIsBound(false);
+      }
       }
     } else {
       setIsBound(!!boundId && profiles.some(p => p.id === boundId));
@@ -429,7 +463,7 @@ export function SearchProfileBar() {
           <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
-        <span className={`text-[10px] ${isMismatch ? 'text-amber-500' : 'text-zinc-600'}`}>
+        <span className={`text-[10px] ${isMismatch ? 'text-amber-500' : 'text-zinc-500'}`}>
           {isMismatch ? 'профиль не соответствует' : selectedPid ? 'конфигурация для поиска' : 'ручной выбор'}
         </span>
 
