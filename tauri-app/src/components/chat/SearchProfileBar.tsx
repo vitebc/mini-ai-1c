@@ -223,40 +223,61 @@ export function SearchProfileBar() {
     if (!platformPath || !settings) return;
     setLaunching(base.name);
     try {
-      // Bind the profile to this database before launching
-      if (activeProfile) {
+      // Find the profile whose bound_infobase matches this database (case-insensitive).
+      // If found, auto-switch to that profile before launching.
+      const baseName = base.name.trim().toLowerCase();
+      const matchingProfile = profiles.find(
+        p => p.bound_infobase?.name?.trim().toLowerCase() === baseName
+      );
+      // If no explicit match, fall back to the currently active profile
+      const launchProfile = matchingProfile || activeProfile;
+
+      if (!launchProfile) {
+        setShowDatabases(false);
+        return;
+      }
+
+      // Auto-switch to the matching profile if it differs from the current one
+      if (matchingProfile && matchingProfile.id !== activeId) {
+        const newEnv = buildSearchEnv(searchServer, profiles, matchingProfile.id);
         updateSettings({
           ...settings,
-          mcp_servers: settings.mcp_servers.map(s => {
-            if (s.id !== BUILTIN_1C_SEARCH_ID) return s;
-            const env = s.env || {};
-            const profilesJson = env['ONEC_CONFIG_PROFILES_JSON'] || '[]';
-            try {
-              const profilesArr = JSON.parse(profilesJson);
-              const updated = profilesArr.map((p: any) =>
-                p.id === activeProfile.id
-                  ? { ...p, bound_infobase: { name: base.name, connection: base.connection, type: base.type } }
-                  : p
-              );
-              return {
-                ...s,
-                env: { ...env, 'ONEC_CONFIG_PROFILES_JSON': JSON.stringify(updated) },
-              };
-            } catch { return s; }
-          }),
+          mcp_servers: settings.mcp_servers.map(s =>
+            s.id === BUILTIN_1C_SEARCH_ID ? { ...s, env: newEnv } : s,
+          ),
         });
       }
+
+      // Update the launch profile's bound_infobase with the launched database
+      updateSettings({
+        ...settings,
+        mcp_servers: settings.mcp_servers.map(s => {
+          if (s.id !== BUILTIN_1C_SEARCH_ID) return s;
+          const env = s.env || {};
+          const profilesJson = env['ONEC_CONFIG_PROFILES_JSON'] || '[]';
+          try {
+            const profilesArr = JSON.parse(profilesJson);
+            const updated = profilesArr.map((p: any) =>
+              p.id === launchProfile.id
+                ? { ...p, bound_infobase: { name: base.name, connection: base.connection, type: base.type } }
+                : p
+            );
+            return {
+              ...s,
+              env: { ...env, 'ONEC_CONFIG_PROFILES_JSON': JSON.stringify(updated) },
+            };
+          } catch { return s; }
+        }),
+      });
       // Read login/password from jvv-1c server config
       const jvvEnv = settings.mcp_servers.find(s => s.id === 'builtin-jvv-1c')?.env || {};
       const login = jvvEnv['ONEC_LOGIN'] || '';
       const password = jvvEnv['ONEC_PASSWORD'] || '';
       await launchConfigurator(platformPath, base.connection, base.type === 'server', login, password);
-      // Remember this launch so the new Configurator PID gets auto-bound to the profile
-      if (activeProfile) {
-        const pending = loadPendingLaunch();
-        pending[activeProfile.id] = Date.now();
-        savePendingLaunch(pending);
-      }
+      // Remember this launch so the new Configurator PID gets auto-bound to the launch profile
+      const pending = loadPendingLaunch();
+      pending[launchProfile.id] = Date.now();
+      savePendingLaunch(pending);
       setShowDatabases(false);
     } catch (e) {
       console.error('Launch failed:', e);
