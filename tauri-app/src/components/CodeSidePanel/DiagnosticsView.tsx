@@ -25,25 +25,25 @@ export function DiagnosticsView({
     onSelectionChange,
 }: DiagnosticsViewProps) {
     const headerClass = isLightTheme
-        ? 'border-zinc-300 text-zinc-500 bg-zinc-100'
+        ? 'border-zinc-600 text-zinc-500 bg-zinc-800'
         : 'border-zinc-700/50 text-zinc-500 bg-zinc-800';
     const countBadgeClass = isLightTheme
-        ? 'bg-zinc-200 text-zinc-500'
+        ? 'bg-zinc-700 text-zinc-500'
         : 'bg-zinc-700 text-zinc-400';
     const emptyStateClass = isLightTheme ? 'text-zinc-600' : 'text-zinc-600';
     const tableHeaderClass = isLightTheme
-        ? 'bg-zinc-100 text-zinc-400'
+        ? 'bg-zinc-800 text-zinc-400'
         : 'bg-zinc-800 text-zinc-500';
     const rowClass = isLightTheme
-        ? 'border-[#e4e4e7] hover:bg-zinc-100'
+        ? 'border-[#e4e4e7] hover:bg-zinc-700'
         : 'border-zinc-700/30 hover:bg-zinc-700/50';
     const messageClass = isLightTheme ? 'text-[#2b2b2b]' : 'text-zinc-300';
     const sourceClass = isLightTheme ? 'text-zinc-400' : 'text-zinc-500';
     const bulkButtonClass = isLightTheme
-        ? 'text-zinc-400 hover:text-[#2b2b2b] hover:bg-zinc-200'
+        ? 'text-zinc-400 hover:text-zinc-300 hover:bg-zinc-600'
         : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700';
     const activeBulkButtonClass = isLightTheme
-        ? 'bg-zinc-200 text-[#2b2b2b]'
+        ? 'bg-zinc-700 text-[#2b2b2b]'
         : 'bg-zinc-700 text-zinc-200';
 
     const selectedCount = diagnostics.filter((diagnostic) => selectedKeys.has(diagnosticKey(diagnostic))).length;
@@ -76,7 +76,7 @@ export function DiagnosticsView({
                 isResizing
                     ? 'border-blue-500/70 shadow-[inset_0_1px_0_rgba(59,130,246,0.45)]'
                     : isLightTheme
-                        ? 'border-zinc-300 bg-zinc-100'
+                        ? 'border-zinc-600 bg-zinc-900'
                         : 'border-zinc-700 bg-zinc-900'
             }`}
         >

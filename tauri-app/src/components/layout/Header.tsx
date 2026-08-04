@@ -326,13 +326,13 @@ export function Header({
                 )}
                 <div
                     data-testid="bsl-status"
-                    className="flex items-center gap-2 px-2 py-1 rounded-md bg-zinc-900/50 border border-zinc-800/50"
+                    className="flex items-center gap-2 px-2 py-1 rounded-md bg-zinc-900/50 border border-zinc-500/50"
                 >
                     <div className={`w-1.5 h-1.5 rounded-full ${!bslStatus ? 'bg-zinc-600 animate-pulse' : bslStatus.connected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]'}`} />
-                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest hidden md:inline">BSL LS</span>
+                    <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest hidden md:inline">BSL LS</span>
                     <span
                         data-testid="bsl-status-text"
-                        className="text-[10px] text-zinc-600 font-medium hidden md:inline"
+                        className="text-[10px] text-zinc-500 font-medium hidden md:inline"
                     >
                         {!bslStatus ? 'Initializing...' : bslStatus.connected ? 'Connected' : 'Offline'}
                     </span>
@@ -343,10 +343,10 @@ export function Header({
             <div
                 ref={sliderRef}
                 onMouseDown={handleMouseDown}
-                className="relative bg-zinc-900 border border-zinc-800 rounded-full h-8 w-[120px] px-1 flex items-center cursor-pointer select-none group"
+                className="relative bg-zinc-700 border border-zinc-600 rounded-full h-8 w-[120px] px-1 flex items-center cursor-pointer select-none group"
             >
                 {/* Track Background Icons */}
-                <div className="absolute inset-x-1 inset-y-0 flex items-center justify-between text-zinc-600">
+                <div className="absolute inset-x-1 inset-y-0 flex items-center justify-between text-zinc-500">
                     <div
                         id="tour-mode-assistant"
                         onClick={() => onViewModeChange('assistant')}
@@ -393,7 +393,7 @@ export function Header({
                 </button>
                 <button
                     onClick={toggleCompactMode}
-                    className="p-2 hover:bg-zinc-700 rounded-lg transition-colors text-zinc-400"
+                    className="p-2 hover:bg-zinc-700 rounded-lg transition-colors text-zinc-400 hover:text-blue-400"
                     title={isCompact ? "Expand Window" : "Compact Window"}
                 >
                     {isCompact ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
@@ -410,7 +410,7 @@ export function Header({
                 )}
                 <button
                     onClick={onNewChat}
-                    className="p-2 hover:bg-zinc-700 rounded-lg transition-colors text-zinc-400 hover:text-zinc-200"
+                    className="p-2 hover:bg-zinc-700 rounded-lg transition-colors text-zinc-400 hover:text-blue-400"
                     title="Новый чат"
                 >
                     <MessageSquarePlus className="w-4 h-4" />
@@ -422,7 +422,7 @@ export function Header({
                         className={`p-2 rounded-lg transition-colors ${
                             chatHistoryOpen
                                 ? 'bg-sky-500/10 text-sky-300'
-                                : 'text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                                : 'text-zinc-400 hover:bg-zinc-700 hover:text-blue-400'
                         }`}
                         title="История чатов"
                     >
@@ -442,7 +442,7 @@ export function Header({
                 </div>
                 <button
                     onClick={() => settings && updateSettings({ ...settings, theme: settings.theme === 'light' ? 'dark' : 'light' })}
-                    className="p-2 hover:bg-zinc-700 rounded-lg transition-colors text-zinc-400 hover:text-zinc-200"
+                    className="p-2 hover:bg-zinc-700 rounded-lg transition-colors text-zinc-400 hover:text-blue-400"
                     title={settings?.theme === 'light' ? 'Тёмная тема' : 'Светлая тема'}
                 >
                     {settings?.theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
@@ -450,10 +450,10 @@ export function Header({
                 <button
                     data-testid="settings-button"
                     onClick={() => onOpenSettings()}
-                    className="p-2 hover:bg-zinc-700 rounded-lg transition-colors"
+                    className="p-2 hover:bg-zinc-700 rounded-lg transition-colors "
                     title="Settings"
                 >
-                    <Settings className="w-4 h-4 text-zinc-400" />
+                    <Settings className="w-4 h-4 text-zinc-400 hover:text-blue-400" />
                 </button>
             </div>
         </div>

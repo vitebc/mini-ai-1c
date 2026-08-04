@@ -433,7 +433,7 @@ export function CodeSidePanel({
             id="code-side-panel"
             style={{ width: isFullWidth ? '100%' : (isExpanded ? `${width}px` : '280px') }}
             className={`border-l flex flex-col h-full shadow-2xl transition-[width] duration-300 ease-in-out relative ${
-                isLightTheme ? 'border-zinc-300 bg-[#fafafa]' : 'border-zinc-700 bg-zinc-900'
+                isLightTheme ? 'border-zinc-600 bg-[#fafafa]' : 'border-zinc-700 bg-zinc-900'
             } ${isResizing || isFullWidth ? 'transition-none' : ''} ${isFullWidth ? 'w-full' : 'flex-shrink-0'}`}
         >
             {/* Resize Handle */}
@@ -753,7 +753,7 @@ export function CodeSidePanel({
                 onMouseDown={startDiagnosticsResizing}
                 className={`group h-2 flex-shrink-0 cursor-row-resize border-t transition-colors ${
                     isLightTheme
-                        ? 'border-zinc-300 bg-zinc-100 hover:bg-blue-500/5'
+                        ? 'border-zinc-600 bg-zinc-900 hover:bg-blue-500/5'
                         : 'border-zinc-700 bg-zinc-950 hover:bg-blue-500/10'
                 }`}
                 role="separator"

@@ -773,7 +773,7 @@ export function MCPSettings({
                 {server ? (
                     <div key={server.id} className="flex-1 flex flex-col min-h-0">
                         {/* Server Header Bar */}
-                        <div className={`px-5 py-3 border-b flex items-center justify-between shrink-0 ${isBuiltin ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-zinc-800/30 border-zinc-800'}`}>
+                        <div className={`px-5 py-3 border-b flex items-center justify-between shrink-0 ${isBuiltin ? 'bg-yellow-400/5 border-yellow-500/20' : 'bg-zinc-800/30 border-zinc-800'}`}>
                             <div className="flex items-center gap-3 min-w-0">
                                 <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${
                                     !server.enabled ? 'bg-zinc-600'
@@ -923,7 +923,7 @@ export function MCPSettings({
                                                                     <FolderOpen className="w-3.5 h-3.5" />
                                                                 </button>
                                                             </div>
-                                                            <p className="text-[10px] text-zinc-600">
+                                                            <p className="text-[10px] text-zinc-500">
                                                                 Оставьте пустым для автоопределения. Укажите родительскую папку, содержащую подпапки вида <span className="font-mono">8.x.x.x\bin</span>
                                                             </p>
                                                         </div>
@@ -1140,7 +1140,7 @@ className="flex-1 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py
                                                                         <FolderOpen className="w-3.5 h-3.5" />
                                                                     </button>
                                                                 </div>
-                                                                <p className="text-[10px] text-zinc-600 mt-1">
+                                                                <p className="text-[10px] text-zinc-500 mt-1">
                                                                     SQLite-файлы индекса будут храниться в этой папке. Если путь не указан, используется папка по умолчанию.
                                                                 </p>
                                                             </div>
@@ -1258,7 +1258,7 @@ className="flex-1 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py
                                                                         ))}
                                                                     </div>
                                                                 )}
-                                                                <p className="text-[10px] text-zinc-600 mt-1">Корневая директория основной выгрузки (содержит CommonModules, Documents и т.д.)</p>
+                                                                <p className="text-[10px] text-zinc-500 mt-1">Корневая директория основной выгрузки (содержит CommonModules, Documents и т.д.)</p>
                                                             </div>
                                                             {/* ── Привязка информационной базы 1С ── */}
                                                             <div>

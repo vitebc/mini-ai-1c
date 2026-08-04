@@ -388,7 +388,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                     onClick={() => setEditingId(p.id)}
                                     className={`p-2 sm:p-3 rounded-lg border cursor-pointer transition-all ${editingId === p.id
                                         ? 'border-blue-500 bg-blue-500/10'
-                                        : 'border-zinc-800 bg-zinc-800 hover:border-zinc-600'
+                                        : 'border-zinc-800 bg-zinc-700 hover:border-zinc-600'
                                         }`}
                                 >
                                     <div className="flex justify-between items-center mb-0.5">
@@ -402,7 +402,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                         <div className="space-y-1.5 pt-1">
                             <button
                                 onClick={() => handleCreate('OpenAI')}
-                                className="w-full py-2 flex items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition text-[10px] font-medium"
+                                className="w-full py-2 flex items-center justify-center gap-2 border border-dashed border-zinc-600 rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition text-[10px] font-medium"
                             >
                                 <Plus className="w-3 h-3" /> Новый ассистент
                             </button>
@@ -436,13 +436,13 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                         <div className="space-y-1.5 pt-1">
                             <button
                                 onClick={() => handleCreate('QwenCli')}
-                                className="w-full py-2 flex items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition text-[10px] font-medium"
+                                className="w-full py-2 flex items-center justify-center gap-2 border border-dashed border-zinc-600 rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition text-[10px] font-medium"
                             >
                                 <Plus className="w-3 h-3" /> Qwen Code
                             </button>
                             <button
                                 onClick={() => handleCreate('CodexCli')}
-                                className="w-full py-2 flex items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition text-[10px] font-medium"
+                                className="w-full py-2 flex items-center justify-center gap-2 border border-dashed border-zinc-600 rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition text-[10px] font-medium"
                             >
                                 <Plus className="w-3 h-3" /> OpenAI Codex
                             </button>
@@ -476,7 +476,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                         <div className="space-y-1.5 pt-1">
                             <button
                                 onClick={() => handleCreate('OneCNaparnik')}
-                                className="w-full py-2 flex items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition text-[10px] font-medium"
+                                className="w-full py-2 flex items-center justify-center gap-2 border border-dashed border-zinc-600 rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition text-[10px] font-medium"
                             >
                                 <Plus className="w-3 h-3" /> Добавить Напарника
                             </button>
@@ -510,7 +510,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                         <div className="space-y-1.5 pt-1">
                             <button
                                 onClick={() => handleCreate('OllamaCloud')}
-                                className="w-full py-2 flex items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition text-[10px] font-medium"
+                                className="w-full py-2 flex items-center justify-center gap-2 border border-dashed border-zinc-600 rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition text-[10px] font-medium"
                             >
                                 <Plus className="w-3 h-3" /> Добавить Ollama Cloud
                             </button>

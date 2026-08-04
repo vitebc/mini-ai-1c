@@ -285,10 +285,10 @@ export function SessionsPanel() {
           isOpen
             ? isLight
               ? 'bg-zinc-800 text-zinc-600 hover:bg-zinc-700 hover:text-zinc-800 shadow-sm'
-              : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 shadow-sm'
+              : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-700 shadow-sm'
             : isLight
               ? 'bg-zinc-800 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-700'
-              : 'bg-zinc-800 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700'
+              : 'bg-zinc-700 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700'
         }`}
         title={isOpen ? 'Скрыть панель сессий' : 'Показать панель сессий'}
       >

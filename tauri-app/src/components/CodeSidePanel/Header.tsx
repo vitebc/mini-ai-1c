@@ -46,17 +46,17 @@ export function Header({
     const isLightTheme = settings?.theme === 'light';
 
     const shellClass = isLightTheme
-        ? 'border-zinc-300 bg-zinc-100'
+        ? 'border-zinc-600 bg-zinc-800'
         : 'border-zinc-700 bg-zinc-900';
     const badgeClass = isLightTheme
-        ? 'bg-zinc-200 border-zinc-300'
+        ? 'bg-zinc-700 border-zinc-700'
         : 'bg-zinc-700 border-zinc-700';
-    const toggleShellClass = isLightTheme ? 'bg-zinc-200' : 'bg-zinc-700';
+    const toggleShellClass = isLightTheme ? 'bg-zinc-700' : 'bg-zinc-700';
     const activeTabClass = isLightTheme ? 'bg-white text-[#2b2b2b] shadow-sm' : 'bg-zinc-500 text-white shadow-sm';
     const inactiveTabClass = isLightTheme
         ? 'text-zinc-400 hover:text-[#2b2b2b] hover:bg-white/80'
         : 'text-zinc-500 hover:text-zinc-300';
-    const diffShellClass = isLightTheme ? 'bg-zinc-200' : 'bg-zinc-700/50';
+    const diffShellClass = isLightTheme ? 'bg-zinc-700' : 'bg-zinc-700/50';
     const diffDividerClass = isLightTheme ? 'border-zinc-300' : 'border-zinc-700/50';
     const subtleButtonClass = isLightTheme
         ? 'text-zinc-400 hover:text-[#2b2b2b] hover:bg-[#d4d4d8]'

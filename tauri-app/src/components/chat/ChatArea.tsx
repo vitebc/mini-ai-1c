@@ -1248,7 +1248,7 @@ export const ChatArea = memo(function ChatArea({
                                 <div
                                     key={i}
                                     onClick={step.onClick}
-                                    className="p-5 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 hover:border-blue-500/30 transition-all hover:bg-zinc-800/80 group cursor-pointer active:scale-[0.98]"
+                                    className="p-5 rounded-2xl bg-zinc-600/50 border border-zinc-800/50 hover:border-blue-500/30 transition-all hover:bg-zinc-800/80 group cursor-pointer active:scale-[0.98]"
                                 >
                                     <div className="flex items-start gap-4">
                                         <div className="p-2.5 rounded-xl bg-zinc-800/50 group-hover:bg-blue-500/10 transition-colors">{step.icon}</div>
@@ -1261,17 +1261,6 @@ export const ChatArea = memo(function ChatArea({
                             ))}
                         </div>
 
-                        <div className="mt-12 flex flex-col items-center gap-6 pb-2">
-                            <a href="https://t.me/hawkxtreme" target="_blank" rel="noopener noreferrer" className="group flex items-center gap-3 px-4 py-2 rounded-2xl bg-zinc-900/10 border border-zinc-800/30 hover:bg-zinc-800/30 hover:border-zinc-700/50 transition-all duration-300">
-                                <div className="p-1.5 rounded-lg bg-blue-500/10 group-hover:bg-blue-500/20 transition-colors">
-                                    <Send className="w-3.5 h-3.5 text-blue-400" />
-                                </div>
-                                <div className="flex flex-col items-center leading-tight">
-                                    <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-semibold">Feedback & Support</span>
-                                    <span className="text-xs text-zinc-400 group-hover:text-blue-400 transition-colors">@hawkxtreme</span>
-                                </div>
-                            </a>
-                        </div>
                     </div>
                 )}
 
@@ -1711,9 +1700,9 @@ export const ChatArea = memo(function ChatArea({
             {/* Input Area */}
             <div className="px-6 pb-6 pt-4 bg-zinc-900 border-t border-zinc-700 shadow-2xl z-10">
                 {/* Context Stats Overlay */}
-                <div className="max-w-4xl mx-auto mb-3 flex items-center justify-between px-1">
+                <div className="max-w-4xl mx-auto flex items-center justify-between px-1">
                   <SearchProfileBar />
-                    <div className="flex items-center gap-2 text-[11px] text-zinc-500 italic">
+                    <div className="flex items-center gap-3 text-[10px] text-zinc-500 italic w-full">
                         {messages.length === 0 && (
                             <span className="flex items-center gap-1">
                                 <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
