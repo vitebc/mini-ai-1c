@@ -2048,10 +2048,17 @@ export const ChatArea = memo(function ChatArea({
                                         <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-1">
                                             {detectedWindows.length > 0 ? detectedWindows.map(w => (
                                                 <button key={w.hwnd} onClick={() => { selectWindow(w); setShowConfigDropdown(false); }}
-                                                    className={`w-full text-left px-3 py-2 rounded-md text-[13px] truncate transition-colors ${selectedHwnd === w.hwnd ? 'bg-emerald-500/10 text-emerald-400 font-medium' : 'text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}`}
+                                                    className={`w-full text-left px-3 py-2 rounded-md text-[13px] flex items-center justify-between gap-2 transition-colors ${selectedHwnd === w.hwnd ? 'bg-emerald-500/10 text-emerald-400 font-medium' : 'text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}`}
                                                     title={w.title}
                                                 >
-                                                    {parseConfiguratorTitle(w.title)}
+                                                    <span className="truncate">{parseConfiguratorTitle(w.title)}</span>
+                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded border font-mono shrink-0 ${
+                                                        selectedHwnd === w.hwnd
+                                                            ? 'text-emerald-400 border-emerald-500/30'
+                                                            : 'text-zinc-600 border-zinc-700'
+                                                    }`}>
+                                                        PID:{w.process_id}
+                                                    </span>
                                                 </button>
                                             )) : (
                                                 <div className="px-3 py-4 text-center text-[12px] text-zinc-500">
