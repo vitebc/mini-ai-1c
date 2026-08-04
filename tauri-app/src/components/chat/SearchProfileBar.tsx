@@ -10,6 +10,7 @@ import {
 import { launchConfigurator, get1cInfobases, get1cPlatformPath } from '../../api/mcp';
 
 const BINDINGS_KEY = 'mcp_search_profile_bindings';
+const PENDING_LAUNCH_KEY = 'mcp_search_pending_launch';
 
 function loadBindings(): Record<string, Record<number, string>> {
   try {
@@ -18,6 +19,19 @@ function loadBindings(): Record<string, Record<number, string>> {
   } catch {
     return {};
   }
+}
+
+function loadPendingLaunch(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(PENDING_LAUNCH_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePendingLaunch(pending: Record<string, number>): void {
+  localStorage.setItem(PENDING_LAUNCH_KEY, JSON.stringify(pending));
 }
 
 function saveBindings(bindings: Record<string, Record<number, string>>): void {
@@ -132,6 +146,41 @@ export function SearchProfileBar() {
         ),
       });
       setIsBound(true);
+    } else if (!boundId) {
+      // No existing PID binding — check if there's a pending launch to auto-bind
+      const pending = loadPendingLaunch();
+      const now = Date.now();
+      // Clean stale pending launches (older than 2 minutes)
+      let changed = false;
+      for (const id of Object.keys(pending)) {
+        if (now - pending[id] > 120_000) {
+          delete pending[id];
+          changed = true;
+        }
+      }
+      if (changed) savePendingLaunch(pending);
+      const pendingId = Object.keys(pending).find(id =>
+        profiles.some(p => p.id === id) && id !== activeId
+      );
+      if (pendingId) {
+        const newEnv = buildSearchEnv(searchServer, profiles, pendingId);
+        updateSettings({
+          ...settings!,
+          mcp_servers: settings!.mcp_servers.map(s =>
+            s.id === BUILTIN_1C_SEARCH_ID ? { ...s, env: newEnv } : s,
+          ),
+        });
+        // Clear pending and bind this PID to the launched profile
+        delete pending[pendingId];
+        savePendingLaunch(pending);
+        const newBindings = loadBindings();
+        if (!newBindings[BUILTIN_1C_SEARCH_ID]) newBindings[BUILTIN_1C_SEARCH_ID] = {};
+        newBindings[BUILTIN_1C_SEARCH_ID][selectedPid] = pendingId;
+        saveBindings(newBindings);
+        setIsBound(true);
+      } else {
+        setIsBound(false);
+      }
     } else {
       setIsBound(!!boundId && profiles.some(p => p.id === boundId));
     }
@@ -202,6 +251,12 @@ export function SearchProfileBar() {
       const login = jvvEnv['ONEC_LOGIN'] || '';
       const password = jvvEnv['ONEC_PASSWORD'] || '';
       await launchConfigurator(platformPath, base.connection, base.type === 'server', login, password);
+      // Remember this launch so the new Configurator PID gets auto-bound to the profile
+      if (activeProfile) {
+        const pending = loadPendingLaunch();
+        pending[activeProfile.id] = Date.now();
+        savePendingLaunch(pending);
+      }
       setShowDatabases(false);
     } catch (e) {
       console.error('Launch failed:', e);
