@@ -1712,6 +1712,7 @@ export const ChatArea = memo(function ChatArea({
             <div className="px-6 pb-6 pt-4 bg-zinc-900 border-t border-zinc-700 shadow-2xl z-10">
                 {/* Context Stats Overlay */}
                 <div className="max-w-4xl mx-auto mb-3 flex items-center justify-between px-1">
+                  <SearchProfileBar />
                     <div className="flex items-center gap-2 text-[11px] text-zinc-500 italic">
                         {messages.length === 0 && (
                             <span className="flex items-center gap-1">
@@ -1752,7 +1753,7 @@ export const ChatArea = memo(function ChatArea({
                     configuredContextWindow={activeProfile?.max_tokens}
                     isLoading={isLoading}
                 />
-                <SearchProfileBar />
+                
                 <div className="relative bg-[var(--input-bg)] border border-zinc-700 rounded-xl focus-within:ring-1 focus-within:ring-blue-500/50 transition-all min-h-[120px] flex flex-col max-w-4xl mx-auto">
 
                     <textarea
