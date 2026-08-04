@@ -508,7 +508,7 @@ pub async fn launch_configurator_cmd(
     if is_server {
         // Srvr="server\ref" format
         args.push("/S".to_string());
-        args.push(format!("\"{}\"", infobase_path));
+        args.push(infobase_path);
     } else {
         // File="..." format — extract path from connection string
         let path = if infobase_path.starts_with("File=\"") {
@@ -520,15 +520,17 @@ pub async fn launch_configurator_cmd(
             infobase_path.clone()
         };
         args.push("/F".to_string());
-        args.push(format!("\"{}\"", path));
+        args.push(path);
     }
 
     // Add login/password if provided
     if let Some(user) = login.filter(|s| !s.is_empty()) {
-        args.push(format!("/N\"{}\"", user));
+        args.push("/N".to_string());
+        args.push(user);
     }
     if let Some(pass) = password.filter(|s| !s.is_empty()) {
-        args.push(format!("/P\"{}\"", pass));
+        args.push("/P".to_string());
+        args.push(pass);
     }
 
     #[cfg(windows)]
