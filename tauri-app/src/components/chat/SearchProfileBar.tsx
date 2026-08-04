@@ -8,6 +8,7 @@ import {
   buildSearchEnv,
 } from '../../utils/searchProfiles';
 import { launchConfigurator, get1cInfobases, get1cPlatformPath } from '../../api/mcp';
+import { parseConfiguratorTitleFull } from '../../utils/configurator';
 
 const BINDINGS_KEY = 'mcp_search_profile_bindings';
 const PENDING_LAUNCH_KEY = 'mcp_search_pending_launch';
@@ -48,7 +49,7 @@ interface Infobase {
 
 export function SearchProfileBar() {
   const { settings, updateSettings } = useSettings();
-  const { selectedPid } = useConfigurator();
+  const { selectedPid, detectedWindows } = useConfigurator();
   const [isOpen, setIsOpen] = useState(false);
   const [showDatabases, setShowDatabases] = useState(false);
   const [isBound, setIsBound] = useState(false);
@@ -185,6 +186,53 @@ export function SearchProfileBar() {
       setIsBound(!!boundId && profiles.some(p => p.id === boundId));
     }
   }, [selectedPid, searchServer, profiles, activeId, settings, updateSettings]);
+
+  // Auto-detect new Configurator windows and bind them to matching profiles
+  // by comparing window config_name with profiles' bound_infobase.name
+  useEffect(() => {
+    if (!searchServer || profiles.length === 0 || !detectedWindows || detectedWindows.length === 0) return;
+
+    const bindings = loadBindings();
+    if (!bindings[BUILTIN_1C_SEARCH_ID]) bindings[BUILTIN_1C_SEARCH_ID] = {};
+
+    let changed = false;
+    for (const window of detectedWindows) {
+      const pid = window.process_id;
+      if (!pid || bindings[BUILTIN_1C_SEARCH_ID][pid]) continue; // already bound
+
+      const ctx = parseConfiguratorTitleFull(window.title || '');
+      const configName = (ctx.config_name || '').trim().toLowerCase();
+      if (!configName) continue;
+
+      // Find a profile whose bound_infobase matches this window.
+      // Try exact name, then partial containment, then connection folder match.
+      const matchingProfile = profiles.find(p => {
+        const bound = p.bound_infobase;
+        if (!bound) return false;
+        const boundName = bound.name.trim().toLowerCase();
+        // Exact match on infobase name
+        if (boundName === configName) return true;
+        // Partial containment either direction
+        if (configName.includes(boundName) || boundName.includes(configName)) return true;
+        // Match by last path segment of a file connection (folder name)
+        const folderMatch = bound.connection.match(/File="[^"]*\\([^\\"]+)"/);
+        if (folderMatch && configName.includes(folderMatch[1].toLowerCase())) return true;
+        return false;
+      });
+      if (matchingProfile) {
+        bindings[BUILTIN_1C_SEARCH_ID][pid] = matchingProfile.id;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      saveBindings(bindings);
+      // Re-run the binding check for the currently selected window
+      if (selectedPid && bindings[BUILTIN_1C_SEARCH_ID][selectedPid]) {
+        setIsBound(true);
+      }
+    }
+  }, [detectedWindows, searchServer, profiles, selectedPid]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
