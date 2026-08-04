@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Database, Link2, Key, ShieldCheck, Activity, CheckCircle2, AlertCircle, Plus, Trash2, Globe, Settings2, Terminal, Cpu, FileText, X, Sparkles, FolderOpen, ChevronDown, Code, Wrench, Server } from 'lucide-react';
@@ -13,6 +13,7 @@ import {
     type SearchConfigProfile,
     type SearchExtensionProfile,
 } from '../../utils/searchProfiles';
+import { get1cInfobases } from '../../api/mcp';
 
 // ── Benchmark Panel ───────────────────────────────────────────────────────────
 
@@ -227,6 +228,9 @@ export function MCPSettings({
     const [jsonImportError, setJsonImportError] = useState<string | null>(null);
     const [benchmarkResult, setBenchmarkResult] = useState<Record<string, any> | null>(null);
     const [isBenchmarking, setIsBenchmarking] = useState(false);
+    const [infobases, setInfobases] = useState<Array<{ name: string; connection: string; type: 'file' | 'server' }>>([]);
+    const [dbListOpen, setDbListOpen] = useState(false);
+    const dbListRef = useRef<HTMLDivElement>(null);
     const effectiveNodePath = normalizeNodePath(nodePath);
 
     const addToSearchHistory = (path: string) => {
@@ -634,6 +638,17 @@ export function MCPSettings({
         }
     }, [sortedServers, selectedServerId]);
 
+    // Close database dropdown on outside click
+    useEffect(() => {
+        const handleClick = (event: MouseEvent) => {
+            if (dbListRef.current && !dbListRef.current.contains(event.target as Node)) {
+                setDbListOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, []);
+
     // Pre-compute server properties for the selected server
     const server = selectedServer;
     const status = server ? statuses[server.id] : null;
@@ -659,6 +674,15 @@ export function MCPSettings({
     const isError = effectiveStatus === 'error';
     const isStopped = effectiveStatus === 'stopped';
     const lastChecked = status?.last_checked || 0;
+
+    // Fetch 1C infobases when search server is selected
+    useEffect(() => {
+        const isSearchServer = server?.id === BUILTIN_1C_SEARCH_ID;
+        if (!isSearchServer) return;
+        get1cInfobases()
+            .then(bases => setInfobases(bases.map(b => ({ name: b.name, connection: b.connection, type: b.type }))))
+            .catch(() => setInfobases([]));
+    }, [server?.id, selectedServerId]);
 
     return (
         <div className="flex h-full bg-zinc-900 p-2 gap-2">
@@ -1260,7 +1284,49 @@ className="flex-1 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py
                                                                             </button>
                                                                         </div>
                                                                     ) : (
-                                                                        <span className="text-[10px] text-zinc-600">Не привязана — при запуске конфигуратора из приложения будет автоматически привязана</span>
+                                                                        <div className="flex-1 min-w-0 relative" ref={dbListRef}>
+                                                                            <button
+                                                                                onClick={() => setDbListOpen(!dbListOpen)}
+                                                                                className="w-full flex items-center gap-2 bg-[var(--input-bg)] border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 hover:border-zinc-600 transition-colors"
+                                                                                title="Выбрать базу 1С для привязки"
+                                                                            >
+                                                                                <Server className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                                                                                <span className="truncate flex-1 text-left text-zinc-300">Выбрать базу 1С</span>
+                                                                                <ChevronDown className={`w-3 h-3 text-zinc-500 transition-transform ${dbListOpen ? 'rotate-180' : ''}`} />
+                                                                            </button>
+                                                                            {dbListOpen && (
+                                                                                <div className="absolute top-full left-0 mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-lg shadow-2xl z-50 py-1 max-h-[220px] overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-100">
+                                                                                    {infobases.length === 0 ? (
+                                                                                        <div className="px-3 py-2 text-[11px] text-zinc-500 italic">Базы не найдены. Включите MCP «1С:Платформа и базы».</div>
+                                                                                    ) : (
+                                                                                        infobases.map((base, idx) => (
+                                                                                            <button
+                                                                                                key={idx}
+                                                                                                onClick={() => {
+                                                                                                    updateActiveProfile({
+                                                                                                        bound_infobase: { name: base.name, connection: base.connection, type: base.type },
+                                                                                                    });
+                                                                                                    setDbListOpen(false);
+                                                                                                }}
+                                                                                                className="w-full text-left px-3 py-2 flex items-center justify-between gap-2 hover:bg-zinc-700/50 transition-colors"
+                                                                                            >
+                                                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                                                    {base.type === 'file'
+                                                                                                        ? <FolderOpen className="w-3 h-3 text-zinc-500 shrink-0" />
+                                                                                                        : <Server className="w-3 h-3 text-blue-400 shrink-0" />}
+                                                                                                    <span className="text-[12px] text-zinc-200 truncate">{base.name}</span>
+                                                                                                </div>
+                                                                                                <span className={`text-[9px] px-1.5 py-0.5 rounded border shrink-0 ${
+                                                                                                    base.type === 'file'
+                                                                                                        ? 'text-zinc-400 border-zinc-700'
+                                                                                                        : 'text-blue-400 border-blue-500/30'
+                                                                                                }`}>{base.type === 'file' ? 'Файловая' : 'Серверная'}</span>
+                                                                                            </button>
+                                                                                        ))
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
                                                                     )}
                                                                 </div>
                                                             </div>
