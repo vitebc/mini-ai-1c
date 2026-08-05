@@ -56,8 +56,7 @@ pub fn find_configurator_windows_cmd(pattern: String) -> FindWindowsResult {
     let foreground_pid: Option<i32> = {
         #[cfg(windows)]
         {
-            use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-            use windows::Win32::System::Threading::GetWindowThreadProcessId;
+            use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
             unsafe {
                 let hwnd = GetForegroundWindow();
                 let mut pid: u32 = 0;

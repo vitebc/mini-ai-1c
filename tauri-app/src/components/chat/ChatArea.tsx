@@ -1988,6 +1988,7 @@ export const ChatArea = memo(function ChatArea({
 
 
                             {/* Объединенный Конфигуратор & Код */}
+                            {detectedWindows.length > 0 && (
                             <div className="relative flex-shrink-0 flex items-center gap-0.5" id="tour-get-code">
                                 <button onClick={() => {
                                     const next = !showConfigDropdown;
@@ -2059,6 +2060,7 @@ export const ChatArea = memo(function ChatArea({
                                     </div>
                                 )}
                             </div>
+                            )}
                         </div>
 
                         {/* Правый блок кнопок (зафиксирован) */}
