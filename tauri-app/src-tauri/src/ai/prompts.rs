@@ -2,6 +2,19 @@ use super::models::{ApiMessage, ToolInfo};
 use crate::llm_profiles::LLMProvider;
 use crate::settings::{load_settings, CustomPromptsSettings, PromptBehaviorPreset};
 
+/// Правило приоритета действия: создание/изменение файлов раньше бесконечного анализа.
+/// Борется с кейсом, когда агент застревает в поиске/чтении скиллов и так и не создаёт объект.
+pub const ACTION_RULE: &str = r#"
+=== ПРАВИЛО ДЕЙСТВИЯ (ПРИОРИТЕТ 1 — ВЫШЕ ПРАВИЛ ПОИСКА) ===
+- Если задача — СОЗДАТЬ или ИЗМЕНИТЬ файлы (внешняя обработка .EPF, BSL-модуль, XML-конфигурации):
+  1. СНАЧАЛА получи релевантный скилл через `get_skill(id="...")` и следуй его инструкциям.
+  2. Затем ОБЯЗАТЕЛЬНО СРАЗУ переходи к действию — создавай/изменяй файлы через инструменты файловой системы (write_file, run_command, create_directory) или применяй SEARCH/REPLACE.
+- Максимум 3 разведочных вызова (get_skill / поиск структуры / поиск кода) перед началом создания файлов. НЕ анализируй существующий код бесконечно.
+- НЕ перечитывай один и тот же `get_skill` повторно — содержимое скилла уже в контексте диалога, доверься ему и действуй.
+- Если на 4-м+ вызове ты всё ещё только ищешь/анализируешь, а задача — создать новое — НЕМЕДЛЕННО прекрати разведку и начни создавать файлы.
+- Итог задачи — всегда реально созданный/изменённый файл или готовый код в ответе, НЕ описание того, как его создать.
+"#;
+
 /// Константа с инструкциями для diff-формата (Search/Replace)
 pub const DIFF_FORMAT_INSTRUCTIONS: &str = r#"
 IMPORTANT: You are an expert 1C Developer.
@@ -147,6 +160,9 @@ fn build_lightweight_system_prompt_with_custom_prompts(
         diff_section = diff_section,
     );
 
+    prompt.push_str(ACTION_RULE);
+    prompt.push_str("\n");
+
     // Добавляем краткое перечисление доступных инструментов (без подробной матрицы)
     if !available_tools.is_empty() {
         prompt.push_str("\n\nДоступные инструменты:\n");
@@ -208,12 +224,16 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
     let mut prompt = String::new();
     let target_lang = detect_target_lang(messages);
 
-    // CRITICAL: Stop rule to prevent infinite search loops
+// CRITICAL: Stop rule to prevent infinite search loops
     prompt.push_str("🚫 СТОП-ПРАВИЛО (НАРУШИТЬ НЕЛЬЗЯ):\n");
     prompt.push_str("- Максимум 15 вызовов инструментов на всю задачу.\n");
     prompt.push_str("- Если ты уже получил достаточно информации или выполнил действие — НЕМЕДЛЕННО напиши итоговый ответ пользователю.\n");
     prompt.push_str("- НЕ продолжай поиск бесконечно. НЕ повторяй одни и те же вызовы.\n");
     prompt.push_str("- После каждого tool call спроси себя: «Есть ли у меня достаточно информации для ответа?» Если да — отвечай.\n\n");
+
+    // ACTION-first rule: always prioritize creating files over endless analysis
+    prompt.push_str(ACTION_RULE);
+    prompt.push_str("\n");
 
     // Ask-first rule (only when enabled in settings)
     if code_gen.ask_before_action {
@@ -760,6 +780,30 @@ mod tests {
             light.len(),
             full.len(),
         );
+    }
+
+    #[test]
+    fn system_prompt_includes_action_rule() {
+        let prompt =
+            get_system_prompt(&[make_check_bsl_tool()], &[make_user_message("Создай обработку")]);
+
+        assert!(prompt.contains(ACTION_RULE));
+        assert!(prompt.contains("=== ПРАВИЛО ДЕЙСТВИЯ"));
+        assert!(prompt.contains("write_file"));
+        assert!(prompt.contains("get_skill"));
+    }
+
+    #[test]
+    fn lightweight_system_prompt_includes_action_rule() {
+        let custom = make_custom_prompts_with_templates(vec![]);
+        let prompt = build_lightweight_system_prompt_with_custom_prompts(
+            &[],
+            &[make_user_message("Создай обработку")],
+            &custom,
+        );
+
+        assert!(prompt.contains("=== ПРАВИЛО ДЕЙСТВИЯ"));
+        assert!(prompt.contains("write_file"));
     }
 
     #[test]

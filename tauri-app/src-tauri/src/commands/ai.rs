@@ -984,18 +984,20 @@ pub async fn stream_chat(
                     api_messages.push(ApiMessage {
                         role: "user".to_string(),
                         reasoning_content: None,
-                        content: Some("Напиши свой ответ текстом.".to_string()),
+                        content: Some(
+                            "Твой предыдущий ответ оказался пустым (только размышление, без текста и без вызова инструментов). Продолжи задачу СЕЙЧАС: либо (а) вызови конкретный инструмент, если действие ещё не выполнено, либо (б) если информации уже достаточно — выведи итоговый ответ текстом прямо сейчас. НЕ возвращай пустой ответ и НЕ продолжай размышлять без результата.".to_string(),
+                        ),
                         tool_calls: None,
                         tool_call_id: None,
                         name: None,
                     });
                     continue;
                 } else {
-                    // Model returned empty response twice — likely context too large
+                    // Model returned empty response twice — stop the loop and inform the user.
                     crate::app_log!("[AI] Model returned empty response twice (context ~{}t). Emitting fallback.",
                         api_messages.iter().map(|m| m.content.as_deref().unwrap_or("").len() / 4).sum::<usize>());
                     let _ = task_app_handle.emit("chat-chunk",
-                        "\n\n> **[Система]** Модель не смогла сформировать ответ (вероятно, контекст диалога слишком велик). Попробуйте начать новый чат или сократить историю.");
+                        "\n\n> **[Система]** Модель не смогла сформировать ответ, раз за разом возвращая пустой результат. Это обычно происходит при сбое стрима, исчерпании лимита рассуждений или перегрузке провайдера — контекст диалога тут не при чём. Попробуйте отправить короткое сообщение на русском («продолжи») или начните новый чат.");
                     break;
                 }
             }
