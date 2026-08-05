@@ -7,6 +7,11 @@ export interface WindowInfo {
     process_id: number;
 }
 
+export interface FindWindowsResult {
+    windows: WindowInfo[];
+    foreground_pid: number | null;
+}
+
 export type ConfiguratorWriteIntent =
     | 'replace_selection'
     | 'replace_current_method'
@@ -31,10 +36,11 @@ export interface ConfiguratorPasteOptions {
 }
 
 /**
- * Find 1C Configurator windows matching the pattern
+ * Find 1C Configurator windows matching the pattern.
+ * Returns windows + the PID of the currently focused window.
  */
-export async function findConfiguratorWindows(pattern: string): Promise<WindowInfo[]> {
-    return await invoke<WindowInfo[]>('find_configurator_windows_cmd', { pattern });
+export async function findConfiguratorWindows(pattern: string): Promise<FindWindowsResult> {
+    return await invoke<FindWindowsResult>('find_configurator_windows_cmd', { pattern });
 }
 
 /**

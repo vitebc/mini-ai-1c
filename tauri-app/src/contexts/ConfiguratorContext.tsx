@@ -106,7 +106,8 @@ export function ConfiguratorProvider({ children }: { children: React.ReactNode }
     }, [bindingResolution.activeWindow, currentBinding]);
 
     const resolveActiveWindowOrThrow = useCallback(async (): Promise<WindowInfo> => {
-        const windows = await api.findConfiguratorWindows(pattern);
+        const result = await api.findConfiguratorWindows(pattern);
+        const windows = result.windows;
         setDetectedWindows(windows);
 
         const resolution = resolveConfiguratorBinding(currentBinding, windows);
@@ -132,7 +133,9 @@ export function ConfiguratorProvider({ children }: { children: React.ReactNode }
 
     const refreshWindows = useCallback(async () => {
         try {
-            const windows = await api.findConfiguratorWindows(pattern);
+            const result = await api.findConfiguratorWindows(pattern);
+            const windows = result.windows;
+            const foregroundPid = result.foreground_pid;
             setDetectedWindows(windows);
             const resolution = resolveConfiguratorBinding(currentBinding, windows);
             if (!areConfiguratorBindingsEqual(currentBinding, resolution.nextBinding)) {
@@ -145,20 +148,29 @@ export function ConfiguratorProvider({ children }: { children: React.ReactNode }
                 && windows.length === 1;
             if (needsAutoSelect) {
                 await persistBinding(bindConfiguratorWindow(windows[0]));
+                return;
+            }
+            // Auto-select the focused Configurator window if the user Alt+Tabs to it
+            // (only when nothing is explicitly bound or the current window lost focus)
+            if (foregroundPid && windows.some(w => w.process_id === foregroundPid)) {
+                const focusedWindow = windows.find(w => w.process_id === foregroundPid);
+                if (focusedWindow && resolution.activeWindow?.process_id !== foregroundPid) {
+                    await persistBinding(bindConfiguratorWindow(focusedWindow));
+                }
             }
         } catch (e) {
             console.error("Failed to find windows", e);
         }
     }, [currentBinding, pattern, persistBinding]);
 
-    // Initial refresh when settings are loaded, and periodic re-scan every 10s.
-    // This ensures newly opened Configurator windows appear without manual refresh.
+    // Initial refresh when settings are loaded, and periodic re-scan every 3s.
+    // This ensures newly opened Configurator windows appear and focus changes are detected.
     useEffect(() => {
         if (!settings) return;
         void refreshWindows();
         const interval = setInterval(() => {
             void refreshWindows();
-        }, 10_000);
+        }, 3_000);
         return () => clearInterval(interval);
     }, [settings, refreshWindows]);
 

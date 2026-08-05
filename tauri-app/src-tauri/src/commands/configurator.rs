@@ -37,24 +37,45 @@ pub struct EditorApplySupport {
 }
 
 #[tauri::command]
-pub fn find_configurator_windows_cmd(pattern: String) -> Vec<WindowInfo> {
+pub fn find_configurator_windows_cmd(pattern: String) -> FindWindowsResult {
+    let mut windows = Vec::new();
     #[cfg(windows)]
     {
         use crate::configurator;
-        configurator::find_configurator_windows(&pattern)
+        windows = configurator::find_configurator_windows(&pattern)
             .into_iter()
             .map(|w| WindowInfo {
                 hwnd: w.hwnd,
                 title: w.title,
                 process_id: w.process_id,
             })
-            .collect()
+            .collect();
     }
-    #[cfg(not(windows))]
-    {
-        let _ = pattern;
-        Vec::new()
-    }
+
+    // Get foreground window PID to detect which Configurator has focus
+    let foreground_pid: Option<i32> = {
+        #[cfg(windows)]
+        {
+            use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+            use windows::Win32::System::Threading::GetWindowThreadProcessId;
+            unsafe {
+                let hwnd = GetForegroundWindow();
+                let mut pid: u32 = 0;
+                GetWindowThreadProcessId(hwnd, Some(&mut pid));
+                if pid > 0 { Some(pid as i32) } else { None }
+            }
+        }
+        #[cfg(not(windows))]
+        { let _ = pattern; None }
+    };
+
+    FindWindowsResult { windows, foreground_pid }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FindWindowsResult {
+    pub windows: Vec<WindowInfo>,
+    pub foreground_pid: Option<i32>,
 }
 
 #[tauri::command]
