@@ -179,6 +179,16 @@ fn minimax_recommended_max_tokens(model: &str, profile_max_tokens: u32) -> u32 {
     profile_max_tokens.clamp(1, recommended)
 }
 
+fn deepseek_max_tokens(profile_max_tokens: u32, tool_heavy: bool) -> u32 {
+    if tool_heavy {
+        // DeepSeek flash/chat models truncate mid tool-call JSON at 4096 output tokens,
+        // producing invalid/empty responses. Give tool-heavy sessions a proper budget.
+        profile_max_tokens.max(8_192)
+    } else {
+        profile_max_tokens
+    }
+}
+
 fn qwen_thinking_budget(estimated_tokens: u32, tool_heavy: bool) -> u32 {
     let budget = estimated_tokens.saturating_mul(80) / 100;
     if tool_heavy {
@@ -407,6 +417,8 @@ pub async fn stream_chat_completion(
         profile.max_tokens.max(8192)
     } else if matches!(profile.provider, LLMProvider::MiniMax) {
         minimax_recommended_max_tokens(&profile.model, profile.max_tokens)
+    } else if matches!(profile.provider, LLMProvider::DeepSeek) {
+        deepseek_max_tokens(profile.max_tokens, has_tool_heavy_context)
     } else if profile.max_tokens > 16384 {
         4096
     } else {
@@ -465,6 +477,7 @@ pub async fn stream_chat_completion(
             None
         },
         thinking_budget_tokens: dynamic_thinking_budget,
+        reasoning_effort: profile.reasoning_effort.clone(),
     };
 
     let mut headers = HeaderMap::new();
@@ -1763,6 +1776,7 @@ mod tests {
             tools: None,
             enable_thinking: Some(true),
             thinking_budget_tokens: Some(24_000),
+            reasoning_effort: None,
         };
 
         let changed = reduce_qwen_request_pressure(&mut request, true, true);
@@ -1770,5 +1784,17 @@ mod tests {
         assert!(changed);
         assert_eq!(request.max_tokens, 8_192);
         assert_eq!(request.thinking_budget_tokens, Some(4_096));
+    }
+
+    #[test]
+    fn deepseek_tool_heavy_context_gets_8192_min_max_tokens() {
+        // Tool-heavy sessions must not collapse to 4096 output tokens — that truncates
+        // mid tool-call JSON and yields EMPTY responses (observed on deepseek-v4-flash).
+        assert_eq!(deepseek_max_tokens(20_000, true), 20_000);
+        assert_eq!(deepseek_max_tokens(8_192, true), 8_192);
+        assert_eq!(deepseek_max_tokens(4_096, true), 8_192);
+        // Non-tool contexts keep the profile value unchanged.
+        assert_eq!(deepseek_max_tokens(20_000, false), 20_000);
+        assert_eq!(deepseek_max_tokens(4_096, false), 4_096);
     }
 }

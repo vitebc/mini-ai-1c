@@ -72,6 +72,9 @@ pub struct ChatRequest {
     /// Qwen3 extended thinking mode (must use temperature=1.0)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_thinking: Option<bool>,
+    /// DeepSeek/OpenAI reasoning effort (low/medium/high) for compute-budgeted thinking models.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
     /// Token budget for thinking step (1024–38912, default 8192)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking_budget_tokens: Option<u32>,

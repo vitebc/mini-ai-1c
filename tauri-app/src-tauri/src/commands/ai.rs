@@ -776,8 +776,20 @@ pub async fn stream_chat(
                 );
             }
 
+            // Reset the empty-response retry flag on any successful (non-empty) iteration,
+            // so each EMPTY response gets its own fresh retry instead of consuming a
+            // session-wide budget set by an earlier hiccup.
+            if assistant_msg
+                .content
+                .as_deref()
+                .is_some_and(|c| !c.is_empty())
+            {
+                asked_for_text_response = false;
+            }
+
             // 1. Check for tool calls (use original to get full count for UI)
             if let Some(tool_calls) = &assistant_msg.tool_calls {
+                asked_for_text_response = false;
                 let tool_calls_limited: Vec<_> =
                     tool_calls.iter().take(MAX_PARALLEL_TOOL_CALLS).collect();
                 let _ = task_app_handle.emit("chat-status", "Ожидаю подтверждения...");
