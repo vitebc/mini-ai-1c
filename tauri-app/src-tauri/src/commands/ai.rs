@@ -925,7 +925,7 @@ pub async fn stream_chat(
                     // Truncate large tool results to prevent context explosion.
                     // get_skill / get_skill_file / search_skills return full SKILL.md or scripts,
                     // which can be large — allow up to 50k chars (≈12.5k tokens).
-                    let max_result_chars = if tool_name == "get_skill" || tool_name == "search_skills" || tool_name == "get_skill_file" {
+                    let max_result_chars = if tool_name == "get_skill" || tool_name == "search_skills" || tool_name == "get_skill_file" || tool_name == "get_doc" || tool_name == "get_rule" {
                         50_000
                     } else {
                         MAX_TOOL_RESULT_CHARS

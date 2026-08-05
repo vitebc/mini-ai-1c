@@ -145,6 +145,8 @@ pub fn run() {
             get_skill,
             save_skill,
             delete_skill,
+            list_docs,
+            list_rules,
             // 1С:Напарник
             clear_naparnik_session,
             // Scintilla diagnostics

@@ -9,6 +9,11 @@ import { join, resolve, relative } from 'path';
 const SKILLS_DIR = process.env.SKILLS_DIR || resolveSkillsDir();
 const TIMEOUT_MS = 30_000;
 
+// Docs and rules live next to skills: .agents/docs/ and .agents/rules/
+const AGENTS_DIR = SKILLS_DIR ? join(SKILLS_DIR, '..') : '';
+const DOCS_DIR = AGENTS_DIR ? join(AGENTS_DIR, 'docs') : '';
+const RULES_DIR = AGENTS_DIR ? join(AGENTS_DIR, 'rules') : '';
+
 function resolveSkillsDir(): string {
     // 1. Relative to current exe
     const exeDir = process.argv[1] ? resolve(process.argv[1], '..') : process.cwd();
@@ -41,6 +46,21 @@ interface SkillContent {
     metadata: Record<string, unknown>;
     content: string;
     files: string[];
+}
+
+interface DocInfo {
+    id: string;
+    name: string;
+    description: string;
+    category?: string;
+    path: string;
+}
+
+interface RuleInfo {
+    id: string;
+    name: string;
+    description: string;
+    path: string;
 }
 
 // ─── Skills index ────────────────────────────────────────────────
@@ -118,6 +138,97 @@ function scanSkills(): SkillInfo[] {
 
     skills.sort((a, b) => a.name.localeCompare(b.name));
     return skills;
+}
+
+// ─── Docs index ─────────────────────────────────────────────────
+
+function getFirstParagraph(text: string): string {
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    for (const line of lines) {
+        const trimmed = line.trim();
+        // Skip headings, code fences, list markers, hr
+        if (trimmed.startsWith('#') || trimmed.startsWith('```') || trimmed.startsWith('---') || trimmed.startsWith('|')) continue;
+        if (/^[-*]\s/.test(trimmed)) continue;
+        return trimmed.slice(0, 200);
+    }
+    return '';
+}
+
+function scanDocs(): DocInfo[] {
+    if (!DOCS_DIR || !existsSync(DOCS_DIR)) return [];
+    const docs: DocInfo[] = [];
+    function walk(dir: string, category: string) {
+        try {
+            const entries = readdirSync(dir, { withFileTypes: true });
+            for (const e of entries) {
+                const full = join(dir, e.name);
+                if (e.isDirectory()) {
+                    if (!e.name.startsWith('.')) walk(full, category ? `${category}/${e.name}` : e.name);
+                } else if (e.name.toLowerCase().endsWith('.md')) {
+                    try {
+                        const raw = readFileSync(full, 'utf-8');
+                        const rel = relative(DOCS_DIR, full).replace(/\\/g, '/');
+                        const id = rel.replace(/\.md$/i, '').replace(/\\/g, '/');
+                        docs.push({
+                            id,
+                            name: e.name.replace(/\.md$/i, ''),
+                            description: getFirstParagraph(raw),
+                            category,
+                            path: full,
+                        });
+                    } catch { /* skip */ }
+                }
+            }
+        } catch { /* skip */ }
+    }
+    walk(DOCS_DIR, '');
+    docs.sort((a, b) => a.id.localeCompare(b.id));
+    return docs;
+}
+
+function docDirFromId(id: string): string | null {
+    if (!isValidSkillId(id)) return null;
+    const doc = scanDocs().find(d => d.id === id);
+    return doc ? doc.path : null;
+}
+
+// ─── Rules index ────────────────────────────────────────────────
+
+function scanRules(): RuleInfo[] {
+    if (!RULES_DIR || !existsSync(RULES_DIR)) return [];
+    const rules: RuleInfo[] = [];
+    function walk(dir: string, category: string) {
+        try {
+            const entries = readdirSync(dir, { withFileTypes: true });
+            for (const e of entries) {
+                const full = join(dir, e.name);
+                if (e.isDirectory()) {
+                    if (!e.name.startsWith('.')) walk(full, category ? `${category}/${e.name}` : e.name);
+                } else if (e.name.toLowerCase().endsWith('.md')) {
+                    try {
+                        const raw = readFileSync(full, 'utf-8');
+                        const rel = relative(RULES_DIR, full).replace(/\\/g, '/');
+                        const id = rel.replace(/\.md$/i, '').replace(/\\/g, '/');
+                        rules.push({
+                            id,
+                            name: e.name.replace(/\.md$/i, ''),
+                            description: getFirstParagraph(raw),
+                            path: full,
+                        });
+                    } catch { /* skip */ }
+                }
+            }
+        } catch { /* skip */ }
+    }
+    walk(RULES_DIR, '');
+    rules.sort((a, b) => a.id.localeCompare(b.id));
+    return rules;
+}
+
+function ruleDirFromId(id: string): string | null {
+    if (!isValidSkillId(id)) return null;
+    const rule = scanRules().find(r => r.id === id);
+    return rule ? rule.path : null;
 }
 
 function skillDirFromId(id: string): string | null {
@@ -228,6 +339,69 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         },
                     },
                     required: ['query'],
+                },
+            },
+            {
+                name: 'list_docs',
+                description: 'Получить список всех доступных документов (документация по 1С: паттерны, соглашения, справочники). Вернёт ID, название и описание каждого документа.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        category: {
+                            type: 'string',
+                            description: 'Фильтр по категории (опционально)',
+                        },
+                    },
+                },
+            },
+            {
+                name: 'get_doc',
+                description: 'Получить полное содержимое документа по его ID. Используй для чтения документации по 1С (паттерны, справочники, соглашения).',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        id: {
+                            type: 'string',
+                            description: 'ID документа (например: patterns/epf-lifecycle, reference/bsp-api)',
+                        },
+                    },
+                    required: ['id'],
+                },
+            },
+            {
+                name: 'search_docs',
+                description: 'Поиск по названиям и описаниям документов. Вернёт список подходящих документов с их ID и описанием.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        query: {
+                            type: 'string',
+                            description: 'Поисковый запрос',
+                        },
+                    },
+                    required: ['query'],
+                },
+            },
+            {
+                name: 'list_rules',
+                description: 'Получить список всех доступных правил кодирования 1С (стандарты, соглашения). Вернёт ID, название и описание каждого правила.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {},
+                },
+            },
+            {
+                name: 'get_rule',
+                description: 'Получить полное содержимое правила кодирования по его ID. Используй для чтения стандартов и соглашений 1С.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        id: {
+                            type: 'string',
+                            description: 'ID правила (например: 1c-coding-standards)',
+                        },
+                    },
+                    required: ['id'],
                 },
             },
         ],
@@ -342,6 +516,86 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             };
         }
 
+        case 'list_docs': {
+            const category = (args as any)?.category as string | undefined;
+            const all = scanDocs();
+            const filtered = category
+                ? all.filter(d => d.category?.toLowerCase().includes(category.toLowerCase()))
+                : all;
+
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: filtered.length > 0
+                        ? filtered.map(d =>
+                            `### ${d.name}\nID: \`${d.id}\`\n${d.description}\n${d.category ? `Категория: ${d.category}` : ''}`
+                        ).join('\n\n')
+                        : 'Документы не найдены.',
+                }],
+            };
+        }
+
+        case 'get_doc': {
+            const id = (args as any)?.id as string;
+            if (!id) throw new Error('Parameter "id" is required');
+            if (!isValidSkillId(id)) throw new Error('Invalid doc id');
+
+            const path = docDirFromId(id);
+            if (!path) throw new Error(`Document "${id}" not found`);
+            const content = readFileSync(path, 'utf-8');
+            return {
+                content: [{ type: 'text' as const, text: `### ${id}\n\n${content}` }],
+            };
+        }
+
+        case 'search_docs': {
+            const query = ((args as any)?.query as string || '').toLowerCase();
+            const all = scanDocs();
+            const results = all.filter(d =>
+                d.name.toLowerCase().includes(query) ||
+                d.description.toLowerCase().includes(query) ||
+                d.id.toLowerCase().includes(query)
+            );
+
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: results.length > 0
+                        ? results.map(d =>
+                            `### ${d.name}\nID: \`${d.id}\`\n${d.description}`
+                        ).join('\n\n')
+                        : `По запросу "${query}" ничего не найдено.`,
+                }],
+            };
+        }
+
+        case 'list_rules': {
+            const all = scanRules();
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: all.length > 0
+                        ? all.map(r =>
+                            `### ${r.name}\nID: \`${r.id}\`\n${r.description}`
+                        ).join('\n\n')
+                        : 'Правила не найдены.',
+                }],
+            };
+        }
+
+        case 'get_rule': {
+            const id = (args as any)?.id as string;
+            if (!id) throw new Error('Parameter "id" is required');
+            if (!isValidSkillId(id)) throw new Error('Invalid rule id');
+
+            const path = ruleDirFromId(id);
+            if (!path) throw new Error(`Rule "${id}" not found`);
+            const content = readFileSync(path, 'utf-8');
+            return {
+                content: [{ type: 'text' as const, text: `### ${id}\n\n${content}` }],
+            };
+        }
+
         default:
             throw new Error(`Unknown tool: ${name}`);
     }
@@ -351,7 +605,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 async function main() {
     const skillsCount = scanSkills().length;
-    process.stderr.write(`[mcp-skills] ${skillsCount} skills loaded from ${SKILLS_DIR || '(empty)'}\n`);
+    const docsCount = scanDocs().length;
+    const rulesCount = scanRules().length;
+    process.stderr.write(`[mcp-skills] ${skillsCount} skills, ${docsCount} docs, ${rulesCount} rules loaded from ${SKILLS_DIR || '(empty)'}\n`);
 
     const transport = new StdioServerTransport();
     await server.connect(transport);

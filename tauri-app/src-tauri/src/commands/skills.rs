@@ -10,10 +10,112 @@ pub struct SkillFile {
     pub content: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DocFile {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RuleFile {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
 /// Resolve the skills directory path (same logic as in mcp_client)
 fn resolve_skills_dir() -> Option<PathBuf> {
     let p = crate::settings::get_settings_dir().join(".agents").join("skills");
     Some(p)
+}
+
+fn resolve_docs_dir() -> Option<PathBuf> {
+    Some(crate::settings::get_settings_dir().join(".agents").join("docs"))
+}
+
+fn resolve_rules_dir() -> Option<PathBuf> {
+    Some(crate::settings::get_settings_dir().join(".agents").join("rules"))
+}
+
+/// Get first meaningful paragraph from a markdown doc (for description).
+fn first_paragraph(text: &str) -> String {
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() { continue; }
+        if trimmed.starts_with('#') || trimmed.starts_with("```") || trimmed.starts_with("---") || trimmed.starts_with('|') { continue; }
+        if trimmed.starts_with("- ") || trimmed.starts_with("* ") { continue; }
+        return trimmed.chars().take(200).collect();
+    }
+    String::new()
+}
+
+fn scan_md_dir(base: PathBuf, subdir: &str) -> Vec<(String, String, String, String)> {
+    // Returns (id, name, category, description)
+    let dir = base.join(subdir);
+    let mut out = vec![];
+    fn walk(dir: &std::path::Path, category: &str, out: &mut Vec<(String, String, String, String)>, root: &std::path::Path) {
+        let entries = match std::fs::read_dir(dir) { Ok(e) => e, Err(_) => return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let sub = entry.file_name().to_string_lossy().to_string();
+                if sub.starts_with('.') { continue; }
+                let cat = if category.is_empty() { sub.clone() } else { format!("{}/{}", category, sub) };
+                walk(&path, &cat, out, root);
+            } else if path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("md")).unwrap_or(false) {
+                if let Ok(raw) = std::fs::read_to_string(&path) {
+                    let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+                    let id = rel.trim_end_matches(".md").to_string();
+                    let name = path.file_stem().and_then(|n| n.to_str()).unwrap_or(&id).to_string();
+                    out.push((id, name, category.to_string(), first_paragraph(&raw)));
+                }
+            }
+        }
+    }
+    walk(&dir, "", &mut out, &dir);
+    out.sort();
+    out
+}
+
+#[tauri::command]
+pub fn list_docs() -> Vec<DocFile> {
+    let Some(base) = resolve_skills_dir() else { return vec![] };
+    scan_md_dir(base, "..").into_iter()
+        .filter_map(|(id, name, category, description)| {
+            if id.starts_with("skills/") || id == "skills" { return None; }
+            let dir = resolve_docs_dir();
+            let is_doc = dir.as_ref().map(|d| d.join(&id).exists()).unwrap_or(false);
+            if !is_doc { return None; }
+            Some(DocFile { id, name, description, category })
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn list_rules() -> Vec<RuleFile> {
+    let Some(base) = resolve_rules_dir() else { return vec![] };
+    if !base.exists() { return vec![]; }
+    let mut out = vec![];
+    fn walk(dir: &std::path::Path, out: &mut Vec<RuleFile>) {
+        let entries = match std::fs::read_dir(dir) { Ok(e) => e, Err(_) => return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() { walk(&path, out); }
+            else if path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("md")).unwrap_or(false) {
+                if let Ok(raw) = std::fs::read_to_string(&path) {
+                    let id = path.strip_prefix(dir).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+                    let id = id.trim_end_matches(".md").to_string();
+                    let name = path.file_stem().and_then(|n| n.to_str()).unwrap_or(&id).to_string();
+                    out.push(RuleFile { id, name, description: first_paragraph(&raw) });
+                }
+            }
+        }
+    }
+    walk(&base, &mut out);
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out
 }
 
 fn scan_skills_dir() -> Vec<SkillFile> {

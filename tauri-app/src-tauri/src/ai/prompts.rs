@@ -240,6 +240,29 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
         prompt.push_str("Если задача соответствует скиллу — получи его через `get_skill(id)` и СЛЕДУЙ инструкциям из SKILL.md.\n\n");
     }
 
+    // Auto-inject available docs
+    let docs_list = crate::commands::skills::list_docs();
+    if !docs_list.is_empty() {
+        prompt.push_str("=== ДОСТУПНАЯ ДОКУМЕНТАЦИЯ 1С (автообновляемый список) ===\n");
+        prompt.push_str("Доступны документы по паттернам, соглашениям и справочникам 1С. Для получения полного содержимого — вызови `get_doc(id=\"...\")`.\n\n");
+        for d in &docs_list {
+            let cat = if d.category.is_empty() { String::new() } else { format!(" [{}]", d.category) };
+            prompt.push_str(&format!("- `{}`{}: {}\n", d.id, cat, d.description));
+        }
+        prompt.push_str("\n");
+    }
+
+    // Auto-inject available rules
+    let rules_list = crate::commands::skills::list_rules();
+    if !rules_list.is_empty() {
+        prompt.push_str("=== ПРАВИЛА КОДИРОВАНИЯ 1С (автообновляемый список) ===\n");
+        prompt.push_str("Доступны правила и стандарты кодирования 1С. Для получения полного содержимого — вызови `get_rule(id=\"...\")`.\n\n");
+        for r in &rules_list {
+            prompt.push_str(&format!("- `{}`: {}\n", r.id, r.description));
+        }
+        prompt.push_str("\n");
+    }
+
     match code_gen.behavior_preset {
         PromptBehaviorPreset::Project => {
             prompt.push_str("Ты - эксперт-разработчик 1С. Твоя задача - писать чистый, поддерживаемый код, следуя стандартам 1С и БСП. Можешь исправлять ошибки и предлагать оптимальные решения в рамках запроса.\n\n");
