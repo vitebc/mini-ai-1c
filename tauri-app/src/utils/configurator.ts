@@ -264,6 +264,11 @@ export function formatConfiguratorContextForLLM(ctx: ConfiguratorTitleContext): 
 export function parseConfiguratorTitle(title: string): string {
     if (!title) return "Конфигуратор";
 
+    var title = title
+      .replace(/1С:Комплексная автоматизация 2/g, 'КА2')
+      .replace(/1С:ERP Управление предприятием 2/g, 'ERP')
+      .replace(/Управление производственным предприятием, редакция 1.3/g, 'УПП')
+
     const parts = title.split(' - ');
 
     if (parts.length >= 3) {
