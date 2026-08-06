@@ -16,6 +16,7 @@ import { SkillsTab } from './settings/SkillsTab';
 
 import { useProfiles } from '../contexts/ProfileContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { findConfiguratorWindows } from '../api/configurator';
 import { WindowInfo, BslStatus, AppSettings, BslDiagnosticItem } from '../types/settings';
 import { flushPerformanceDiagnosticsToLog } from '../utils/performanceDiagnostics';
 
@@ -128,8 +129,13 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
         const base = settings.configurator.window_title_pattern || 'Конфигуратор|1C:Enterprise';
         const extras = settings.configurator.extra_window_title_patterns ?? [];
         const pattern = extras.length > 0 ? `${base}|${extras.join('|')}` : base;
-        const windows = await invoke<WindowInfo[]>('find_configurator_windows_cmd', { pattern });
-        setDetectedWindows(windows);
+        try {
+            const result = await findConfiguratorWindows(pattern);
+            setDetectedWindows(result.windows ?? []);
+        } catch (e) {
+            console.error('refreshWindows failed', e);
+            setDetectedWindows([]);
+        }
     };
 
     // Auto-refresh loops
