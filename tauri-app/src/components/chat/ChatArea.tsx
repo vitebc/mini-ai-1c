@@ -7,7 +7,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useConfigurator } from '../../contexts/ConfiguratorContext';
 import { parseConfiguratorTitle, ConfiguratorTitleContext } from '../../utils/configurator';
 import { MarkdownRenderer, cleanDiffArtifacts } from '../MarkdownRenderer';
-import { Loader2, Square, ArrowUp, Settings, ChevronDown, ChevronRight, Monitor, RefreshCw, FileText, MousePointerClick, Brain, BrainCircuit, Check, X, Terminal, Pencil, Play, Send, User, HardHat, Mic, MoreHorizontal, Info, Wrench, BellRing, BellOff, SlidersHorizontal, AlertTriangle } from 'lucide-react';
+import { Loader2, Square, ArrowUp, Settings, ChevronDown, ChevronRight, Monitor, RefreshCw, FileText, MousePointerClick, Brain, BrainCircuit, Check, X, Terminal, Pencil, Play, Send, User, HardHat, Code, Mic, MoreHorizontal, Info, Wrench, BellRing, BellOff, SlidersHorizontal, AlertTriangle } from 'lucide-react';
 import logo from '../../assets/logo.png';
 import ToolCallBlock from './ToolCallBlock';
 import { MessageActions } from './MessageActions';
@@ -1767,13 +1767,14 @@ export const ChatArea = memo(function ChatArea({
 
                     <div ref={dropdownRef} className="px-3 pb-2 pt-0 flex items-end gap-1.5 pointer-events-auto flex-nowrap w-full">
                         <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                            {/* ── Кнопка режима генерации: СВОЙ / ЧУЖОЙ / CLI ── */}
+                            {/* ── Кнопка режима генерации: СВОЙ / ЧУЖОЙ / РАЗРАБОТКА / ПЛАН ── */}
                             {(() => {
                                 const behavior = settings?.code_generation?.behavior_preset ?? 'project';
-                                const modes: Array<{ id: 'project' | 'maintenance' | 'cli'; label: string; icon: typeof User; color: string }> = [
+                                const modes: Array<{ id: 'project' | 'maintenance' | 'cli' | 'planning'; label: string; icon: typeof User; color: string }> = [
                                     { id: 'project', label: 'СВОЙ', icon: User, color: 'blue' },
                                     { id: 'maintenance', label: 'ЧУЖОЙ', icon: HardHat, color: 'orange' },
-                                    { id: 'cli', label: 'CLI', icon: Terminal, color: 'green' },
+                                    { id: 'cli', label: 'РАЗРАБОТКА', icon: Terminal, color: 'green' },
+                                    { id: 'planning', label: 'ПЛАН', icon: Code, color: 'emerald' },
                                 ];
                                 const current = modes.find(m => m.id === behavior) || modes[0];
                                 const Icon = current.icon;
@@ -1782,7 +1783,7 @@ export const ChatArea = memo(function ChatArea({
                                         onClick={() => {
                                             const modesArr = modes.map(m => m.id);
                                             const idx = modesArr.indexOf(behavior);
-                                            const next = modesArr[(idx + 1) % 3];
+                                            const next = modesArr[(idx + 1) % 4];
                                             updateSettings({
                                                 ...settings!,
                                                 code_generation: { ...settings!.code_generation, behavior_preset: next }
@@ -1791,9 +1792,10 @@ export const ChatArea = memo(function ChatArea({
                                         className={`h-8 flex items-center gap-1 px-2 rounded-lg border text-[11px] font-medium transition-all active:scale-95 flex-shrink-0 ${
                                             current.color === 'blue' ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
                                                 : current.color === 'orange' ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
+                                                : current.color === 'emerald' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
                                                 : 'bg-green-500/10 border-green-500/30 text-green-400'
                                         }`}
-                                        title="Режим: СВОЙ — свой код, ЧУЖОЙ — чужой код, CLI — экономный режим (клик переключает)"
+                                        title="Режим: СВОЙ — свой код, ЧУЖОЙ — чужой код, РАЗРАБОТКА — полная разработка, ПЛАН — read-only планирование (клик переключает)"
                                     >
                                         <Icon className="w-3 h-3" />
                                         <span>{current.label}</span>
