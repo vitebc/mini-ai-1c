@@ -1,0 +1,23 @@
+[package]
+name = "mcp-1c-skills"
+version = "1.0.0"
+edition = "2021"
+description = "MCP-сервер: скиллы, документация и правила кодирования 1С (Rust)"
+license = "MIT"
+
+[[bin]]
+name = "mcp-1c-skills"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+walkdir = "2"
+dirs = "5.0.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
