@@ -1,0 +1,23 @@
+[package]
+name = "mcp-1c-metadata"
+version = "1.0.0"
+edition = "2021"
+description = "MCP-сервер: прокси к HTTP-сервису метаданных 1С (Kharin 1c_mcp) (Rust)"
+license = "MIT"
+
+[[bin]]
+name = "mcp-1c-metadata"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+base64 = "0.22"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
