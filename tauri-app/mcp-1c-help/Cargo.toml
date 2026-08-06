@@ -1,0 +1,25 @@
+[package]
+name = "mcp-1c-help"
+version = "1.0.0"
+edition = "2021"
+description = "MCP-сервер: справка 1С:Предприятие (поиск по .hbk файлам через FTS5) (Rust)"
+license = "MIT"
+
+[[bin]]
+name = "mcp-1c-help"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+flate2 = "1"
+regex = "1"
+dirs = "5.0.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

@@ -33,6 +33,8 @@ tauri-app/mcp-1c-filesystem/target/
 tauri-app/mcp-1c-filesystem/**/target/
 tauri-app/mcp-1c-naparnik/target/
 tauri-app/mcp-1c-naparnik/**/target/
+tauri-app/mcp-1c-help/target/
+tauri-app/mcp-1c-help/**/target/
 tauri-app/mcp-1c-tools/target/
 tauri-app/mcp-1c-tools/**/target/
 
