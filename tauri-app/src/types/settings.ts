@@ -60,7 +60,7 @@ export interface CliStatus {
 }
 
 // Пресеты поведения промптов
-export type PromptBehaviorPreset = 'project' | 'maintenance' | 'cli';
+export type PromptBehaviorPreset = 'project' | 'maintenance' | 'cli' | 'planning';
 
 export type CliProviderType = 'qwen' | 'gemini' | 'codex' | 'claude';
 

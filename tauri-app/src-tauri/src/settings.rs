@@ -575,6 +575,7 @@ pub enum PromptBehaviorPreset {
     Project,
     Maintenance,
     Cli,
+    Planning,
 }
 
 impl Default for PromptBehaviorPreset {

@@ -209,6 +209,9 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
         PromptBehaviorPreset::Cli => {
             prompt.push_str("Ты - CLI-ассистент для 1С. Оптимизирован для работы через внешние CLI-провайдеры. Экономный расход токенов, фокус на конкретных изменениях. Пиши чистый код, следуя стандартам 1С.\n\n");
         }
+        PromptBehaviorPreset::Planning => {
+            prompt.push_str("Ты - планировщик и архитектор 1С. Твоя задача - анализировать конфигурацию, исследовать код и составлять чёткий план реализации. НЕ вноси изменения в код - только исследование и план.\n\n");
+        }
     }
 
     let has_code = has_code_context(messages);
@@ -352,6 +355,10 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
             PromptBehaviorPreset::Cli => {
                 prompt.push_str("\n\n=== ПРАВИЛА МАРКИРОВКИ ИЗМЕНЕНИЙ (CLI) ===\n");
                 prompt.push_str("Маркировка изменений не требуется для экономии токенов. Фокус на конкретных изменениях.\n");
+            }
+            PromptBehaviorPreset::Planning => {
+                prompt.push_str("\n\n=== РЕЖИМ ПЛАНИРОВАНИЯ (READ-ONLY) ===\n");
+                prompt.push_str("Не вноси изменений в код. Только исследуй и планируй.\n");
             }
         }
     }
