@@ -607,6 +607,9 @@ pub fn start_settings_watcher(app_handle: tauri::AppHandle) {
                         // Run async reconfigure in tauri runtime
                         let app_handle_clone = app_handle.clone();
                         tauri::async_runtime::spawn(async move {
+                            // Файл изменился вне save_settings — сбрасываем кэш настроек,
+                            // чтобы load_settings прочитал свежее значение.
+                            crate::settings::invalidate_settings_cache();
                             let settings = crate::settings::load_settings();
                             McpManager::reconfigure(settings, &app_handle_clone).await;
                             RECONFIGURE_IN_FLIGHT.store(false, Ordering::SeqCst);

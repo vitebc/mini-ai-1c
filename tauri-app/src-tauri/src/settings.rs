@@ -5,6 +5,28 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::OnceLock;
+
+// ─── Кэш настроек ──────────────────────────────────────────────────────────────
+//
+// `load_settings()` читает файл и выполняет миграции при каждом вызове, а
+// вызывается она на каждый LLM-запрос (см. `get_system_prompt`). Чтобы не
+// читать диск на каждый запрос, результат кэшируется. Кэш инвалидируется:
+// - при `save_settings()` (все записи настроек идут через неё);
+// - при внешнем изменении settings.json — из файлового watcher
+//   (`mcp_client::start_settings_watcher`).
+static SETTINGS_CACHE: OnceLock<std::sync::Mutex<Option<AppSettings>>> = OnceLock::new();
+
+fn settings_cache() -> &'static std::sync::Mutex<Option<AppSettings>> {
+    SETTINGS_CACHE.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+/// Инвалидирует кэш настроек. Вызывается из `save_settings` и файлового watcher.
+pub fn invalidate_settings_cache() {
+    if let Ok(mut guard) = settings_cache().lock() {
+        *guard = None;
+    }
+}
 
 // Helper functions for defaults
 fn default_true() -> bool {
@@ -907,6 +929,14 @@ pub fn get_settings_file() -> PathBuf {
 
 /// Load settings from file
 pub fn load_settings() -> AppSettings {
+    // Возвращаем закэшированный результат, если он есть.
+    if let Ok(guard) = settings_cache().lock() {
+        if let Some(cached) = guard.as_ref() {
+            crate::logger::set_debug_mode(cached.debug_mode);
+            return cached.clone();
+        }
+    }
+
     let path = get_settings_file();
     let mut settings = if path.exists() {
         match fs::read_to_string(&path) {
@@ -1057,6 +1087,11 @@ pub fn load_settings() -> AppSettings {
     }
 
     crate::logger::set_debug_mode(settings.debug_mode);
+
+    if let Ok(mut guard) = settings_cache().lock() {
+        *guard = Some(settings.clone());
+    }
+
     settings
 }
 
@@ -1071,7 +1106,12 @@ pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
     let content = serde_json::to_string_pretty(&persisted_settings).map_err(|e| e.to_string())?;
 
     crate::logger::set_debug_mode(settings.debug_mode);
-    fs::write(path, content).map_err(|e| e.to_string())
+    let result = fs::write(path, content).map_err(|e| e.to_string());
+
+    // Инвалидируем кэш после записи — следующий load_settings прочитает свежее значение.
+    invalidate_settings_cache();
+
+    result
 }
 
 #[cfg(test)]

@@ -26,9 +26,19 @@ use shared::{
     SKILLS_SCRIPTS_BLOCK, TABS_BLOCK,
 };
 
-/// Проверяет наличие BSL-кода в контексте диалога.
+/// Число последних сообщений, которые учитываются при детекции кода в контексте.
+///
+/// P1: `has_code_context` раньше сканировал ВСЮ историю — один кусок кода в
+/// начале чата навсегда включал SEARCH/REPLACE-режим, даже для вопросов.
+/// Теперь смотрим только последние сообщения (скользящее окно).
+pub const CODE_CONTEXT_LOOKBACK: usize = 4;
+
+/// Проверяет наличие BSL-кода в НЕДАВНИХ сообщениях диалога.
+///
+/// Смотрит только последние `CODE_CONTEXT_LOOKBACK` сообщений, чтобы
+/// устаревший код из начала чата не держал SEARCH/REPLACE-режим включённым.
 pub fn has_code_context(messages: &[ApiMessage]) -> bool {
-    for msg in messages {
+    for msg in messages.iter().rev().take(CODE_CONTEXT_LOOKBACK) {
         if let Some(content) = &msg.content {
             if content.contains("```bsl") || content.contains("```1c") {
                 return true;
@@ -134,6 +144,50 @@ fn build_lightweight_system_prompt_with_custom_prompts(
     append_custom_prompt_settings(&mut prompt, custom_prompts);
 
     prompt
+}
+
+/// Маркеры поискового намерения в запросе пользователя.
+///
+/// P1: тяжёлый search-блок (~20 строк) добавляется в промпт только когда
+/// в недавних сообщениях есть поисковое намерение («найди», «где используется»,
+/// «impact») ИЛИ контекст кода отсутствует (исследовательский чат). На простых
+/// правках («добавь комментарий») лишние инструкции поиска не нужны.
+pub const SEARCH_INTENT_MARKERS: &[&str] = &[
+    "найди",
+    "найти",
+    "найдите",
+    "поиск",
+    "поищи",
+    "где используется",
+    "где используется?",
+    "impact",
+    "влияние изменений",
+    "кто вызывает",
+    "что делает",
+    "как работает",
+    "какая функция",
+    "есть ли функция",
+    "есть ли метод",
+    "структура объекта",
+    "найди функцию",
+    "semantic_find",
+    "find_references",
+];
+
+/// Определяет, есть ли в НЕДАВНИХ сообщениях поисковое намерение.
+pub fn has_search_intent(messages: &[ApiMessage]) -> bool {
+    for msg in messages.iter().rev().take(CODE_CONTEXT_LOOKBACK) {
+        if let Some(content) = &msg.content {
+            let lower = content.to_lowercase();
+            if SEARCH_INTENT_MARKERS
+                .iter()
+                .any(|m| lower.contains(m))
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Get dynamic system prompt based on available tools.
@@ -258,7 +312,12 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
         let has_search = available_tools
             .iter()
             .any(|t| t.server_id == "builtin-1c-search");
-        if has_search {
+        // P1: search-блок инжектится только при поисковом намерении или в
+        // исследовательском чате без контекста кода. Для Planning — всегда
+        // (режим по своей сути исследовательский).
+        let is_planning = code_gen.behavior_preset == PromptBehaviorPreset::Planning;
+        let research_chat = !has_code;
+        if has_search && (is_planning || has_search_intent(messages) || research_chat) {
             prompt.push_str("\n");
             prompt.push_str(SEARCH_GUIDE);
         }
@@ -571,6 +630,58 @@ mod tests {
             &[make_user_message("найди функцию, которая рассчитывает НДС")],
         );
         assert!(prompt.contains("=== ПОИСК ПО КОНФИГУРАЦИИ (builtin-1c-search) ==="));
+    }
+
+    #[test]
+    fn search_guide_omitted_for_simple_edit_without_search_intent() {
+        // Контекст кода есть, но поискового намерения нет → search-блок не нужен.
+        let msgs = vec![make_user_message(
+            "Исправь функцию:\n```bsl\nФункция Тест()\n\tКонецФункции\n```",
+        )];
+        assert!(has_code_context(&msgs), "тест должен иметь контекст кода");
+        assert!(!has_search_intent(&msgs), "тест не должен иметь search-intent");
+
+        let prompt = get_system_prompt(&[make_search_tool()], &msgs);
+        assert!(
+            !prompt.contains("=== ПОИСК ПО КОНФИГУРАЦИИ (builtin-1c-search) ==="),
+            "search-блок не должен инжектиться при простой правке"
+        );
+    }
+
+    #[test]
+    fn search_guide_injected_for_research_chat_without_code() {
+        // Нет контекста кода → исследовательский чат → search-блок присутствует.
+        let msgs = vec![make_user_message("Расскажи про учёт НДС в типовой")];
+        assert!(!has_code_context(&msgs));
+        assert!(!has_search_intent(&msgs));
+
+        let prompt = get_system_prompt(&[make_search_tool()], &msgs);
+        assert!(prompt.contains("=== ПОИСК ПО КОНФИГУРАЦИИ (builtin-1c-search) ==="));
+    }
+
+    #[test]
+    fn has_code_context_uses_recent_messages_lookback() {
+        // Код есть только в старом сообщении (раньше окна) → контекст кода отсутствует.
+        let mut msgs = Vec::new();
+        for _ in 0..(CODE_CONTEXT_LOOKBACK + 1) {
+            msgs.push(make_user_message("просто текст без кода"));
+        }
+        msgs.push(make_user_message(
+            "Функция Старая()\nКонецФункции\nКонецПроцедуры",
+        ));
+        // Старое сообщение — в начале списка (вне окна последних 4).
+        let mut ordered = msgs.clone();
+        ordered.reverse();
+        assert!(!has_code_context(&ordered));
+    }
+
+    #[test]
+    fn has_code_context_detects_recent_code() {
+        let msgs = vec![
+            make_user_message("вопрос без кода"),
+            make_user_message("```bsl\nПроцедура Тест()\nКонецПроцедуры\n```"),
+        ];
+        assert!(has_code_context(&msgs));
     }
 
     /// Интеграционный тест с реальным Ollama + qwen2.5-coder:14b.
