@@ -27,6 +27,8 @@ tauri-app/mcp-1c-search/target/
 tauri-app/mcp-1c-search/**/target/
 tauri-app/mcp-1c-skills/target/
 tauri-app/mcp-1c-skills/**/target/
+tauri-app/mcp-1c-jvv/target/
+tauri-app/mcp-1c-jvv/**/target/
 tauri-app/mcp-1c-tools/target/
 tauri-app/mcp-1c-tools/**/target/
 
