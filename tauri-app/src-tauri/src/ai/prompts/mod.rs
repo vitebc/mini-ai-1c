@@ -2,19 +2,6 @@ use super::models::{ApiMessage, ToolInfo};
 use crate::llm_profiles::LLMProvider;
 use crate::settings::{load_settings, CustomPromptsSettings, PromptBehaviorPreset};
 
-/// Правило приоритета действия: создание/изменение файлов раньше бесконечного анализа.
-/// Борется с кейсом, когда агент застревает в поиске/чтении скиллов и так и не создаёт объект.
-pub const ACTION_RULE: &str = r#"
-=== ПРАВИЛО ДЕЙСТВИЯ (ПРИОРИТЕТ 1 — ВЫШЕ ПРАВИЛ ПОИСКА) ===
-- Если задача — СОЗДАТЬ или ИЗМЕНИТЬ файлы (внешняя обработка .EPF, BSL-модуль, XML-конфигурации):
-  1. СНАЧАЛА получи релевантный скилл через `get_skill(id="...")` и следуй его инструкциям.
-  2. Затем ОБЯЗАТЕЛЬНО СРАЗУ переходи к действию — создавай/изменяй файлы через инструменты файловой системы (write_file, run_command, create_directory) или применяй SEARCH/REPLACE.
-- Максимум 3 разведочных вызова (get_skill / поиск структуры / поиск кода) перед началом создания файлов. НЕ анализируй существующий код бесконечно.
-- НЕ перечитывай один и тот же `get_skill` повторно — содержимое скилла уже в контексте диалога, доверься ему и действуй.
-- Если на 4-м+ вызове ты всё ещё только ищешь/анализируешь, а задача — создать новое — НЕМЕДЛЕННО прекрати разведку и начни создавать файлы.
-- Итог задачи — всегда реально созданный/изменённый файл или готовый код в ответе, НЕ описание того, как его создать.
-"#;
-
 /// Константа с инструкциями для diff-формата (Search/Replace)
 pub const DIFF_FORMAT_INSTRUCTIONS: &str = r#"
 IMPORTANT: You are an expert 1C Developer.
@@ -160,9 +147,6 @@ fn build_lightweight_system_prompt_with_custom_prompts(
         diff_section = diff_section,
     );
 
-    prompt.push_str(ACTION_RULE);
-    prompt.push_str("\n");
-
     // Добавляем краткое перечисление доступных инструментов (без подробной матрицы)
     if !available_tools.is_empty() {
         prompt.push_str("\n\nДоступные инструменты:\n");
@@ -171,16 +155,6 @@ fn build_lightweight_system_prompt_with_custom_prompts(
             let desc = &info.tool.function.description;
             let short_desc = desc.lines().next().unwrap_or(desc);
             prompt.push_str(&format!("- `{name}`: {short_desc}\n"));
-        }
-    }
-
-    // Auto-inject skills for lightweight prompt too
-    let skills_list = crate::commands::skills::list_skills();
-    if !skills_list.is_empty() {
-        prompt.push_str("\nДоступные скиллы (вызови get_skill для получения):\n");
-        for s in &skills_list {
-            let short = if s.description.len() > 60 { &s.description[..60] } else { &s.description };
-            prompt.push_str(&format!("- `{}`: {}\n", s.id, short));
         }
     }
 
@@ -223,65 +197,6 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
 
     let mut prompt = String::new();
     let target_lang = detect_target_lang(messages);
-
-// CRITICAL: Stop rule to prevent infinite search loops
-    prompt.push_str("🚫 СТОП-ПРАВИЛО (НАРУШИТЬ НЕЛЬЗЯ):\n");
-    prompt.push_str("- Максимум 15 вызовов инструментов на всю задачу.\n");
-    prompt.push_str("- Если ты уже получил достаточно информации или выполнил действие — НЕМЕДЛЕННО напиши итоговый ответ пользователю.\n");
-    prompt.push_str("- НЕ продолжай поиск бесконечно. НЕ повторяй одни и те же вызовы.\n");
-    prompt.push_str("- После каждого tool call спроси себя: «Есть ли у меня достаточно информации для ответа?» Если да — отвечай.\n\n");
-
-    // ACTION-first rule: always prioritize creating files over endless analysis
-    prompt.push_str(ACTION_RULE);
-    prompt.push_str("\n");
-
-    // Ask-first rule (only when enabled in settings)
-    if code_gen.ask_before_action {
-        prompt.push_str("❓ ПРАВИЛО УТОЧНЕНИЯ (ПРИОРИТЕТ 0 — выше всех остальных инструкций):\n");
-        prompt.push_str("- Если задача неоднозначна или не хватает параметров — ЗАДАЙ уточняющий вопрос, НЕ действуй наугад.\n");
-        prompt.push_str("- Перед запуском длительной операции (выгрузка/загрузка конфигурации, переиндексация, массовое редактирование) — ОБЯЗАТЕЛЬНО предупреди и спроси подтверждения.\n");
-        prompt.push_str("- Если поисковый профиль конфигурации не выбран, не настроен или неизвестен — НЕ начинай выгрузку/индексацию автоматически. Спроси пользователя.\n");
-        prompt.push_str("- Если ты не уверен в параметрах задачи — спроси, НЕ угадывай.\n");
-        prompt.push_str("- НЕ выполняй длительные команды (upload, db-load, переиндексацию) без явного подтверждения пользователя.\n\n");
-    }
-
-    // Auto-inject available skills list
-    let skills_list = crate::commands::skills::list_skills();
-    if !skills_list.is_empty() {
-        prompt.push_str("=== ДОСТУПНЫЕ СКИЛЛЫ (автообновляемый список) ===\n");
-        prompt.push_str("У тебя есть база знаний — скиллы для разработки на 1С:Предприятие. Доступны инструкции по работе с конфигурацией (XML/BSL), внешними обработками, сборкой EPF/ERF.\n");
-        prompt.push_str("Список ниже обновляется автоматически. Для получения полного содержимого скилла — вызови `get_skill(id=\"...\")`.\n\n");
-        for s in &skills_list {
-            let desc = if s.description.is_empty() { "" } else { &s.description };
-            let cat = if s.category.is_empty() { String::new() } else { format!(" [{}]", s.category) };
-            prompt.push_str(&format!("- `{}`{}: {}\n", s.id, cat, desc));
-        }
-        prompt.push_str("\n⚠️ ОБЯЗАТЕЛЬНО: При начале каждого диалога — СНАЧАЛА изучи доступные скиллы выше.\n");
-        prompt.push_str("Если задача соответствует скиллу — получи его через `get_skill(id)` и СЛЕДУЙ инструкциям из SKILL.md.\n\n");
-    }
-
-    // Auto-inject available docs
-    let docs_list = crate::commands::skills::list_docs();
-    if !docs_list.is_empty() {
-        prompt.push_str("=== ДОСТУПНАЯ ДОКУМЕНТАЦИЯ 1С (автообновляемый список) ===\n");
-        prompt.push_str("Доступны документы по паттернам, соглашениям и справочникам 1С. Для получения полного содержимого — вызови `get_doc(id=\"...\")`.\n\n");
-        for d in &docs_list {
-            let cat = if d.category.is_empty() { String::new() } else { format!(" [{}]", d.category) };
-            prompt.push_str(&format!("- `{}`{}: {}\n", d.id, cat, d.description));
-        }
-        prompt.push_str("\n");
-    }
-
-    // Auto-inject available rules
-    let rules_list = crate::commands::skills::list_rules();
-    if !rules_list.is_empty() {
-        prompt.push_str("=== ПРАВИЛА КОДИРОВАНИЯ 1С (автообновляемый список) ===\n");
-        prompt.push_str("Доступны правила и стандарты кодирования 1С. Для получения полного содержимого — вызови `get_rule(id=\"...\")`.\n\n");
-        for r in &rules_list {
-            prompt.push_str(&format!("- `{}`: {}\n", r.id, r.description));
-        }
-        prompt.push_str("\n");
-    }
 
     match code_gen.behavior_preset {
         PromptBehaviorPreset::Project => {
@@ -641,26 +556,6 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
 
 "#);
         }
-
-        if available_tools
-            .iter()
-            .any(|t| t.tool.function.name == "search_skills" || t.tool.function.name == "get_skill" || t.tool.function.name == "list_skills")
-        {
-            prompt.push_str(r#"
-=== СКИЛЛЫ (builtin-mcp-skills) ===
-
-У тебя есть доступ к базе знаний — скиллам (инструкциям и паттернам по технологиям).
-Список доступных скиллов СОДЕРЖИТСЯ ВЫШЕ в этом промпте (раздел "ДОСТУПНЫЕ СКИЛЛЫ").
-
-Как использовать:
-1. Определи технологию/задачу (например: "Tauri", "React", "MCP сервер", "BSL")
-2. Найди подходящий скилл в списке выше
-3. get_skill(id="desktop-framework-tauri") — получи полное содержимое SKILL.md
-4. Следуй инструкциям из SKILL.md при решении задачи
-
-Если нужен поиск по ключевому слову — используй search_skills(query="...").
-"#);
-        }
     }
 
     prompt
@@ -676,7 +571,6 @@ mod tests {
     fn make_user_message(content: &str) -> ApiMessage {
         ApiMessage {
             role: "user".to_string(),
-            reasoning_content: None,
             content: Some(content.to_string()),
             tool_calls: None,
             tool_call_id: None,
@@ -780,30 +674,6 @@ mod tests {
             light.len(),
             full.len(),
         );
-    }
-
-    #[test]
-    fn system_prompt_includes_action_rule() {
-        let prompt =
-            get_system_prompt(&[make_check_bsl_tool()], &[make_user_message("Создай обработку")]);
-
-        assert!(prompt.contains(ACTION_RULE));
-        assert!(prompt.contains("=== ПРАВИЛО ДЕЙСТВИЯ"));
-        assert!(prompt.contains("write_file"));
-        assert!(prompt.contains("get_skill"));
-    }
-
-    #[test]
-    fn lightweight_system_prompt_includes_action_rule() {
-        let custom = make_custom_prompts_with_templates(vec![]);
-        let prompt = build_lightweight_system_prompt_with_custom_prompts(
-            &[],
-            &[make_user_message("Создай обработку")],
-            &custom,
-        );
-
-        assert!(prompt.contains("=== ПРАВИЛО ДЕЙСТВИЯ"));
-        assert!(prompt.contains("write_file"));
     }
 
     #[test]
