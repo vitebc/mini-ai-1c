@@ -60,6 +60,22 @@ pub(crate) fn search_binary_name() -> &'static str {
     }
 }
 
+/// Проверяет, что команда — это имя Rust-бинарника builtin MCP-сервера.
+pub(crate) fn is_rust_mcp_binary_name(command: &str) -> bool {
+    let cmd = command.trim().replace('\\', "/").to_lowercase();
+    [
+        "mcp-1c-skills",
+        "mcp-1c-jvv",
+        "mcp-1c-filesystem",
+        "mcp-1c-naparnik",
+        "mcp-1c-help",
+        "mcp-1c-metadata",
+        "mcp-1c-search",
+    ]
+    .iter()
+    .any(|base| cmd.ends_with(base) || cmd.ends_with(&format!("{}.exe", base)))
+}
+
 const BUILTIN_MCP_SKILLS_SERVER_ID: &str = "builtin-mcp-skills";
 
 fn resolve_skills_dir() -> Option<String> {
@@ -91,7 +107,7 @@ fn with_runtime_settings(mut config: McpServerConfig, settings: &AppSettings) ->
     config
 }
 
-fn is_stdio_node_launcher_command(command: &str) -> bool {
+pub(crate) fn is_stdio_node_launcher_command(command: &str) -> bool {
     let normalized = command
         .trim()
         .trim_matches('"')
@@ -835,12 +851,30 @@ impl McpSession {
     #[cfg(not(debug_assertions))]
     fn embedded_mcp_resource_bytes(filename: &str) -> Option<&'static [u8]> {
         match filename {
-            "1c-help.cjs" => Some(include_bytes!("../mcp-servers/1c-help.cjs")),
-            "1c-metadata.cjs" => Some(include_bytes!("../mcp-servers/1c-metadata.cjs")),
-            "1c-naparnik.cjs" => Some(include_bytes!("../mcp-servers/1c-naparnik.cjs")),
-            "mcp-skills.cjs" => Some(include_bytes!("../mcp-servers/mcp-skills.cjs")),
-            "1c-filesystem.cjs" => Some(include_bytes!("../mcp-servers/1c-filesystem.cjs")),
-            "jvv-1c.cjs" => Some(include_bytes!("../mcp-servers/jvv-1c.cjs")),
+            #[cfg(windows)]
+            "mcp-1c-skills.exe" => Some(include_bytes!("../mcp-servers/mcp-1c-skills.exe")),
+            #[cfg(not(windows))]
+            "mcp-1c-skills" => Some(include_bytes!("../mcp-servers/mcp-1c-skills")),
+            #[cfg(windows)]
+            "mcp-1c-jvv.exe" => Some(include_bytes!("../mcp-servers/mcp-1c-jvv.exe")),
+            #[cfg(not(windows))]
+            "mcp-1c-jvv" => Some(include_bytes!("../mcp-servers/mcp-1c-jvv")),
+            #[cfg(windows)]
+            "mcp-1c-filesystem.exe" => Some(include_bytes!("../mcp-servers/mcp-1c-filesystem.exe")),
+            #[cfg(not(windows))]
+            "mcp-1c-filesystem" => Some(include_bytes!("../mcp-servers/mcp-1c-filesystem")),
+            #[cfg(windows)]
+            "mcp-1c-naparnik.exe" => Some(include_bytes!("../mcp-servers/mcp-1c-naparnik.exe")),
+            #[cfg(not(windows))]
+            "mcp-1c-naparnik" => Some(include_bytes!("../mcp-servers/mcp-1c-naparnik")),
+            #[cfg(windows)]
+            "mcp-1c-help.exe" => Some(include_bytes!("../mcp-servers/mcp-1c-help.exe")),
+            #[cfg(not(windows))]
+            "mcp-1c-help" => Some(include_bytes!("../mcp-servers/mcp-1c-help")),
+            #[cfg(windows)]
+            "mcp-1c-metadata.exe" => Some(include_bytes!("../mcp-servers/mcp-1c-metadata.exe")),
+            #[cfg(not(windows))]
+            "mcp-1c-metadata" => Some(include_bytes!("../mcp-servers/mcp-1c-metadata")),
             #[cfg(windows)]
             "mcp-1c-search.exe" => Some(include_bytes!("../mcp-servers/mcp-1c-search.exe")),
             #[cfg(not(windows))]
@@ -1260,11 +1294,12 @@ impl McpSession {
 
             // Direct-binary MCP launcher resolution
             let is_stdio_exe = !is_stdio_node_launcher
-                && if cfg!(windows) {
-                    cmd_lower.ends_with(".exe")
-                } else {
-                    cmd_lower.ends_with(".exe") || cmd_lower == "mcp-1c-search"
-                };
+                && (is_rust_mcp_binary_name(&command)
+                    || if cfg!(windows) {
+                        cmd_lower.ends_with(".exe")
+                    } else {
+                        cmd_lower.ends_with(".exe") || cmd_lower == "mcp-1c-search"
+                    });
             if is_stdio_exe {
                 let exe_filename = command.clone();
                 let exe_subpath = format!("mcp-servers/{}", exe_filename);
@@ -2190,6 +2225,20 @@ mod tests {
         assert!(!is_stdio_node_launcher_command(
             r"C:\tools\mcp-1c-search.exe"
         ));
+    }
+
+    #[test]
+    fn detects_rust_mcp_binary_names() {
+        assert!(is_rust_mcp_binary_name("mcp-1c-skills"));
+        assert!(is_rust_mcp_binary_name("mcp-1c-jvv"));
+        assert!(is_rust_mcp_binary_name("mcp-1c-filesystem"));
+        assert!(is_rust_mcp_binary_name("mcp-1c-naparnik"));
+        assert!(is_rust_mcp_binary_name("mcp-1c-help"));
+        assert!(is_rust_mcp_binary_name("mcp-1c-metadata"));
+        assert!(is_rust_mcp_binary_name("mcp-1c-search"));
+        assert!(is_rust_mcp_binary_name(r"C:\tools\mcp-1c-skills.exe"));
+        assert!(!is_rust_mcp_binary_name("node"));
+        assert!(!is_rust_mcp_binary_name("mcp-servers/mcp-skills.cjs"));
     }
 
     #[test]

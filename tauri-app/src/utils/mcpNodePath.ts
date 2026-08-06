@@ -37,3 +37,9 @@ export function isBuiltinNodeLauncher(command: string | null | undefined, nodePa
         || normalizedCommand.endsWith('/node.exe')
         || normalizedCommand.includes('tsx');
 }
+
+/** Платформо-зависимое имя Rust-бинарника MCP-сервера (например mcp-1c-skills). */
+export function rustMcpBinaryName(baseName: string): string {
+    return navigator.platform.toLowerCase().includes('win') ? `${baseName}.exe` : baseName;
+}
+

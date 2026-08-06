@@ -748,7 +748,6 @@ fn ensure_default_custom_prompt_templates(settings: &mut AppSettings) -> bool {
 /// Ensure all built-in MCP servers are present in settings.
 /// Called on every settings load; idempotent.
 pub fn ensure_builtin_mcp_servers(settings: &mut AppSettings) -> bool {
-    let node_path = normalize_node_path(&settings.node_path);
     let mut modified = false;
 
     // builtin-mcp-skills (enabled by default — agent should see skills)
@@ -759,8 +758,8 @@ pub fn ensure_builtin_mcp_servers(settings: &mut AppSettings) -> bool {
             name: "Скиллы".to_string(),
             enabled: true,
             transport: McpTransport::Stdio,
-            command: Some(node_path.clone()),
-            args: Some(vec!["mcp-servers/mcp-skills.cjs".to_string()]),
+            command: Some(rust_mcp_binary_name("mcp-1c-skills")),
+            args: None,
             env: None,
             ..Default::default()
         });
@@ -775,8 +774,8 @@ pub fn ensure_builtin_mcp_servers(settings: &mut AppSettings) -> bool {
             name: "Файловая система (Sandbox)".to_string(),
             enabled: false,
             transport: McpTransport::Stdio,
-            command: Some(node_path.clone()),
-            args: Some(vec!["mcp-servers/1c-filesystem.cjs".to_string()]),
+            command: Some(rust_mcp_binary_name("mcp-1c-filesystem")),
+            args: None,
             env: Some(std::collections::HashMap::from([(
                 "MINI_AI_1C_SANDBOX_PATH".to_string(),
                 String::new(),
@@ -794,15 +793,103 @@ pub fn ensure_builtin_mcp_servers(settings: &mut AppSettings) -> bool {
             name: "1С:Платформа и базы".to_string(),
             enabled: true,
             transport: McpTransport::Stdio,
-            command: Some(node_path.clone()),
-            args: Some(vec!["mcp-servers/jvv-1c.cjs".to_string()]),
+            command: Some(rust_mcp_binary_name("mcp-1c-jvv")),
+            args: None,
             env: None,
             ..Default::default()
         });
         modified = true;
     }
 
+    // builtin-1c-naparnik (enabled by default — 1C:AI consultant)
+    if !settings.mcp_servers.iter().any(|s| s.id == "builtin-1c-naparnik") {
+        crate::app_log!("[SETTINGS] Adding builtin-1c-naparnik server");
+        settings.mcp_servers.push(McpServerConfig {
+            id: "builtin-1c-naparnik".to_string(),
+            name: "1C:Напарник".to_string(),
+            enabled: true,
+            transport: McpTransport::Stdio,
+            command: Some(rust_mcp_binary_name("mcp-1c-naparnik")),
+            args: None,
+            env: Some(std::collections::HashMap::from([(
+                "ONEC_AI_TOKEN".to_string(),
+                String::new(),
+            )])),
+            ..Default::default()
+        });
+        modified = true;
+    }
+
+    // builtin-1c-help (disabled by default — needs 1C platform)
+    if !settings.mcp_servers.iter().any(|s| s.id == "builtin-1c-help") {
+        crate::app_log!("[SETTINGS] Adding builtin-1c-help server");
+        settings.mcp_servers.push(McpServerConfig {
+            id: "builtin-1c-help".to_string(),
+            name: "1С:Справка".to_string(),
+            enabled: false,
+            transport: McpTransport::Stdio,
+            command: Some(rust_mcp_binary_name("mcp-1c-help")),
+            args: None,
+            env: Some(std::collections::HashMap::from([(
+                "ONEC_HELP_PATH".to_string(),
+                String::new(),
+            )])),
+            ..Default::default()
+        });
+        modified = true;
+    }
+
+    // builtin-1c-metadata (disabled by default — needs 1C HTTP service)
+    if !settings.mcp_servers.iter().any(|s| s.id == "builtin-1c-metadata") {
+        crate::app_log!("[SETTINGS] Adding builtin-1c-metadata server");
+        settings.mcp_servers.push(McpServerConfig {
+            id: "builtin-1c-metadata".to_string(),
+            name: "1C:Метаданные".to_string(),
+            enabled: false,
+            transport: McpTransport::Stdio,
+            command: Some(rust_mcp_binary_name("mcp-1c-metadata")),
+            args: None,
+            env: Some(std::collections::HashMap::from([
+                (
+                    "ONEC_METADATA_URL".to_string(),
+                    "http://localhost/base/hs/mcp".to_string(),
+                ),
+                ("ONEC_USERNAME".to_string(), String::new()),
+                ("ONEC_PASSWORD".to_string(), String::new()),
+            ])),
+            ..Default::default()
+        });
+        modified = true;
+    }
+
     modified
+}
+
+/// Платформо-зависимое имя Rust-бинарника MCP-сервера.
+pub fn rust_mcp_binary_name(base: &str) -> String {
+    if cfg!(windows) {
+        format!("{}.exe", base)
+    } else {
+        base.to_string()
+    }
+}
+
+/// Проверяет, является ли команда запуска Rust-бинарником builtin-сервера.
+fn is_rust_mcp_binary_command(command: &str) -> bool {
+    let cmd = command.trim().replace('\\', "/").to_lowercase();
+    [
+        "mcp-1c-skills",
+        "mcp-1c-jvv",
+        "mcp-1c-filesystem",
+        "mcp-1c-naparnik",
+        "mcp-1c-help",
+        "mcp-1c-metadata",
+        "mcp-1c-search",
+    ]
+    .iter()
+    .any(|base| {
+        cmd.ends_with(base) || cmd.ends_with(&format!("{}.exe", base))
+    })
 }
 
 pub fn clear_runtime_only_settings(settings: &mut AppSettings) -> bool {
@@ -819,7 +906,7 @@ pub fn clear_runtime_only_settings(settings: &mut AppSettings) -> bool {
     had_binding
 }
 
-fn is_builtin_node_mcp_server(server_id: &str) -> bool {
+fn is_builtin_managed_mcp_server(server_id: &str) -> bool {
     matches!(
         server_id,
         "builtin-1c-naparnik" | "builtin-1c-metadata" | "builtin-1c-help" | "builtin-mcp-skills" | "builtin-1c-filesystem" | "builtin-jvv-1c"
@@ -828,49 +915,27 @@ fn is_builtin_node_mcp_server(server_id: &str) -> bool {
 
 fn migrate_builtin_mcp_launchers(settings: &mut AppSettings) -> bool {
     let mut modified = false;
-    let node_path = normalize_node_path(&settings.node_path);
-
-    if settings.node_path != node_path {
-        settings.node_path = node_path.clone();
-        modified = true;
-    }
 
     for server in settings.mcp_servers.iter_mut() {
-        if is_builtin_node_mcp_server(&server.id) {
+        if is_builtin_managed_mcp_server(&server.id) {
+            // Миграция node + .cjs → Rust-бинарник
+            let binary = rust_mcp_binary_name(rust_binary_base_for(&server.id));
             let current_cmd = server.command.as_deref().unwrap_or("");
-            if current_cmd != node_path {
+            let is_node_launcher =
+                crate::mcp_client::is_stdio_node_launcher_command(current_cmd)
+                    || current_cmd.contains("node_modules");
+            let is_already_binary = current_cmd.ends_with(&binary);
+
+            if is_node_launcher || !is_already_binary {
                 crate::app_log!(
-                    "[SETTINGS] Migrating builtin server '{}' from '{}' to '{}' launcher",
+                    "[SETTINGS] Migrating builtin server '{}' to binary '{}' (was '{}')",
                     server.id,
-                    current_cmd,
-                    node_path
+                    binary,
+                    current_cmd
                 );
-                server.command = Some(node_path.clone());
+                server.command = Some(binary.clone());
+                server.args = None;
                 modified = true;
-            }
-
-            if let Some(args) = &mut server.args {
-                let original_args = args.clone();
-                args.retain(|a| a != "tsx" && a != "--yes" && !a.contains("node_modules"));
-
-                for arg in args.iter_mut() {
-                    if arg.contains("mcp-servers") {
-                        *arg = arg
-                            .replace("src-tauri/", "")
-                            .replace("src/mcp-servers/", "mcp-servers/");
-                    }
-                    if arg.ends_with(".ts") || arg.ends_with(".js") {
-                        *arg = arg.replace(".ts", ".cjs").replace(".js", ".cjs");
-                    }
-                }
-                if args != &original_args {
-                    crate::app_log!(
-                        "[SETTINGS] Migrated builtin server '{}' args to: {:?}",
-                        server.id,
-                        args
-                    );
-                    modified = true;
-                }
             }
         } else if server.id == "builtin-1c-search" {
             let current_cmd = server.command.as_deref().unwrap_or("");
@@ -883,19 +948,6 @@ fn migrate_builtin_mcp_launchers(settings: &mut AppSettings) -> bool {
                 server.command = Some(search_bin.to_string());
                 server.args = None;
                 modified = true;
-            }
-        } else if server.id == "builtin-mcp-skills" {
-            // Ensure mcp-skills has the correct node launcher
-            let current_cmd = server.command.as_deref().unwrap_or("");
-            if current_cmd != node_path {
-                server.command = Some(node_path.clone());
-                modified = true;
-            }
-            if let Some(args) = &mut server.args {
-                if !args.iter().any(|a| a.contains("mcp-skills")) {
-                    *args = vec!["mcp-servers/mcp-skills.cjs".to_string()];
-                    modified = true;
-                }
             }
         } else if let Some(cmd) = &server.command {
             if cmd.contains("node_modules") {
@@ -911,6 +963,19 @@ fn migrate_builtin_mcp_launchers(settings: &mut AppSettings) -> bool {
     }
 
     modified
+}
+
+/// Базовое имя бинарника для builtin-сервера.
+fn rust_binary_base_for(server_id: &str) -> &'static str {
+    match server_id {
+        "builtin-mcp-skills" => "mcp-1c-skills",
+        "builtin-1c-filesystem" => "mcp-1c-filesystem",
+        "builtin-jvv-1c" => "mcp-1c-jvv",
+        "builtin-1c-naparnik" => "mcp-1c-naparnik",
+        "builtin-1c-help" => "mcp-1c-help",
+        "builtin-1c-metadata" => "mcp-1c-metadata",
+        _ => "mcp-1c-skills",
+    }
 }
 
 /// Get the settings directory path
@@ -1301,7 +1366,7 @@ mod tests {
     }
 
     #[test]
-    fn builtin_mcp_node_migration_uses_custom_node_path() {
+    fn builtin_mcp_migrates_node_to_rust_binary() {
         let custom_node = r"C:\portable\node\node.exe".to_string();
         let mut settings = AppSettings {
             node_path: custom_node.clone(),
@@ -1328,11 +1393,25 @@ mod tests {
         assert!(migrate_builtin_mcp_launchers(&mut settings));
         let server = &settings.mcp_servers[0];
 
-        assert_eq!(server.command.as_deref(), Some(custom_node.as_str()));
-        assert_eq!(
-            server.args,
-            Some(vec!["mcp-servers/1c-naparnik.cjs".to_string()])
-        );
+        let expected_binary = rust_mcp_binary_name("mcp-1c-naparnik");
+        assert_eq!(server.command.as_deref(), Some(expected_binary.as_str()));
+        assert_eq!(server.args, None);
+    }
+
+    #[test]
+    fn rust_mcp_binary_name_is_platform_aware() {
+        #[cfg(windows)]
+        assert_eq!(rust_mcp_binary_name("mcp-1c-skills"), "mcp-1c-skills.exe");
+        #[cfg(not(windows))]
+        assert_eq!(rust_mcp_binary_name("mcp-1c-skills"), "mcp-1c-skills");
+    }
+
+    #[test]
+    fn rust_mcp_binary_command_detection() {
+        assert!(is_rust_mcp_binary_command("mcp-1c-skills"));
+        assert!(is_rust_mcp_binary_command(r"C:\tools\mcp-1c-help.exe"));
+        assert!(!is_rust_mcp_binary_command("node"));
+        assert!(!is_rust_mcp_binary_command("mcp-servers/mcp-skills.cjs"));
     }
 
     #[test]

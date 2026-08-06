@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Database, Link2, Key, ShieldCheck, Activity, CheckCircle2, AlertCircle, Plus, Trash2, Globe, Settings2, Terminal, Cpu, FileText, X, Sparkles, FolderOpen, ChevronDown, Code, Wrench, Server } from 'lucide-react';
 import McpToolsView from '../CodeSidePanel/McpToolsView';
-import { isBuiltinNodeLauncher, normalizeNodePath } from '../../utils/mcpNodePath';
+import { normalizeNodePath, rustMcpBinaryName } from '../../utils/mcpNodePath';
 import {
     BUILTIN_1C_SEARCH_ID,
     SEARCH_PROFILES_ENV,
@@ -251,9 +251,13 @@ export function MCPSettings({
 
     // Ensure pre-installed servers exist
     useEffect(() => {
-        const naparnikArgs = ['mcp-servers/1c-naparnik.cjs'];
-        const metadataArgs = ['mcp-servers/1c-metadata.cjs'];
-        const helpArgs = ['mcp-servers/1c-help.cjs'];
+        const naparnikCmd = rustMcpBinaryName('mcp-1c-naparnik');
+        const metadataCmd = rustMcpBinaryName('mcp-1c-metadata');
+        const helpCmd = rustMcpBinaryName('mcp-1c-help');
+        const skillsCmd = rustMcpBinaryName('mcp-1c-skills');
+        const fsCmd = rustMcpBinaryName('mcp-1c-filesystem');
+        const jvvCmd = rustMcpBinaryName('mcp-1c-jvv');
+        const searchCmd = rustMcpBinaryName('mcp-1c-search');
 
         let updatedServers = [...servers];
         let needsUpdate = false;
@@ -266,16 +270,16 @@ export function MCPSettings({
                 name: '1C:Напарник',
                 enabled: false,
                 transport: 'stdio',
-                command: effectiveNodePath,
-                args: naparnikArgs,
+                command: naparnikCmd,
+                args: null,
                 env: { 'ONEC_AI_TOKEN': '' }
             });
             needsUpdate = true;
         } else {
             const srv = updatedServers[naparnikIndex];
-            const isSupportedCmd = isBuiltinNodeLauncher(srv.command, effectiveNodePath);
-            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(naparnikArgs)) {
-                updatedServers[naparnikIndex] = { ...srv, command: effectiveNodePath, args: naparnikArgs };
+            const isBinary = (srv.command || '').endsWith(naparnikCmd);
+            if (!isBinary) {
+                updatedServers[naparnikIndex] = { ...srv, command: naparnikCmd, args: null };
                 needsUpdate = true;
             }
         }
@@ -288,16 +292,16 @@ export function MCPSettings({
                 name: '1C:Метаданные',
                 enabled: false,
                 transport: 'stdio',
-                command: effectiveNodePath,
-                args: metadataArgs,
+                command: metadataCmd,
+                args: null,
                 env: { 'ONEC_METADATA_URL': 'http://localhost/base/hs/mcp', 'ONEC_USERNAME': '', 'ONEC_PASSWORD': '' }
             });
             needsUpdate = true;
         } else {
             const srv = updatedServers[metadataIndex];
-            const isSupportedCmd = isBuiltinNodeLauncher(srv.command, effectiveNodePath);
-            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(metadataArgs)) {
-                updatedServers[metadataIndex] = { ...srv, command: effectiveNodePath, args: metadataArgs };
+            const isBinary = (srv.command || '').endsWith(metadataCmd);
+            if (!isBinary) {
+                updatedServers[metadataIndex] = { ...srv, command: metadataCmd, args: null };
                 needsUpdate = true;
             }
         }
@@ -322,16 +326,16 @@ export function MCPSettings({
                 name: '1С:Справка',
                 enabled: false,
                 transport: 'stdio',
-                command: effectiveNodePath,
-                args: helpArgs,
+                command: helpCmd,
+                args: null,
                 env: { 'ONEC_HELP_PATH': '' },
             });
             needsUpdate = true;
         } else {
             const srv = updatedServers[helpIndex];
-            const isSupportedCmd = isBuiltinNodeLauncher(srv.command, effectiveNodePath);
-            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(helpArgs)) {
-                updatedServers[helpIndex] = { ...srv, command: effectiveNodePath, args: helpArgs };
+            const isBinary = (srv.command || '').endsWith(helpCmd);
+            if (!isBinary) {
+                updatedServers[helpIndex] = { ...srv, command: helpCmd, args: null };
                 needsUpdate = true;
             }
         }
@@ -344,7 +348,7 @@ export function MCPSettings({
                 name: '1С:Поиск по конфигурации',
                 enabled: false,
                 transport: 'stdio',
-                command: 'mcp-1c-search.exe',
+                command: searchCmd,
                 args: null,
                 env: {
                     'ONEC_CONFIG_PATH': '',
@@ -360,9 +364,9 @@ export function MCPSettings({
             needsUpdate = true;
         } else {
             const srv = updatedServers[searchIdx];
-            const isExe = srv.command === 'mcp-1c-search.exe' || (srv.command || '').endsWith('mcp-1c-search.exe');
+            const isExe = (srv.command || '').endsWith(searchCmd);
             if (!isExe) {
-                updatedServers[searchIdx] = { ...srv, command: 'mcp-1c-search.exe', args: null };
+                updatedServers[searchIdx] = { ...srv, command: searchCmd, args: null };
                 needsUpdate = true;
             }
         }
@@ -375,15 +379,15 @@ export function MCPSettings({
                 name: 'Скиллы',
                 enabled: true,
                 transport: 'stdio',
-                command: effectiveNodePath,
-                args: ['mcp-servers/mcp-skills.cjs'],
+                command: skillsCmd,
+                args: null,
             });
             needsUpdate = true;
         } else {
             const srv = updatedServers[skillsIndex];
-            const isSupportedCmd = isBuiltinNodeLauncher(srv.command, effectiveNodePath);
-            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(['mcp-servers/mcp-skills.cjs'])) {
-                updatedServers[skillsIndex] = { ...srv, command: effectiveNodePath, args: ['mcp-servers/mcp-skills.cjs'] };
+            const isBinary = (srv.command || '').endsWith(skillsCmd);
+            if (!isBinary) {
+                updatedServers[skillsIndex] = { ...srv, command: skillsCmd, args: null };
                 needsUpdate = true;
             }
         }
@@ -396,16 +400,16 @@ export function MCPSettings({
                 name: 'Файловая система (Sandbox)',
                 enabled: false,
                 transport: 'stdio',
-                command: effectiveNodePath,
-                args: ['mcp-servers/1c-filesystem.cjs'],
+                command: fsCmd,
+                args: null,
                 env: { 'MINI_AI_1C_SANDBOX_PATH': '' },
             });
             needsUpdate = true;
         } else {
             const srv = updatedServers[fsIndex];
-            const isSupportedCmd = isBuiltinNodeLauncher(srv.command, effectiveNodePath);
-            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(['mcp-servers/1c-filesystem.cjs'])) {
-                updatedServers[fsIndex] = { ...srv, command: effectiveNodePath, args: ['mcp-servers/1c-filesystem.cjs'] };
+            const isBinary = (srv.command || '').endsWith(fsCmd);
+            if (!isBinary) {
+                updatedServers[fsIndex] = { ...srv, command: fsCmd, args: null };
                 needsUpdate = true;
             }
         }
@@ -418,15 +422,15 @@ export function MCPSettings({
                 name: '1С:Платформа и базы',
                 enabled: true,
                 transport: 'stdio',
-                command: effectiveNodePath,
-                args: ['mcp-servers/jvv-1c.cjs'],
+                command: jvvCmd,
+                args: null,
             });
             needsUpdate = true;
         } else {
             const srv = updatedServers[envIndex];
-            const isSupportedCmd = isBuiltinNodeLauncher(srv.command, effectiveNodePath);
-            if (!isSupportedCmd || srv.command !== effectiveNodePath || JSON.stringify(srv.args ?? []) !== JSON.stringify(['mcp-servers/jvv-1c.cjs'])) {
-                updatedServers[envIndex] = { ...srv, command: effectiveNodePath, args: ['mcp-servers/jvv-1c.cjs'] };
+            const isBinary = (srv.command || '').endsWith(jvvCmd);
+            if (!isBinary) {
+                updatedServers[envIndex] = { ...srv, command: jvvCmd, args: null };
                 needsUpdate = true;
             }
         }

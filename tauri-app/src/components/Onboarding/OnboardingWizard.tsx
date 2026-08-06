@@ -9,6 +9,7 @@ import { LLMProfile } from '../../contexts/ProfileContext';
 import { AppSettings, DEFAULT_CUSTOM_PROMPTS, DEFAULT_CODE_GENERATION, DEFAULT_SLASH_COMMANDS, CliStatus } from '../../types/settings';
 import { QwenAuthModal } from '../settings/QwenAuthModal';
 import { cliProvidersApi } from '../../api/cli_providers';
+import { rustMcpBinaryName } from '../../utils/mcpNodePath';
 
 // --- Steps ---
 type Step = 'welcome' | 'environment' | 'llm-setup' | 'mcp-setup' | 'tour' | 'finish';
@@ -179,8 +180,8 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                         name: '1C:Напарник',
                         enabled: true,
                         transport: 'stdio',
-                        command: currentSettings.node_path || 'node',
-                        args: ['mcp-servers/1c-naparnik.cjs'],
+                        command: rustMcpBinaryName('mcp-1c-naparnik'),
+                        args: null,
                         env: { 'ONEC_AI_TOKEN': naparnikToken }
                     } as any);
                 }

@@ -13,7 +13,6 @@
     "build:mcp": "node scripts/build-mcp.mjs mcp",
     "build:mcp-search": "node scripts/build-mcp.mjs mcp-search",
     "build:mcp-search:release": "node scripts/build-mcp.mjs mcp-search-release",
-    "build:jvv-1c": "node scripts/build-jvv-1c.mjs",
     "full:build": "npm run build:mcp-search:release && npm run app:build",
     "repack:installers": "npm run build:mcp-search:release && npm run build:mcp && tauri build --bundles msi,nsis",
     "test:diff": "tsx ../tests/run-diff-tests.mts"
