@@ -35,7 +35,7 @@ pub fn list_tools() -> Vec<Value> {
                 "properties": {
                     "id": {
                         "type": "string",
-                        "description": "ID скилла (например: cc-1c-skills/form-add, rust-engineer, typescript-pro)"
+                        "description": "ID скилла (получи список доступных через list_skills)"
                     }
                 },
                 "required": ["id"]
@@ -49,11 +49,11 @@ pub fn list_tools() -> Vec<Value> {
                 "properties": {
                     "id": {
                         "type": "string",
-                        "description": "ID скилла (например: cc-1c-skills/form-add)"
+                        "description": "ID скилла (получи список доступных через list_skills)"
                     },
                     "path": {
                         "type": "string",
-                        "description": "Относительный путь к файлу (например: scripts/form-add.ps1)"
+                        "description": "Относительный путь к файлу внутри скилла (получи список файлов через get_skill)"
                     }
                 },
                 "required": ["id", "path"]
@@ -94,7 +94,7 @@ pub fn list_tools() -> Vec<Value> {
                 "properties": {
                     "id": {
                         "type": "string",
-                        "description": "ID документа (например: patterns/epf-lifecycle, reference/bsp-api)"
+                        "description": "ID документа (получи список доступных через list_docs)"
                     }
                 },
                 "required": ["id"]
@@ -130,7 +130,7 @@ pub fn list_tools() -> Vec<Value> {
                 "properties": {
                     "id": {
                         "type": "string",
-                        "description": "ID правила (например: 1c-coding-standards)"
+                        "description": "ID правила (получи список доступных через list_rules)"
                     }
                 },
                 "required": ["id"]
