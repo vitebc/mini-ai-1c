@@ -68,23 +68,6 @@ fn default_compress_strategy() -> String {
     "summarize".to_string()
 }
 
-fn default_node_path() -> String {
-    "node".to_string()
-}
-
-fn is_default_node_path(value: &String) -> bool {
-    value.trim().is_empty() || value.trim() == default_node_path()
-}
-
-fn normalize_node_path(value: &str) -> String {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        default_node_path()
-    } else {
-        trimmed.to_string()
-    }
-}
-
 /// Быстрые команды (Slash Commands)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SlashCommand {
@@ -507,11 +490,6 @@ pub struct AppSettings {
     pub enterprise_server_applied: String,
     pub configurator: ConfiguratorSettings,
     pub bsl_server: BSLServerSettings,
-    #[serde(
-        default = "default_node_path",
-        skip_serializing_if = "is_default_node_path"
-    )]
-    pub node_path: String,
     /// Directory for mcp-1c-search SQLite index files. Empty means default app data path.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub search_index_dir: String,
@@ -1276,20 +1254,6 @@ mod tests {
     }
 
     #[test]
-    fn legacy_settings_deserialize_node_path_to_default_node() {
-        let mut json = serde_json::to_value(AppSettings::default())
-            .expect("default settings should serialize to json");
-        json.as_object_mut()
-            .expect("settings should be an object")
-            .remove("node_path");
-
-        let settings: AppSettings =
-            serde_json::from_value(json).expect("legacy settings should deserialize");
-
-        assert_eq!(settings.node_path, "node");
-    }
-
-    #[test]
     fn legacy_settings_deserialize_search_index_dir_to_empty() {
         let mut json = serde_json::to_value(AppSettings::default())
             .expect("default settings should serialize to json");
@@ -1367,9 +1331,7 @@ mod tests {
 
     #[test]
     fn builtin_mcp_migrates_node_to_rust_binary() {
-        let custom_node = r"C:\portable\node\node.exe".to_string();
         let mut settings = AppSettings {
-            node_path: custom_node.clone(),
             mcp_servers: vec![McpServerConfig {
                 id: "builtin-1c-naparnik".to_string(),
                 name: "1C:Naparnik".to_string(),

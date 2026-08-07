@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useDeferredValue, useMemo, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 import { getVersion } from '@tauri-apps/api/app';
 import { listen } from '@tauri-apps/api/event';
@@ -46,7 +45,6 @@ export function MainLayout() {
 
     const [viewMode, setViewMode] = useState<'assistant' | 'split' | 'code'>('assistant');
     const [showSettings, setShowSettings] = useState(false);
-    const [nodeAvailable, setNodeAvailable] = useState<boolean | null>(null);
     const [settingsTab, setSettingsTab] = useState<'llm' | 'configurator' | 'bsl' | 'mcp' | 'debug' | undefined>(undefined);
     const [isApplying, setIsApplying] = useState(false);
     const [isValidating, setIsValidating] = useState(false);
@@ -89,13 +87,6 @@ export function MainLayout() {
             console.warn('[MainLayout] getCurrentWindow() failed:', e);
             return null;
         }
-    }, []);
-
-    // Check Node.js availability on startup
-    useEffect(() => {
-        invoke<string | null>('check_node_version_cmd')
-            .then(ver => setNodeAvailable(ver !== null))
-            .catch(() => setNodeAvailable(false));
     }, []);
 
     // Диагностика ошибок
@@ -515,7 +506,6 @@ export function MainLayout() {
 
                 <Header
                     bslStatus={bslStatus}
-                    nodeAvailable={nodeAvailable}
                     viewMode={viewMode}
                     onViewModeChange={setViewMode}
                     onNewChat={handleNewChat}

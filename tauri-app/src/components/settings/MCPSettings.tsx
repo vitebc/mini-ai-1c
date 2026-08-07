@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Database, Link2, Key, ShieldCheck, Activity, CheckCircle2, AlertCircle, Plus, Trash2, Globe, Settings2, Terminal, Cpu, FileText, X, Sparkles, FolderOpen, ChevronDown, Code, Wrench, Server } from 'lucide-react';
 import McpToolsView from '../CodeSidePanel/McpToolsView';
-import { normalizeNodePath, rustMcpBinaryName } from '../../utils/mcpNodePath';
+import { rustMcpBinaryName } from '../../utils/mcpNodePath';
 import {
     BUILTIN_1C_SEARCH_ID,
     SEARCH_PROFILES_ENV,
@@ -181,7 +181,6 @@ export interface McpServerStatus {
 
 interface MCPSettingsProps {
     servers: McpServerConfig[];
-    nodePath: string;
     searchIndexDir: string;
     bslEnabled?: boolean;
     onUpdate: (servers: McpServerConfig[]) => void;
@@ -201,7 +200,6 @@ const makeProfileId = (prefix: string) =>
 
 export function MCPSettings({
     servers,
-    nodePath,
     searchIndexDir,
     bslEnabled,
     onUpdate,
@@ -231,7 +229,6 @@ export function MCPSettings({
     const [infobases, setInfobases] = useState<Array<{ name: string; connection: string; type: 'file' | 'server' }>>([]);
     const [dbListOpen, setDbListOpen] = useState(false);
     const dbListRef = useRef<HTMLDivElement>(null);
-    const effectiveNodePath = normalizeNodePath(nodePath);
 
     const addToSearchHistory = (path: string) => {
         if (!path.trim()) return;
@@ -462,7 +459,7 @@ export function MCPSettings({
         if (needsUpdate) {
             onUpdate(updatedServers);
         }
-    }, [servers, onUpdate, effectiveNodePath]);
+    }, [servers, onUpdate]);
 
     const fetchStatuses = async () => {
         try {

@@ -1,4 +1,4 @@
-import { Settings, Maximize2, Minimize2, Pin, MessageSquare, Columns, Code2, AlertTriangle, Bell, X, Info, Sun, Moon, History, Download, MessageSquarePlus } from 'lucide-react';
+import { Settings, Maximize2, Minimize2, Pin, MessageSquare, Columns, Code2, Bell, X, Info, Sun, Moon, History, Download, MessageSquarePlus } from 'lucide-react';
 import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 import { getVersion } from '@tauri-apps/api/app';
 import { useConfigurator } from '../../contexts/ConfiguratorContext';
@@ -43,7 +43,6 @@ const PRESET_MCP_NOTIFICATIONS = [
 
 interface HeaderProps {
     bslStatus: { connected: boolean } | null;
-    nodeAvailable: boolean | null;
     viewMode: 'assistant' | 'split' | 'code';
     onViewModeChange: (mode: 'assistant' | 'split' | 'code') => void;
     onNewChat: () => void;
@@ -53,7 +52,6 @@ interface HeaderProps {
 
 export function Header({
     bslStatus,
-    nodeAvailable,
     viewMode,
     onViewModeChange,
     onNewChat,
@@ -305,25 +303,6 @@ export function Header({
                     </div>
                 )}
 
-                {nodeAvailable === false && (
-                    <div className="relative group">
-                        <button className="p-1.5 rounded-md bg-yellow-500/10 border border-yellow-500/20 hover:bg-yellow-500/20 transition-colors">
-                            <AlertTriangle className="w-3.5 h-3.5 text-yellow-400" />
-                        </button>
-                        <div className="absolute left-0 top-full mt-2 z-50 min-w-[220px] bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-3 hidden group-hover:block animate-in fade-in slide-in-from-top-2 duration-150">
-                            <p className="text-xs font-semibold text-yellow-400 mb-1.5 flex items-center gap-1.5">
-                                <AlertTriangle className="w-3 h-3" /> Проблемы системы
-                            </p>
-                            <ul className="space-y-1">
-                                <li className="text-xs text-zinc-300 flex items-start gap-1.5">
-                                    <span className="text-yellow-500 mt-0.5">•</span>
-                                    Node.js не найден — встроенные MCP-серверы недоступны
-                                </li>
-                            </ul>
-                            <p className="text-[10px] text-zinc-500 mt-2">Установите Node.js 18+ для работы MCP</p>
-                        </div>
-                    </div>
-                )}
                 <div
                     data-testid="bsl-status"
                     className="flex items-center gap-2 px-2 py-1 rounded-md bg-zinc-900/50 border border-zinc-500/50"

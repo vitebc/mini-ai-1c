@@ -357,7 +357,6 @@ export function SettingsPanel({ isOpen, onClose, initialTab }: SettingsPanelProp
                         <div className="w-full h-full overflow-hidden">
                             <MCPSettings
                                     servers={settings.mcp_servers}
-                                    nodePath={settings.node_path}
                                     searchIndexDir={settings.search_index_dir || ''}
                                     bslEnabled={settings.bsl_server.enabled}
                                     onUpdate={(mcpServers) => setSettings({ ...settings, mcp_servers: mcpServers })}

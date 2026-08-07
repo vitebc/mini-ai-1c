@@ -28,8 +28,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
     // Environment State
     const [javaStatus, setJavaStatus] = useState<'checking' | 'ok' | 'missing'>('checking');
     const [bslStatus, setBslStatus] = useState<'checking' | 'ok' | 'missing'>('checking');
-    const [nodeStatus, setNodeStatus] = useState<'checking' | 'ok' | 'missing'>('checking');
-    const [nodeVersion, setNodeVersion] = useState<string | null>(null);
     const [isDownloadingBsl, setIsDownloadingBsl] = useState(false);
     const [bslProgress, setBslProgress] = useState(0);
     const [bslDownloadError, setBslDownloadError] = useState<string | null>(null);
@@ -61,7 +59,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
     const checkEnvironment = async () => {
         setJavaStatus('checking');
         setBslStatus('checking');
-        setNodeStatus('checking');
 
         try {
             const isJavaOk = await invoke<boolean>('check_java_cmd');
@@ -69,15 +66,10 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
 
             const bslStatus = await invoke<{ installed: boolean }>('check_bsl_status_cmd');
             setBslStatus(bslStatus.installed ? 'ok' : 'missing');
-
-            const nodeVer = await invoke<string | null>('check_node_version_cmd');
-            setNodeStatus(nodeVer ? 'ok' : 'missing');
-            setNodeVersion(nodeVer ?? null);
         } catch (e) {
             console.error(e);
             setJavaStatus('missing');
             setBslStatus('missing');
-            setNodeStatus('missing');
         }
     };
 
@@ -135,7 +127,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                     java_path: "",
                     auto_download: true
                 },
-                node_path: "node",
                 search_index_dir: "",
                 mcp_servers: [],
                 onboarding_completed: false,
@@ -255,7 +246,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
 
     const handleSaveProfile = async () => {
         if (!selectedProvider) {
-            setStep(nodeStatus === 'missing' ? 'tour' : 'mcp-setup');
+            setStep('mcp-setup');
             return;
         }
 
@@ -309,7 +300,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
             console.error("Failed to save profile during onboarding:", e);
         }
 
-        setStep(nodeStatus === 'missing' ? 'tour' : 'mcp-setup');
+        setStep('mcp-setup');
     };
 
     const handleSaveMCP = async () => {
@@ -354,7 +345,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
     const renderEnvironment = () => (
         <div className="space-y-6 max-w-lg mx-auto animate-in slide-in-from-right-10 duration-300">
             <h2 className="text-2xl font-bold text-white mb-2">Проверка окружения</h2>
-            <p className="text-zinc-400">Для анализа кода нужны Java и Language Server. Node.js необходим для встроенных MCP-серверов.</p>
+            <p className="text-zinc-400">Для анализа кода нужны Java и Language Server.</p>
 
             <div className="space-y-4">
                 {/* Java Check */}
@@ -451,41 +442,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                 </div>
 
                 {/* Node.js Check */}
-                <div className={`bg-zinc-800/50 rounded-xl border transition-all ${nodeStatus === 'missing' ? 'border-yellow-500/30' : 'border-zinc-700'}`}>
-                    <div className="p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-lg ${nodeStatus === 'missing' ? 'bg-yellow-500/10' : 'bg-green-500/10'}`}>
-                                <Terminal className={`w-6 h-6 ${nodeStatus === 'missing' ? 'text-yellow-400' : 'text-green-400'}`} />
-                            </div>
-                            <div>
-                                <h3 className="font-medium text-zinc-100">Node.js</h3>
-                                <p className="text-xs text-zinc-500">Для встроенных MCP-серверов</p>
-                            </div>
-                        </div>
-                        <div>
-                            {nodeStatus === 'checking' && <span className="text-zinc-500 animate-pulse">Проверка...</span>}
-                            {nodeStatus === 'ok' && (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs text-zinc-500 font-mono">{nodeVersion}</span>
-                                    <Check className="w-6 h-6 text-green-500" />
-                                </div>
-                            )}
-                            {nodeStatus === 'missing' && (
-                                <button
-                                    onClick={() => openUrl('https://nodejs.org/')}
-                                    className="px-3 py-1.5 text-xs border border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10 rounded flex items-center transition-colors"
-                                >
-                                    <Download className="w-3 h-3 mr-1" /> Скачать
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                    {nodeStatus === 'missing' && (
-                        <div className="px-4 pb-3 flex items-center gap-2 border-t border-yellow-500/20 pt-3">
-                            <span className="text-xs text-yellow-500/80">Шаг настройки MCP будет автоматически пропущен. Установите Node.js 18+ и перезапустите приложение.</span>
-                        </div>
-                    )}
-                </div>
             </div>
 
             <div className="flex gap-3 pt-4">
@@ -794,7 +750,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
             <div className="flex gap-3 pt-6">
                 <button
                     className="px-6 py-2 border border-zinc-700 hover:bg-white/5 text-zinc-400 font-medium rounded transition-colors"
-                    onClick={() => setStep(nodeStatus === 'missing' ? 'tour' : 'mcp-setup')}
+                    onClick={() => setStep('mcp-setup')}
                 >
                     Пропустить
                 </button>

@@ -295,89 +295,6 @@ pub fn restart_app_cmd(app_handle: AppHandle) {
     app_handle.restart();
 }
 
-/// Check if Node.js is installed and return its version string, or None if not found
-#[tauri::command]
-pub fn check_node_version_cmd() -> Option<String> {
-    use std::process::Command;
-
-    #[cfg(target_os = "windows")]
-    let output = Command::new("cmd").args(["/C", "node --version"]).output();
-
-    #[cfg(not(target_os = "windows"))]
-    let output = Command::new("node").arg("--version").output();
-
-    match output {
-        Ok(o) if o.status.success() => String::from_utf8(o.stdout)
-            .ok()
-            .map(|s| s.trim().to_string()),
-        _ => None,
-    }
-}
-
-fn first_non_empty_line(output: &[u8]) -> Option<String> {
-    String::from_utf8_lossy(output)
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .map(ToOwned::to_owned)
-}
-
-fn resolve_node_path_from_path() -> Option<String> {
-    use std::process::Command;
-
-    #[cfg(target_os = "windows")]
-    let output = Command::new("where.exe").arg("node.exe").output();
-
-    #[cfg(not(target_os = "windows"))]
-    let output = Command::new("which").arg("node").output();
-
-    match output {
-        Ok(o) if o.status.success() => first_non_empty_line(&o.stdout),
-        _ => None,
-    }
-}
-
-fn normalize_node_command(node_path: &str) -> String {
-    let trimmed = node_path.trim();
-    if trimmed.is_empty() {
-        "node".to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
-fn check_node_path_version(node_path: &str) -> Result<String, String> {
-    use std::process::Command;
-
-    let command = normalize_node_command(node_path);
-    let output = Command::new(&command)
-        .arg("--version")
-        .output()
-        .map_err(|e| format!("Не удалось запустить Node.js '{}': {}", command, e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            format!("Node.js '{}' завершился с ошибкой", command)
-        } else {
-            stderr
-        });
-    }
-
-    first_non_empty_line(&output.stdout)
-        .ok_or_else(|| format!("Node.js '{}' запустился, но не вернул версию", command))
-}
-
-#[tauri::command]
-pub fn resolve_node_path_cmd() -> Option<String> {
-    resolve_node_path_from_path()
-}
-
-#[tauri::command]
-pub fn check_node_path_cmd(node_path: String) -> Result<String, String> {
-    check_node_path_version(&node_path)
-}
-
 /// Export settings to a user-selected JSON file without sensitive data.
 #[tauri::command]
 pub fn export_settings(app_handle: AppHandle) -> Result<ExportSettingsResult, String> {
@@ -479,10 +396,9 @@ pub fn check_java_cmd() -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_chat_export_file_name, build_export_bundle, first_non_empty_line,
-        normalize_node_command, restore_profile_secrets, restore_sensitive_settings,
-        sanitize_profiles_for_export, sanitize_settings_for_export, SettingsExportBundle,
-        SETTINGS_EXPORT_FORMAT_VERSION,
+        build_chat_export_file_name, build_export_bundle, restore_profile_secrets,
+        restore_sensitive_settings, sanitize_profiles_for_export, sanitize_settings_for_export,
+        SettingsExportBundle, SETTINGS_EXPORT_FORMAT_VERSION,
     };
     use crate::llm_profiles::{LLMProfile, LLMProvider, ProfileStore};
     use crate::settings::{
@@ -588,26 +504,6 @@ mod tests {
             ],
             active_profile_id: "profile-2".to_string(),
         }
-    }
-
-    #[test]
-    fn node_path_resolution_uses_first_non_empty_line() {
-        let output = b"\r\nC:\\Program Files\\nodejs\\node.exe\r\nC:\\tools\\node.exe\r\n";
-
-        assert_eq!(
-            first_non_empty_line(output).as_deref(),
-            Some(r"C:\Program Files\nodejs\node.exe")
-        );
-    }
-
-    #[test]
-    fn node_path_check_normalizes_blank_to_default_launcher() {
-        assert_eq!(normalize_node_command(""), "node");
-        assert_eq!(normalize_node_command("   "), "node");
-        assert_eq!(
-            normalize_node_command(r" D:\portable\node\node.exe "),
-            r"D:\portable\node\node.exe"
-        );
     }
 
     #[test]

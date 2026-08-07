@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { Download, RefreshCw, Upload, Info, ExternalLink, FolderOpen, Terminal, CheckCircle2, AlertCircle, Network } from 'lucide-react';
+import { Download, RefreshCw, Upload, Info, ExternalLink, Network } from 'lucide-react';
 import { getVersion } from '@tauri-apps/api/app';
 
 import {
@@ -10,7 +9,6 @@ import {
     validateImportSettingsFile,
 } from '../../api/settings';
 import { AppSettings, DEFAULT_PROXY_SETTINGS, ProxyMode, ProxyProtocol, ProxySettings } from '../../types/settings';
-import { getNodePathInputValue, getNodePathPreview } from '../../utils/mcpNodePath';
 import { normalizeProxyPortInput } from '../../utils/proxySettings';
 
 type UpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'update-available' | 'error';
@@ -29,11 +27,6 @@ interface GeneralTabProps {
 
 type StatusTone = 'success' | 'error';
 
-type NodePathCheckResult = {
-    success: boolean;
-    message: string;
-};
-
 export function GeneralTab({
     settings,
     setSettings,
@@ -47,13 +40,6 @@ export function GeneralTab({
     const [appVersion, setAppVersion] = useState<string>('...');
     const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('idle');
     const [latestRelease, setLatestRelease] = useState<ReleaseInfo | null>(null);
-    const [detectedNodePath, setDetectedNodePath] = useState<string | null>(null);
-    const [checkingNodePath, setCheckingNodePath] = useState(false);
-    const [nodePathCheckResult, setNodePathCheckResult] = useState<NodePathCheckResult | null>(null);
-
-    const nodePathInputValue = getNodePathInputValue(settings.node_path);
-    const nodePathPreview = getNodePathPreview(settings.node_path, detectedNodePath);
-    const nodePathToCheck = nodePathInputValue || settings.node_path || 'node';
     const proxy = settings.proxy ?? DEFAULT_PROXY_SETTINGS;
 
     const updateProxy = (updates: Partial<ProxySettings>) => {
@@ -77,64 +63,6 @@ export function GeneralTab({
     useEffect(() => {
         getVersion().then(setAppVersion).catch(() => setAppVersion('?'));
     }, []);
-
-    useEffect(() => {
-        let cancelled = false;
-
-        invoke<string | null>('resolve_node_path_cmd')
-            .then((path) => {
-                if (!cancelled) setDetectedNodePath(path);
-            })
-            .catch(() => {
-                if (!cancelled) setDetectedNodePath(null);
-            });
-
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-
-    const setNodePath = (nodePath: string) => {
-        setNodePathCheckResult(null);
-        setSettings({ ...settings, node_path: nodePath });
-    };
-
-    const browseNodePath = async () => {
-        try {
-            const file = await open({
-                multiple: false,
-                directory: false,
-                filters: [{ name: 'Node.js', extensions: ['exe'] }],
-                title: 'Выберите node.exe',
-            });
-
-            if (file && typeof file === 'string') {
-                setNodePath(file);
-            }
-        } catch (error) {
-            console.error('Failed to open node executable dialog:', error);
-        }
-    };
-
-    const checkNodePath = async () => {
-        setCheckingNodePath(true);
-        setNodePathCheckResult(null);
-
-        try {
-            const version = await invoke<string>('check_node_path_cmd', { nodePath: nodePathToCheck });
-            setNodePathCheckResult({
-                success: true,
-                message: `${version} · ${nodePathPreview}`,
-            });
-        } catch (error) {
-            setNodePathCheckResult({
-                success: false,
-                message: String(error),
-            });
-        } finally {
-            setCheckingNodePath(false);
-        }
-    };
 
     const checkForUpdates = async () => {
         setUpdateStatus('checking');
@@ -354,59 +282,6 @@ export function GeneralTab({
                                 ⚠ Суммаризация недоступна для CodexCLI, QwenCLI и 1С:Напарника — автоматически
                                 используется скользящее окно.
                             </p>
-                        )}
-                    </div>
-                </section>
-
-                <section>
-                    <h3 className="mb-4 text-lg font-medium text-zinc-100">Node.js</h3>
-
-                    <div className="space-y-4 rounded-xl border border-zinc-700 bg-zinc-800/50 p-5">
-                        <div className="space-y-2">
-                            <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                                <Terminal className="h-3 w-3" />
-                                Путь к Node.js
-                            </label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={nodePathInputValue}
-                                    onChange={(event) => setNodePath(event.target.value)}
-                                    className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-[var(--input-bg)] px-3 py-1.5 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder={detectedNodePath || 'node или C:\\portable\\node\\node.exe'}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => void browseNodePath()}
-                                    className="flex shrink-0 items-center gap-1.5 rounded-lg bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-600 hover:text-zinc-100"
-                                    title="Выбрать node.exe"
-                                >
-                                    <FolderOpen className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => void checkNodePath()}
-                                    disabled={checkingNodePath}
-                                    className="flex shrink-0 items-center gap-1.5 rounded-lg bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-600 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    <RefreshCw className={`h-3.5 w-3.5 ${checkingNodePath ? 'animate-spin' : ''}`} />
-                                    Проверить
-                                </button>
-                            </div>
-                            <p className="break-all font-mono text-[11px] text-zinc-500">
-                                Текущий путь: <span className="text-zinc-300">{nodePathPreview}</span>
-                            </p>
-                        </div>
-
-                        {nodePathCheckResult && (
-                            <div className={`flex items-center gap-2 text-xs ${nodePathCheckResult.success ? 'text-green-400' : 'text-red-400'}`}>
-                                {nodePathCheckResult.success ? (
-                                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                                ) : (
-                                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                                )}
-                                <span className="break-all">{nodePathCheckResult.message}</span>
-                            </div>
                         )}
                     </div>
                 </section>
