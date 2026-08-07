@@ -18,10 +18,12 @@ New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
 # 3. Copy executable
 Copy-Item $exePath (Join-Path $portableDir "mini-ai-1c.exe") -Force
 
-# 4. Copy MCP servers
+# 4. Copy MCP servers into mcp-servers/ subdirectory
 $mcpDir = ".\src-tauri\mcp-servers"
+$portableMcpDir = Join-Path $portableDir "mcp-servers"
 if (Test-Path $mcpDir) {
-    Copy-Item "$mcpDir\*" $portableDir -Recurse -Force
+    New-Item -ItemType Directory -Path $portableMcpDir -Force | Out-Null
+    Copy-Item "$mcpDir\*" $portableMcpDir -Recurse -Force
 }
 
 # 5. Create enterprise.json placeholder

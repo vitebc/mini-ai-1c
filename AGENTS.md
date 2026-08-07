@@ -24,7 +24,7 @@ mini-ai-1c/
 │   │   │   └── ...
 │   │   ├── contexts/             # React Context: Chat, Settings, Configurator, BSL, Profile
 │   │   ├── hooks/                # useChatSessions, useCodeSession
-│   │   ├── mcp-servers/          # MCP-серверы TypeScript (1c-help, naparnik, metadata, skills)
+│   │   ├── mcp-servers/          # TS-исходники MCP-серверов (эталон, не менять — портированы на Rust)
 │   │   └── utils/                # Утилиты
 │   ├── src-tauri/                # Backend (Rust)
 │   │   └── src/
@@ -39,9 +39,15 @@ mini-ai-1c/
 │   │           ├── skills.rs     # CRUD локальных скиллов
 │   │           ├── enterprise.rs # Команды enterprise-режима
 │   │           └── ...
-│   ├── mcp-1c-search/            # Отдельный Rust MCP-сервер для поиска по 1С-конфигурации
-│   └── scripts/                  # dev.ps1, build.ps1, portable.ps1, mock-enterprise-server.mjs
-├── scripts/                      # dev.ps1, build.ps1 (запуск из корня)
+│   ├── mcp-1c-search/            # Rust MCP-сервер для поиска по 1С-конфигурации (нативный)
+│   ├── mcp-1c-skills/            # Rust MCP-сервер скиллов/docs/rules (порт mcp-skills.ts)
+│   ├── mcp-1c-jvv/               # Rust MCP-сервер платформ 1С и баз (порт jvv-1c.ts)
+│   ├── mcp-1c-filesystem/        # Rust MCP-сервер файловых операций (порт 1c-filesystem.ts)
+│   ├── mcp-1c-naparnik/          # Rust MCP-сервер 1С:Напарник (порт 1c-naparnik.ts)
+│   ├── mcp-1c-help/              # Rust MCP-сервер справки 1С (порт 1c-help.ts)
+│   ├── mcp-1c-metadata/          # Rust MCP-сервер метаданных 1С (порт 1c-metadata.ts)
+│   └── scripts/                  # build-mcp.mjs (cargo build Rust MCP), build-portable.ps1, mock-enterprise-server.mjs
+├── scripts/                      # dev.ps1, build.ps1, check-mcp-parity.sh (запуск из корня)
 ├── .agents/skills/               # Скиллы для AI-агента (копируются в ~/.config/mini-ai-1c/.agents/skills/)
 └── AGENTS.md                     # Этот файл
 ```
@@ -67,11 +73,13 @@ mini-ai-1c/
 - Миграция со старых путей при первом запуске
 - EditorBridge path auto-fix после миграции
 
-### 4. MCP-сервер mcp-skills
-- TypeScript stdio-сервер (как 1c-help, naparnik, metadata)
-- Инструменты: `list_skills`, `get_skill`, `search_skills`
+### 4. MCP-серверы — Rust-бинарники
+- Все встроенные MCP-серверы портированы на Rust: `mcp-1c-skills`, `mcp-1c-jvv`, `mcp-1c-filesystem`, `mcp-1c-naparnik`, `mcp-1c-help`, `mcp-1c-metadata` (+ нативный `mcp-1c-search`)
+- Standalone-бинарники без Node.js — собираются `npm run build:mcp`, лежат в `src-tauri/mcp-servers/`
+- TS-исходники (`src/mcp-servers/*.ts`) — эталон, не менять; синхронизация через `scripts/check-mcp-parity.sh` и `PORTED_FROM` в каждом проекте
+- Скиллы: `list_skills`, `get_skill`, `search_skills`, `list_docs`, `get_doc`, `list_rules`, `get_rule`
 - Двухуровневая структура скиллов: `<category>/<skill>/SKILL.md`
-- Встроен `include_bytes!` + авто-билд через esbuild
+- Встроен `include_bytes!` + сборка через cargo (build-mcp.mjs)
 
 ### 5. Вкладка «Скиллы» в настройках
 - Слева список скиллов, справа Markdown-редактор + превью
@@ -140,6 +148,7 @@ $HOME/.config/mini-ai-1c/
 | Rust check | `cargo check` (из `src-tauri/`) |
 | Собрать MCP-серверы | `npm run build:mcp` |
 | Собрать mcp-1c-search | `npm run build:mcp-search` |
+| Проверить parity с TS | `scripts/check-mcp-parity.sh` |
 | Скрипты из корня | `scripts/dev.ps1`, `scripts/build.ps1`, `scripts/portable.ps1` |
 
 ---
@@ -176,6 +185,6 @@ $HOME/.config/mini-ai-1c/
 
 - **Rust**: Tauri 2, axum, tokio, rusqlite, reqwest, notify, aes-gcm
 - **Frontend**: React 19, TypeScript, Vite 7, Tailwind CSS v4, Monaco Editor, Radix UI, lucide-react
-- **MCP**: @modelcontextprotocol/sdk (TypeScript), tree-sitter-bsl (Rust)
-- **Системные**: Java 17+ (BSL LS), Node.js 18+ (MCP-серверы), WebView2 Runtime
+- **MCP**: @modelcontextprotocol/sdk (TS-эталоны), tree-sitter-bsl (Rust)
+- **Системные**: Java 17+ (BSL LS), WebView2 Runtime. Node.js больше не нужен — MCP-серверы на Rust
 - **EditorBridge**: .NET 8 self-contained single-file EXE
