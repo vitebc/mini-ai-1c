@@ -1,0 +1,8 @@
+MCP-сервер: прокси к HTTP-сервису метаданных 1С (Kharin 1c_mcp)
+
+Исходный TypeScript: tauri-app/src/mcp-servers/1c-metadata.ts
+Синхронизирован до коммита: 519545a (2026-08-06)
+
+Отслеживание изменений TS-оригинала:
+  git log --oneline 519545a..HEAD -- tauri-app/src/mcp-servers/1c-metadata.ts
+Если вывод непустой — TS менялся, нужно синхронизировать Rust-порт.

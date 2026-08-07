@@ -37,8 +37,6 @@ tauri-app/mcp-1c-help/target/
 tauri-app/mcp-1c-help/**/target/
 tauri-app/mcp-1c-metadata/target/
 tauri-app/mcp-1c-metadata/**/target/
-tauri-app/mcp-1c-tools/target/
-tauri-app/mcp-1c-tools/**/target/
 
 # IDE
 .vscode/
@@ -61,7 +59,6 @@ memory-bank/
 settings.json
 llm_profiles.json
 
-backup/
 tests/
 # scripts/ — now tracked, contains dev/build scripts
 

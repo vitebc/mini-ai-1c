@@ -1,0 +1,8 @@
+MCP-сервер: справка 1С:Предприятие (HBK + FTS5)
+
+Исходный TypeScript: tauri-app/src/mcp-servers/1c-help.ts + lib/hbk-parser.ts
+Синхронизирован до коммита: d8e4f88 (2026-08-06)
+
+Отслеживание изменений TS-оригинала:
+  git log --oneline d8e4f88..HEAD -- tauri-app/src/mcp-servers/1c-help.ts tauri-app/src/mcp-servers/lib/hbk-parser.ts
+Если вывод непустой — TS менялся, нужно синхронизировать Rust-порт.

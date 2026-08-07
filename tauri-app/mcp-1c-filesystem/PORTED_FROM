@@ -1,0 +1,8 @@
+MCP-сервер: файловые операции в sandbox
+
+Исходный TypeScript: tauri-app/src/mcp-servers/1c-filesystem.ts
+Синхронизирован до коммита: 6a020fd (2026-08-06)
+
+Отслеживание изменений TS-оригинала:
+  git log --oneline 6a020fd..HEAD -- tauri-app/src/mcp-servers/1c-filesystem.ts
+Если вывод непустой — TS менялся, нужно синхронизировать Rust-порт.

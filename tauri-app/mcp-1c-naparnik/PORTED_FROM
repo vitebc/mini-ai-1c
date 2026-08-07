@@ -1,0 +1,8 @@
+MCP-сервер: 1С:Напарник (code.1c.ai)
+
+Исходный TypeScript: tauri-app/src/mcp-servers/1c-naparnik.ts
+Синхронизирован до коммита: 478d669 (2026-08-06)
+
+Отслеживание изменений TS-оригинала:
+  git log --oneline 478d669..HEAD -- tauri-app/src/mcp-servers/1c-naparnik.ts
+Если вывод непустой — TS менялся, нужно синхронизировать Rust-порт.
