@@ -4,13 +4,18 @@ param(
 
 Write-Host "=== Mini AI 1C Portable Build ===" -ForegroundColor Cyan
 
+# 0. Kill any running instance that would lock the executable
+Write-Host "[0/5] Killing running mini-ai-1c processes..." -ForegroundColor Yellow
+Get-Process -Name "mini-ai-1c" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
+
 # 1. Build the Tauri app
-Write-Host "[1/4] Building Tauri app..." -ForegroundColor Yellow
+Write-Host "[1/5] Building Tauri app..." -ForegroundColor Yellow
 npm run app:build
 if ($LASTEXITCODE -ne 0) { Write-Host "Build failed!" -ForegroundColor Red; exit 1 }
 
 # 2. Create portable directory
-Write-Host "[2/4] Creating portable package..." -ForegroundColor Yellow
+Write-Host "[2/5] Creating portable package..." -ForegroundColor Yellow
 $exePath = ".\src-tauri\target\release\mini-ai-1c.exe"
 $portableDir = Join-Path $OutputDir "MiniAI1C"
 New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
@@ -38,13 +43,13 @@ $enterpriseJson | Out-File (Join-Path $portableDir "enterprise.json") -Encoding 
 "# Mini AI 1C Portable" | Out-File (Join-Path $portableDir "README.txt") -Encoding utf8
 
 # 7. ZIP it
-Write-Host "[3/4] Creating ZIP archive..." -ForegroundColor Yellow
+Write-Host "[3/5] Creating ZIP archive..." -ForegroundColor Yellow
 $zipPath = "$OutputDir\MiniAI1C-Portable.zip"
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 Compress-Archive -Path "$portableDir\*" -DestinationPath $zipPath
 
-Write-Host "[4/4] Cleaning up..." -ForegroundColor Yellow
+Write-Host "[4/5] Cleaning up..." -ForegroundColor Yellow
 Remove-Item $portableDir -Recurse -Force
 
-Write-Host "=== Done ===" -ForegroundColor Green
+Write-Host "[5/5] Done" -ForegroundColor Green
 Write-Host "Portable build: $zipPath" -ForegroundColor Green
