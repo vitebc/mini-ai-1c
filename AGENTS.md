@@ -1,0 +1,60 @@
+# AGENTS.md — config-skills (worktree `config/skills-content`)
+
+## Назначение
+
+Это worktree репозитория mini-ai-1c на ветке `config/skills-content`. Здесь собирается **личная коллекция** скиллов, правил и документации для разработки на 1С:Предприятие, которая потом переносится в другой проект.
+
+Рабочий цикл: **брать из эталонов → редактировать под себя → коммитить в `config/`**.
+
+⚠️ Это НЕ основной репозиторий mini-ai-1c (приложение Tauri/Rust). AGENTS.md корня (`/root/project/mini-ai-1c/AGENTS.md`) описывает приложение — он здесь не применим. Всё, что нужно знать, живёт в `config/`.
+
+## Структура
+
+```
+config/
+├── etalon/     # GITIGNORED. 4 upstream-репозитория-источника (полные git-клоны):
+│               #   1c-ai-development-kit, 1c-ssl-skills, cc-1c-skills, cursor-1c-skills
+├── skills/
+│   ├── 1c-skills/<skill>/   # 38 скиллов. Каждый: SKILL.md + scripts/*.{ps1,py}
+│   │                        #   + evals/evals.json, иногда references/, presets/
+│   └── bsp/                 # Скилл БСП 3.1.11: SKILL.md + references/ (24 топика) + scripts/bsp_api.py
+├── rules/                   # 29 правил: *.md с YAML frontmatter `paths:` (glob по BSL)
+└── docs/                    # спецификации (1c-*-spec.md), гайды (*-guide.md),
+                             # DSL-спеки (*-dsl-spec.md), index (1c-specs-index.md)
+```
+
+## Эталоны (`config/etalon/`) — только чтение
+
+- Каждая папка — самостоятельный git-клонированный upstream-репозиторий (у каждой свой `origin`).
+- **Не редактировать и не коммитить сюда** — это исходники. При необходимости правь копию в `config/`, а источник используй для сравнения (`git -C config/etalon/<name> log`, diff).
+- Полезно при выборе реализации: `config/skills/1c-skills/<skill>` часто является кастомизацией скилла из `cursor-1c-skills` или `1c-ai-development-kit/.claude/skills`.
+
+## Форматы (соблюдать при создании/редактировании)
+
+**Скилл** (`config/skills/1c-skills/<skill>/SKILL.md`):
+- YAML frontmatter: `name`, `description` (начинать с «Используй когда…»), `argument-hint`, `allowed-tools`.
+- Заголовок `# /<command>` — имя команды, в `name:` обычно префикс `1c-` (пример: `name: 1c-form-add`, заголовок `# /form-add`).
+- Описание формата, таблица параметров, блок «## Команда» с вызовом `powershell.exe -NoProfile -File ...`.
+- `evals/evals.json`: массив `{prompt, expected_output, expectations[]}` для проверки скилла.
+
+**PS1 vs Python** (см. `config/docs/python-porting-guide.md`):
+- PS1 — **мастер-версия**: правишь `.ps1` → тестируешь → переносишь в `.py`. Не дорабатывай `.py` без идентичного изменения `.ps1`.
+- Каждый `.py` самодостаточен, общие утилиты (`esc_xml`, `emit_mltext` и т.п.) дублируются в каждом скрипте.
+
+**Правило** (`config/rules/*.md`): frontmatter `paths:` с glob-масками (напр. `**/*.bsl`), далее правило. Правила ссылаются друг на друга по имени файла (напр. «Дополняет `1c-coding-standards.md`»).
+
+**Документация** (`config/docs/`): спецификации XML-формата 1С и DSL-спеки взаимосвязаны; `1c-specs-index.md` — точка входа. При правке спецификаций обновляй перекрёстные ссылки в индексе.
+
+## Knowledge graph (graphify)
+
+Граф по `config/` (skills + rules + docs) собран в `graphify-out/` (gitignored):
+- `graphify query "<вопрос>"` — быстрый ответ по корпусу (BFS по графу).
+- `graphify path "A" "B"`, `graphify explain "<узел>"`.
+- `graph.html` — визуализация в браузере; `GRAPH_REPORT.md` — отчёт.
+- После крупных правок содержимого: `/graphify --update` для инкрементального перестроения.
+
+## Git workflow
+
+- Worktree на ветке `config/skills-content`; коммиты только по `config/` (и AGENTS.md).
+- Перед коммитом: `git status`, `git diff`; НЕ добавлять `config/etalon/` (gitignored) и `graphify-out/` (gitignored).
+- Сообщения коммитов — кратко, на русском.
