@@ -32,10 +32,11 @@ config/
 ## Форматы (соблюдать при создании/редактировании)
 
 **Скилл** (`config/skills/1c-skills/<skill>/SKILL.md`):
+- **Папка скилла = `name` в frontmatter**, с префиксом `1c-` (пример: папка `1c-form-add`, `name: 1c-form-add`). Исключение — `1c-composing-1c-queries`. Не допускай расхождения папка/`name`/`skill_name` в evals.
 - YAML frontmatter: `name`, `description` (начинать с «Используй когда…»), `argument-hint`, `allowed-tools`.
-- Заголовок `# /<command>` — имя команды, в `name:` обычно префикс `1c-` (пример: `name: 1c-form-add`, заголовок `# /form-add`).
-- Описание формата, таблица параметров, блок «## Команда» с вызовом `powershell.exe -NoProfile -File ...`.
-- `evals/evals.json`: массив `{prompt, expected_output, expectations[]}` для проверки скилла.
+- Заголовок `# /<command>` — имя команды без префикса (пример: папка `1c-form-add`, заголовок `# /form-add`).
+- Описание формата, таблица параметров, блок «## Команда» с вызовом `powershell.exe -NoProfile -File ...`. Пути в командах — от раскладки `skills/<name>/` (напр. `skills/1c-form-add/scripts/form-add.ps1`).
+- `evals/evals.json`: массив `{prompt, expected_output, expectations[]}` для проверки скилла; `skill_name` должен совпадать с `name` в frontmatter.
 
 **PS1 vs Python** (см. `config/docs/python-porting-guide.md`):
 - PS1 — **мастер-версия**: правишь `.ps1` → тестируешь → переносишь в `.py`. Не дорабатывай `.py` без идентичного изменения `.ps1`.
