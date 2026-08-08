@@ -376,13 +376,13 @@ export function SearchProfileBar() {
           <div className="relative">
             <button
               onClick={() => { setShowDatabases(!showDatabases); setIsOpen(false); }}
-              className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition-all text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition-all text-yellow-500 hover:text-zinc-300 hover:bg-zinc-800/50"
               title="Базы 1С на этом компьютере"
             >
               <Play className="w-3 h-3" />
               <span className="hidden min-[500px]:inline">Базы</span>
               {infobases.length > 0 && (
-                <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+                <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-yellow-500 border border-zinc-700">
                   {infobases.length}
                 </span>
               )}
