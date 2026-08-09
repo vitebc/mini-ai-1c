@@ -1,6 +1,7 @@
 ---
 name: 1c-ssl-patterns
-description: "SSL/БСП subsystems guidance and search via 1c-mcp_ssl_server MCP. Use when working with standard library subsystems - users, files, print forms, background jobs, email, common utilities."
+description: Справочник по Библиотеке стандартных подсистем (БСП/SSL) и поиск через MCP-сервер 1c-mcp_ssl_server. Используй когда работаешь с типовыми подсистемами БСП — пользователи и права, файлы, печатные формы, фоновые задания, электронная почта, общие функции.
+argument-hint: "<тема/подсистема БСП, по которой нужна информация>"
 ---
 
 # 1C SSL/БСП Subsystems Reference

@@ -1,15 +1,7 @@
 ---
 name: composing-1c-queries
-description: >
-  Compose correct and optimized 1C:Enterprise query language queries. Covers
-  ВЫБРАТЬ/ИЗ/ГДЕ structure, table naming (catalogs, documents, registers,
-  virtual tables), field selection, joins, grouping, totals, temporary tables,
-  and parameter usage. Includes accounting register virtual tables (Остатки,
-  Обороты, ОстаткиИОбороты, ОборотыДтКт, ДвиженияССубконто) with Счет,
-  Субконто, and correspondence parameters. Use when the agent needs to compose
-  a 1C query for execute_query, or when the user asks to query, filter,
-  aggregate, or analyze data from a 1C database. Triggered by requests
-  involving 1C data retrieval, report building, or query debugging.
+description: Составление корректных и оптимизированных запросов языка запросов 1С (язык запросов). Используй когда нужно составить или оптимизировать запрос 1С для execute_query, когда пользователь просит выбрать, отфильтровать, агрегировать или проанализировать данные из базы 1С, построить отчёт или отладить запрос. Охватывает ВЫБРАТЬ/ИЗ/ГДЕ, виртуальные таблицы регистров (Остатки, Обороты, ОстаткиИОбороты), соединения, группировки, временные таблицы, параметры.
+argument-hint: "<описание данных, которые нужно получить из 1С>"
 ---
 
 # Composing 1C Queries

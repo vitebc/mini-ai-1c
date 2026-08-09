@@ -1,6 +1,7 @@
 ---
 name: 1c-query-optimization
-description: "Advanced query patterns for 1C: temporary tables, joins, DCS optimization. Use for complex queries beyond basic rules in query-optimization-tips.md."
+description: Оптимизация сложных запросов 1С: временные таблицы, соединения, оптимизация СКД. Используй когда нужно оптимизировать медленный запрос, переписать подзапросы на временные таблицы, ускорить отчёт на СКД или найти узкое место в сложном запросе. Продвинутые паттерны — поверх базовых правил из query-optimization-tips.md.
+argument-hint: "<медленный запрос или описание узкого места>"
 ---
 
 # 1C Query Optimization Skill (Advanced Patterns)

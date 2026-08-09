@@ -1,6 +1,6 @@
 ---
 name: 1c-form-add
-description: Добавить управляемую форму к объекту конфигурации 1С
+description: Добавить управляемую форму к объекту конфигурации 1С (справочник, документ, регистр и др.). Используй когда нужно создать новую управляемую форму
 argument-hint: <ObjectPath> <FormName> [Purpose] [--set-default]
 allowed-tools:
   - Bash

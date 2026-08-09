@@ -1,6 +1,6 @@
 ---
 name: 1c-epf-full-cycle
-description: "Полный цикл создания внешней обработки 1С — от scaffold до сборки EPF. Workflow: epf-init → form → template → bsp → build."
+description: Полный цикл создания внешней обработки 1С — от scaffold до сборки EPF. Используй когда нужно создать внешнюю обработку (EPF) с нуля целиком: scaffold, форма, макеты, БСП-регистрация, валидация, сборка. Workflow: epf-init → form → template → bsp → build.
 argument-hint: "<ProcessorName> с описанием функционала"
 allowed-tools:
   - Bash

@@ -33,7 +33,8 @@ config/
 
 **Скилл** (`config/skills/1c-skills/<skill>/SKILL.md`):
 - **Папка скилла = `name` в frontmatter**, с префиксом `1c-` (пример: папка `1c-form-add`, `name: 1c-form-add`). Исключение — `1c-composing-1c-queries`. Не допускай расхождения папка/`name`/`skill_name` в evals.
-- YAML frontmatter: `name`, `description` (начинать с «Используй когда…»), `argument-hint`, `allowed-tools`.
+- **Окончания строк — LF** (не CRLF): парсер frontmatter в mcp-1c-skills падает на `---\r\n` и description молча становится пустым (BM25/поиск ломается). Конвертируй: `sed -i 's/\r$//'`.
+- YAML frontmatter: `name`, `description` (начинать с «Используй когда…» — ключевой сигнал для BM25-поиска и выбора скилла агентом), `argument-hint`, `allowed-tools`. Без кавычек вокруг значений; без многострочного YAML `description: >` — парсер его не понимает.
 - Заголовок `# /<command>` — имя команды без префикса (пример: папка `1c-form-add`, заголовок `# /form-add`). Заголовки команд должны быть **уникальны** — не допускай двух скиллов с одной командой (был конфликт `1c-epf-init`/`1c-epf-scaffold`, scaffold удалён).
 - Описание формата, таблица параметров, блок «## Команда» с вызовом `powershell.exe -NoProfile -File ...`. Пути в командах — **только** `skills/<name>/scripts/<script>.ps1` (напр. `skills/1c-form-add/scripts/form-add.ps1`); не используй `.claude/skills/...` или `${CLAUDE_SKILL_DIR}`. Примечание: ERF-скиллы не имеют своих скриптов и переиспользуют EPF-скрипты (напр. `1c-erf-build` → `skills/1c-epf-build/scripts/epf-build.ps1`).
 - `evals/evals.json`: массив `{prompt, expected_output, expectations[]}` для проверки скилла; `skill_name` должен совпадать с `name` в frontmatter.

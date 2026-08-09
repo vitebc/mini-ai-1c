@@ -1,6 +1,6 @@
 ---
 name: 1c-epf-add-form
-description: Добавить управляемую форму к внешней обработке 1С
+description: Добавить управляемую форму к внешней обработке 1С (EPF). Используй когда нужно добавить управляемую форму к существующей внешней обработке
 argument-hint: <ProcessorName> <FormName> [Synonym]
 allowed-tools:
   - Bash
