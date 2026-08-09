@@ -2,6 +2,7 @@
 name: 1c-help-add
 description: Добавить встроенную справку к объекту 1С (обработка, отчёт, справочник, документ и др.). Используй когда пользователь просит добавить справку, help, встроенную помощь к объекту
 argument-hint: <ObjectName>
+tags: help
 allowed-tools:
   - Bash
   - Read

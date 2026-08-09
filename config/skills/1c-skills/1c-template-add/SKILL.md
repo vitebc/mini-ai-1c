@@ -2,6 +2,7 @@
 name: 1c-template-add
 description: Добавить макет к объекту 1С (обработка, отчёт, справочник, документ и др.). Используй когда нужно создать макет: печатную форму (ПФ_MXL_), текстовый, HTML, СКД или двоичные данные
 argument-hint: <ObjectName> <TemplateName> <TemplateType>
+tags: template
 allowed-tools:
   - Bash
   - Read

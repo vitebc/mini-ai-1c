@@ -2,6 +2,7 @@
 name: 1c-form-edit
 description: Добавление элементов, реквизитов и команд в существующую управляемую форму 1С. Используй когда нужно точечно модифицировать готовую форму
 argument-hint: <FormPath> <JsonPath>
+tags: forms
 allowed-tools:
   - Bash
   - Read

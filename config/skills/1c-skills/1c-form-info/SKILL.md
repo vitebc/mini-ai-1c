@@ -2,6 +2,7 @@
 name: 1c-form-info
 description: Анализ структуры управляемой формы 1С (Form.xml) — элементы, реквизиты, команды, события. Используй для понимания формы — при написании модуля формы, анализе обработчиков и элементов
 argument-hint: <FormPath>
+tags: forms
 allowed-tools:
   - Bash
   - Read

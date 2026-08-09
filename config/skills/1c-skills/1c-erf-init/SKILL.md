@@ -2,6 +2,7 @@
 name: 1c-erf-init
 description: Создать пустой внешний отчёт 1С (scaffold XML-исходников). Используй когда нужно создать новый внешний отчёт (ERF) с нуля
 argument-hint: <Name> [Synonym] [--with-skd]
+tags: erf
 allowed-tools:
   - Bash
   - Read

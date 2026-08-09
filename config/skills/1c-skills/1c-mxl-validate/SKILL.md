@@ -2,6 +2,7 @@
 name: 1c-mxl-validate
 description: Валидация макета табличного документа (MXL). Используй после создания или модификации макета для проверки корректности
 argument-hint: <TemplatePath> [-Detailed] [-MaxErrors 20]
+tags: mxl
 allowed-tools:
   - Bash
   - Read

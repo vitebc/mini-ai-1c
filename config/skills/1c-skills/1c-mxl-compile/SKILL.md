@@ -2,6 +2,7 @@
 name: 1c-mxl-compile
 description: Компиляция табличного документа (MXL) из JSON-определения. Используй когда нужно создать макет печатной формы
 argument-hint: <JsonPath> <OutputPath>
+tags: mxl
 allowed-tools:
   - Bash
   - Read

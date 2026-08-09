@@ -2,6 +2,7 @@
 name: 1c-template-remove
 description: Удалить макет из объекта 1С (обработка, отчёт, справочник, документ и др.). Используй когда нужно удалить макет и его регистрацию из объекта
 argument-hint: <ObjectName> <TemplateName>
+tags: template
 disable-model-invocation: true
 allowed-tools:
   - Bash

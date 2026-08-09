@@ -2,6 +2,7 @@
 name: 1c-form-patterns
 description: Справочник паттернов компоновки управляемых форм 1С. Используй как справочник при проектировании форм — архетипы, конвенции, продвинутые приёмы
 argument-hint: (no arguments)
+tags: forms
 allowed-tools: []
 ---
 

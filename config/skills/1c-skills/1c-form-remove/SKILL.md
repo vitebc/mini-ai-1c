@@ -2,6 +2,7 @@
 name: 1c-form-remove
 description: Удалить форму из объекта 1С (обработка, отчёт, справочник, документ и др.). Используй когда нужно удалить форму и её регистрацию из объекта
 argument-hint: <ObjectName> <FormName>
+tags: forms
 disable-model-invocation: true
 allowed-tools:
   - Bash

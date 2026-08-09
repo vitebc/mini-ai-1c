@@ -2,6 +2,7 @@
 name: 1c-erf-build
 description: Собрать внешний отчёт 1С (ERF) из XML-исходников. Используй когда пользователь просит собрать, скомпилировать отчёт или получить ERF файл из исходников
 argument-hint: <ReportName>
+tags: erf
 allowed-tools:
   - Bash
   - Read

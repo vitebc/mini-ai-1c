@@ -1,7 +1,9 @@
 ---
 name: 1c-epf-full-cycle
 description: Полный цикл создания внешней обработки 1С — от scaffold до сборки EPF. Используй когда нужно создать внешнюю обработку (EPF) с нуля целиком: scaffold, форма, макеты, БСП-регистрация, валидация, сборка. Workflow: epf-init → form → template → bsp → build.
-argument-hint: "<ProcessorName> с описанием функционала"
+argument-hint: <ProcessorName> с описанием функционала
+tags: epf, workflow
+depends_on: 1c-epf-init, 1c-epf-add-form, 1c-form-compile, 1c-template-add, 1c-mxl-compile, 1c-epf-bsp-init, 1c-epf-bsp-add-command, 1c-epf-validate, 1c-epf-build
 allowed-tools:
   - Bash
   - Read

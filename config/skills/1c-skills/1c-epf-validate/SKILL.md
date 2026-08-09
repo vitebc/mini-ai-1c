@@ -2,6 +2,7 @@
 name: 1c-epf-validate
 description: Валидация внешней обработки 1С (EPF). Используй после создания или модификации обработки для проверки корректности
 argument-hint: <ObjectPath> [-Detailed] [-MaxErrors 30]
+tags: epf
 allowed-tools:
   - Bash
   - Read

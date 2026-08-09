@@ -2,6 +2,7 @@
 name: 1c-skd-edit
 description: Точечное редактирование схемы компоновки данных 1С (СКД). Используй когда нужно модифицировать существующую СКД — добавить поля, итоги, фильтры, параметры, изменить текст запроса
 argument-hint: <TemplatePath> -Operation <op> -Value <value>
+tags: skd
 allowed-tools:
   - Bash
   - Read

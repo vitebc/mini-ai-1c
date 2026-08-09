@@ -2,6 +2,7 @@
 name: 1c-skd-validate
 description: Валидация схемы компоновки данных 1С (СКД). Используй после создания или модификации СКД для проверки корректности
 argument-hint: <TemplatePath> [-Detailed] [-MaxErrors 20]
+tags: skd
 allowed-tools:
   - Bash
   - Read

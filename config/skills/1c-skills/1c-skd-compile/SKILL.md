@@ -2,6 +2,7 @@
 name: 1c-skd-compile
 description: Компиляция схемы компоновки данных 1С (СКД) из компактного JSON-определения. Используй когда нужно создать СКД с нуля
 argument-hint: [-DefinitionFile <json> | -Value <json-string>] -OutputPath <Template.xml>
+tags: skd
 allowed-tools:
   - Bash
   - Read

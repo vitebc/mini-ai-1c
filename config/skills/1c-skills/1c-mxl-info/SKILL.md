@@ -2,6 +2,7 @@
 name: 1c-mxl-info
 description: Анализ структуры макета табличного документа (MXL) — области, параметры, наборы колонок. Используй при разработке печати — получить области и заполняемые параметры макета
 argument-hint: <TemplatePath> или <ProcessorName> <TemplateName>
+tags: mxl
 allowed-tools:
   - Bash
   - Read

@@ -2,6 +2,7 @@
 name: 1c-form-compile
 description: Компиляция управляемой формы 1С из JSON-определения или из метаданных объекта. Используй когда нужно создать форму с нуля по описанию элементов или сгенерировать типовую форму
 argument-hint: <JsonPath> <OutputPath> | -FromObject <OutputPath>
+tags: forms
 allowed-tools:
   - Bash
   - Read

@@ -2,6 +2,7 @@
 name: 1c-mxl-decompile
 description: Декомпиляция табличного документа (MXL) в JSON-определение. Используй когда нужно получить редактируемое описание существующего макета
 argument-hint: <TemplatePath> [OutputPath]
+tags: mxl
 allowed-tools:
   - Bash
   - Read

@@ -2,6 +2,7 @@
 name: 1c-erf-dump
 description: Разобрать ERF-файл отчёта 1С в XML-исходники. Используй когда пользователь просит разобрать, декомпилировать отчёт, получить исходники из ERF файла
 argument-hint: <ErfFile>
+tags: erf
 allowed-tools:
   - Bash
   - Read
