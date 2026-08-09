@@ -1,7 +1,7 @@
 use super::models::{ApiMessage, ToolInfo};
 use crate::commands::skills::skill_summary_md;
 use crate::llm_profiles::LLMProvider;
-use crate::settings::{load_settings, CustomPromptsSettings, PromptBehaviorPreset};
+use crate::settings::{load_settings, AppSettings, CustomPromptsSettings, PromptBehaviorPreset};
 
 pub mod cli;
 pub mod custom;
@@ -68,6 +68,21 @@ pub fn is_local_provider(provider: Option<&LLMProvider>) -> bool {
     )
 }
 
+/// Возвращает путь песочницы файловой системы из настроек MCP-серверов.
+///
+/// Ищет сервер `builtin-1c-filesystem` и читает `MINI_AI_1C_SANDBOX_PATH` из env.
+/// Если сервер выключен или путь пуст — `None`.
+pub fn sandbox_path_from_settings(settings: &AppSettings) -> Option<String> {
+    settings
+        .mcp_servers
+        .iter()
+        .find(|s| s.id == "builtin-1c-filesystem" && s.enabled)
+        .and_then(|s| s.env.as_ref())
+        .and_then(|env| env.get("MINI_AI_1C_SANDBOX_PATH"))
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+}
+
 /// Компактный системный промпт для локальных моделей (Ollama/LMStudio).
 pub fn get_lightweight_system_prompt(
     available_tools: &[ToolInfo],
@@ -86,9 +101,9 @@ fn build_lightweight_system_prompt_with_custom_prompts(
     messages: &[ApiMessage],
     custom_prompts: &CustomPromptsSettings,
 ) -> String {
-    let preset = load_settings().code_generation.behavior_preset;
+    let settings = load_settings();
+    let preset = settings.code_generation.behavior_preset;
     let has_code = has_code_context(messages);
-
     let identity = match preset {
         PromptBehaviorPreset::Project => PROJECT_IDENTITY,
         PromptBehaviorPreset::Maintenance => MAINTENANCE_IDENTITY,
@@ -140,6 +155,13 @@ fn build_lightweight_system_prompt_with_custom_prompts(
             let short_desc = desc.lines().next().unwrap_or(desc);
             prompt.push_str(&format!("- `{name}`: {short_desc}\n"));
         }
+    }
+
+    // Путь песочницы для файловых операций
+    if let Some(sandbox) = sandbox_path_from_settings(&settings) {
+        prompt.push_str(&format!(
+            "\nФайловые операции выполняются в каталоге: `{sandbox}`. Скрипты скиллов — через run_skill(id, args).\n"
+        ));
     }
 
     append_custom_prompt_settings(&mut prompt, custom_prompts);
@@ -299,6 +321,19 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
         prompt.push_str("\n");
     }
 
+    // --- Путь песочницы (для файловых операций и run_skill) ---
+    if let Some(sandbox) = sandbox_path_from_settings(&settings) {
+        prompt.push_str(&format!(
+            "=== ПЕСОЧНИЦА (ФАЙЛОВАЯ СИСТЕМА) ===\n\
+             Файловые операции (read_file/write_file/edit_file/list_directory) выполняются \
+             в каталоге: `{}`\n\
+             Относительные пути отсчитываются от него.\n\
+             Скрипты скиллов (.ps1/.py) запускаются через run_skill(id, args) — не вызывай \
+             их через run_command вручную.\n\n",
+            sandbox
+        ));
+    }
+
     // --- Инструменты ---
     if !available_tools.is_empty() {
         prompt.push_str("\n\nВАЖНО: Тебе доступны следующие специализированные инструменты MCP:\n");
@@ -409,6 +444,7 @@ mod tests {
     use crate::ai::models::{Tool, ToolFunction};
     use crate::settings::{CustomPromptsSettings, PromptTemplate};
     use serde_json::json;
+    use std::collections::HashMap;
 
     fn make_user_message(content: &str) -> ApiMessage {
         ApiMessage {
@@ -465,8 +501,7 @@ mod tests {
         }
     }
 
-    fn make_custom_prompts_with_templates(templates: Vec<PromptTemplate>) -> CustomPromptsSettings {
-        CustomPromptsSettings {
+    fn make_custom_prompts_with_templates(templates: Vec<PromptTemplate>) -> CustomPromptsSettings {        CustomPromptsSettings {
             system_prefix: String::new(),
             on_code_change: String::new(),
             on_code_generate: String::new(),
@@ -828,5 +863,57 @@ mod tests {
 
         eprintln!("[PASS] qwen2.5-coder:14b ответила кодом, не перефразировала вопрос.");
         let _ = lower; // suppress unused warning
+    }
+
+    #[test]
+    fn sandbox_path_reads_from_filesystem_server_env() {
+        use crate::settings::{McpServerConfig, McpTransport};
+
+        let mut s = AppSettings::default();
+        s.mcp_servers = vec![
+            McpServerConfig {
+                id: "builtin-1c-filesystem".to_string(),
+                name: "Sandbox".to_string(),
+                enabled: true,
+                transport: McpTransport::Stdio,
+                env: Some(HashMap::from([(
+                    "MINI_AI_1C_SANDBOX_PATH".to_string(),
+                    "C:\\Users\\test\\.config\\mini-ai-1c\\workspace".to_string(),
+                )])),
+                ..Default::default()
+            },
+        ];
+        assert_eq!(
+            sandbox_path_from_settings(&s).as_deref(),
+            Some("C:\\Users\\test\\.config\\mini-ai-1c\\workspace")
+        );
+    }
+
+    #[test]
+    fn sandbox_path_none_when_server_disabled_or_empty() {
+        use crate::settings::{McpServerConfig, McpTransport};
+
+        let mut s = AppSettings::default();
+        // Выключенный сервер → None
+        s.mcp_servers = vec![McpServerConfig {
+            id: "builtin-1c-filesystem".to_string(),
+            name: "Sandbox".to_string(),
+            enabled: false,
+            transport: McpTransport::Stdio,
+            env: Some(HashMap::from([(
+                "MINI_AI_1C_SANDBOX_PATH".to_string(),
+                "C:\\ws".to_string(),
+            )])),
+            ..Default::default()
+        }];
+        assert_eq!(sandbox_path_from_settings(&s), None);
+
+        // Пустой путь → None
+        s.mcp_servers[0].enabled = true;
+        s.mcp_servers[0].env = Some(HashMap::from([(
+            "MINI_AI_1C_SANDBOX_PATH".to_string(),
+            String::new(),
+        )]));
+        assert_eq!(sandbox_path_from_settings(&s), None);
     }
 }

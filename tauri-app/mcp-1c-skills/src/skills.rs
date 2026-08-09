@@ -310,6 +310,9 @@ pub fn skill_dir_from_id(skills_dir: &Path, id: &str) -> Option<PathBuf> {
 }
 
 /// Список файлов скилла (относительные пути), исключая node_modules и скрытые.
+/// Сохранён как служебный: инструмент get_skill_file удалён, но функция нужна
+/// run_skill для обнаружения скриптов.
+#[allow(dead_code)]
 pub fn get_skill_files(skills_dir: &Path, skill_id: &str) -> Vec<String> {
     let Some(sd) = skill_dir_from_id(skills_dir, skill_id) else {
         return Vec::new();
@@ -336,6 +339,8 @@ pub fn get_skill_files(skills_dir: &Path, skill_id: &str) -> Vec<String> {
 }
 
 /// Читает произвольный файл скилла (с защитой от path traversal).
+/// Сохранён как служебный для run_skill (чтение скриптов по пути).
+#[allow(dead_code)]
 pub fn read_skill_file(skills_dir: &Path, skill_id: &str, file_path: &str) -> Option<String> {
     if file_path.contains("..")
         || file_path.starts_with('/')
@@ -349,6 +354,122 @@ pub fn read_skill_file(skills_dir: &Path, skill_id: &str, file_path: &str) -> Op
         return None;
     }
     std::fs::read_to_string(&p).ok()
+}
+
+/// Возвращает имя скрипта из блока `## Команда` SKILL.md.
+///
+/// Ищет в SKILL.md строку вида `... -File <путь> ...` (как в worktree-AGENTS.md:
+/// путь `<name>/scripts/<script>.ps1`). Возвращает `<script>` или `None`.
+pub fn script_name_from_command(skills_dir: &Path, skill_id: &str) -> Option<String> {
+    let sd = skill_dir_from_id(skills_dir, skill_id)?;
+    let sp = sd.join("SKILL.md");
+    let raw = std::fs::read_to_string(&sp).ok()?;
+    let path = raw
+        .lines()
+        .find(|l| l.contains("-File"))
+        .and_then(|l| {
+            let after = l.split("-File").nth(1)?;
+            let file = after.trim().split_whitespace().next()?;
+            Some(file.trim_matches(|c: char| c == '"' || c == '\'' || c == '`'))
+        })
+        .map(|s| s.replace('\\', "/"));
+    path.as_ref().and_then(|p| {
+        let name = p.rsplit('/').next()?;
+        Some(name.to_string())
+    })
+}
+
+/// Выбирает исполняемый скрипт скилла по ОС.
+///
+/// Приоритет:
+/// 1. `scripts/*.ps1` на Windows (или `*.py` на Linux/macOS) — первая найденная;
+/// 2. имя скрипта из `## Команда` (скрести с FS, чтобы не парсить мусор).
+///
+/// Возвращает абсолютный путь к скрипту и команду-рантайм.
+pub fn resolve_skill_script(
+    skills_dir: &Path,
+    skill_id: &str,
+) -> Option<(PathBuf, String)> {
+    let sd = skill_dir_from_id(skills_dir, skill_id)?;
+    let scripts_dir = sd.join("scripts");
+    if scripts_dir.is_dir() {
+        #[cfg(windows)]
+        {
+            if let Some(p) = find_script(&scripts_dir, "ps1") {
+                return Some((p, "powershell.exe".to_string()));
+            }
+            if let Some(p) = find_script(&scripts_dir, "py") {
+                return Some((p, "python".to_string()));
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            if let Some(p) = find_script(&scripts_dir, "py") {
+                return Some((p, "python3".to_string()));
+            }
+            if let Some(p) = find_script(&scripts_dir, "ps1") {
+                return Some((p, "powershell.exe".to_string()));
+            }
+        }
+    }
+
+    // Fallback: имя скрипта из `## Команда`, но файл должен существовать.
+    if let Some(name) = script_name_from_command(skills_dir, skill_id) {
+        let p = sd.join("scripts").join(&name);
+        if p.exists() {
+            #[cfg(windows)]
+            let runtime = if p.extension().and_then(|e| e.to_str()) == Some("py") {
+                "python".to_string()
+            } else {
+                "powershell.exe".to_string()
+            };
+            #[cfg(not(windows))]
+            let runtime = if p.extension().and_then(|e| e.to_str()) == Some("ps1") {
+                "powershell.exe".to_string()
+            } else {
+                "python3".to_string()
+            };
+            return Some((p, runtime));
+        }
+    }
+
+    None
+}
+
+fn find_script(dir: &Path, ext: &str) -> Option<PathBuf> {
+    let rd = std::fs::read_dir(dir).ok()?;
+    for entry in rd.flatten() {
+        let p = entry.path();
+        if p.is_file() && p.extension().and_then(|e| e.to_str()) == Some(ext) {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// Собирает flat-список аргументов из объекта ключ-значение.
+/// Порядок не гарантируется (HashMap) — на практике скрипты 1С не зависят от порядка флагов.
+pub fn args_to_flat_list(args: &serde_json::Value) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(obj) = args.as_object() {
+        let mut keys: Vec<&String> = obj.keys().collect();
+        keys.sort();
+        for k in keys {
+            let v = &obj[k];
+            let s = match v {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Bool(b) => b.to_string(),
+                serde_json::Value::Number(n) => n.to_string(),
+                serde_json::Value::Null => continue,
+                _ => v.to_string(),
+            };
+            out.push(k.clone());
+            if !s.is_empty() {
+                out.push(s);
+            }
+        }
+    }
+    out
 }
 
 // ─── Документы и правила ──────────────────────────────────────────
@@ -613,5 +734,86 @@ mod tests {
         assert!(rules_list.iter().any(|r| r.id == "standards"));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_skill_script_finds_ps1_on_windows_py_on_linux() {
+        let dir = tmp_tree();
+        let skills_root = dir.join(".agents").join("skills");
+        let skill_dir = skills_root.join("1c-epf-build");
+        std::fs::create_dir_all(&skill_dir.join("scripts")).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "---\n---\n").unwrap();
+        std::fs::write(skill_dir.join("scripts").join("epf-build.ps1"), "").unwrap();
+        std::fs::write(skill_dir.join("scripts").join("epf-build.py"), "").unwrap();
+
+        let resolved = resolve_skill_script(&skills_root, "1c-epf-build").expect("script");
+        let (path, runtime) = resolved;
+        #[cfg(windows)]
+        {
+            assert!(path.ends_with("epf-build.ps1"));
+            assert_eq!(runtime, "powershell.exe");
+        }
+        #[cfg(not(windows))]
+        {
+            assert!(path.ends_with("epf-build.py"));
+            assert_eq!(runtime, "python3");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_skill_script_none_when_no_scripts() {
+        let dir = tmp_tree();
+        let skills_root = dir.join(".agents").join("skills");
+        let skill_dir = skills_root.join("no-scripts");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "---\n---\nТело").unwrap();
+
+        assert!(resolve_skill_script(&skills_root, "no-scripts").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn script_name_from_command_parses_file_flag() {
+        let dir = tmp_tree();
+        let skills_root = dir.join(".agents").join("skills");
+        let skill_dir = skills_root.join("1c-erf-build");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "## Команда\npowershell.exe -NoProfile -File 1c-epf-build/scripts/epf-build.ps1 ...",
+        )
+        .unwrap();
+
+        assert_eq!(
+            script_name_from_command(&skills_root, "1c-erf-build").as_deref(),
+            Some("epf-build.ps1")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn args_to_flat_list_produces_key_value_pairs() {
+        let args = serde_json::json!({
+            "-SourceFile": "src/Моя.xml",
+            "-OutputFile": "build/Моя.epf",
+            "-Force": true,
+            "-Count": 3
+        });
+        let flat = args_to_flat_list(&args);
+        assert_eq!(
+            flat,
+            vec![
+                "-Count".to_string(),
+                "3".to_string(),
+                "-Force".to_string(),
+                "true".to_string(),
+                "-OutputFile".to_string(),
+                "build/Моя.epf".to_string(),
+                "-SourceFile".to_string(),
+                "src/Моя.xml".to_string(),
+            ]
+        );
     }
 }

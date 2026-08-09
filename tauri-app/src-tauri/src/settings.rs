@@ -569,7 +569,7 @@ pub enum CodeGenerationMode {
     Auto,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum PromptBehaviorPreset {
     Project,

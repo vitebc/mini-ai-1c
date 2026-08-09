@@ -297,7 +297,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: 'get_skill',
-                description: 'Получить полное содержимое SKILL.md + список файлов скилла. Содержимое файлов (скрипты, документы) читай через отдельный инструмент get_skill_file. ВАЖНО: вызывай этот инструмент ОДИН раз для каждого скилла и запоминай полученный контент. Если ты уже получал SKILL.md для этого скилла earlier в сессии — НЕ вызывай повторно, используй уже прочитанное.',
+                description: 'Получить полное содержимое SKILL.md скилла + список файлов. ВАЖНО: вызывай этот инструмент ОДИН раз для каждого скилла и запоминай полученный контент. Если ты уже получал SKILL.md для этого скилла earlier в сессии — НЕ вызывай повторно, используй уже прочитанное. Скрипты скилла (.ps1/.py) НЕ читай через файловые инструменты — запускай их через run_skill(id, args).',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -307,24 +307,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         },
                     },
                     required: ['id'],
-                },
-            },
-            {
-                name: 'get_skill_file',
-                description: 'Прочитать содержимое конкретного файла скилла (PS1-скрипт, документация и т.д.). Сначала вызови get_skill чтобы увидеть список доступных файлов, затем вызови этот инструмент с путём.',
-                inputSchema: {
-                    type: 'object',
-                    properties: {
-                        id: {
-                            type: 'string',
-                            description: 'ID скилла (например: cc-1c-skills/form-add)',
-                        },
-                        path: {
-                            type: 'string',
-                            description: 'Относительный путь к файлу (например: scripts/form-add.ps1)',
-                        },
-                    },
-                    required: ['id', 'path'],
                 },
             },
             {
@@ -446,11 +428,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const raw = readFileSync(skillPath, 'utf-8');
             const { metadata, body } = parseSkillFrontmatter(raw);
 
-            const files = getSkillFiles(id);
-            const nonMdFiles = files.filter(
-                f => f !== 'SKILL.md' && !f.endsWith('.exe') && !f.endsWith('.pyc')
-            );
-
             return {
                 content: [{
                     type: 'text' as const,
@@ -460,38 +437,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         `**ID:** \`${info.id}\``,
                         `**Описание:** ${info.description}`,
                         `**Директория скилла:** \`${skillDir}\``,
-                        `**Файлов:** ${files.length}`,
                         ``,
                         `---`,
                         ``,
                         body,
-                        ...(nonMdFiles.length > 0 ? [
-                            ``,
-                            `---`,
-                            `## Доступные файлы`,
-                            ``,
-                            `Для чтения содержимого файлов используй инструмент \`get_skill_file\` с параметрами \`id\` = \`${id}\` и \`path\` = относительный путь.`,
-                            ``,
-                            ...nonMdFiles.map(f => `- \`${f}\``),
-                        ] : []),
                     ].join('\n'),
                 }],
-            };
-        }
-
-        case 'get_skill_file': {
-            const id = (args as any)?.id as string;
-            const filePath = (args as any)?.path as string;
-            if (!id || !filePath) throw new Error('Parameters "id" and "path" are required');
-            if (!isValidSkillId(id)) throw new Error('Invalid skill id');
-            // Path traversal protection
-            if (filePath.includes('..') || filePath.startsWith('/') || filePath.startsWith('\\')) {
-                throw new Error('Invalid file path');
-            }
-            const content = readSkillFile(id, filePath);
-            if (!content) throw new Error(`File "${filePath}" not found in skill "${id}"`);
-            return {
-                content: [{ type: 'text' as const, text: `### ${filePath}\n\n${content}` }],
             };
         }
 

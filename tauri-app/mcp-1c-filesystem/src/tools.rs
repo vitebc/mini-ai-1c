@@ -127,7 +127,7 @@ pub fn list_tools() -> Vec<Value> {
         }),
         json!({
             "name": "run_command",
-            "description": "Execute a shell command (PowerShell/bash). Working directory is inside sandbox. Returns stdout, stderr, exit_code.",
+            "description": "Execute a shell command (PowerShell/bash). Working directory is inside sandbox (or absolute path). Returns stdout, stderr, exit_code. On Windows PowerShell output is forced to UTF-8.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -431,47 +431,58 @@ fn tool_move_file(args: &Value, sb: &Sandbox) -> Result<Value, String> {
     Ok(json!({ "success": true }))
 }
 
-fn tool_run_command(args: &Value, sb: &Sandbox) -> Result<Value, String> {
-    let command = arg_str(args, "command").ok_or("Command is required")?;
-    let args_arr: Vec<String> = args
-        .get("args")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
-        .unwrap_or_default();
-    let cwd_rel = arg_str(args, "cwd").unwrap_or(".");
-    let cwd = sb.resolve(cwd_rel).ok_or("Working directory escapes sandbox")?;
-    if !cwd.exists() {
-        return Err("Working directory not found".to_string());
-    }
-    let timeout_ms = args
-        .get("timeout_ms")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(30_000)
-        .clamp(1_000, 300_000);
+/// Результат выполнения внешней команды.
+pub struct CommandOutput {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+    pub duration_ms: u64,
+}
 
-    let mut cmd = std::process::Command::new(command);
-    cmd.args(&args_arr)
-        .current_dir(&cwd)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-
-    // Запуск с таймаутом через поток
+/// Выполняет внешнюю команду с таймаутом, декодируя вывод как UTF-8.
+///
+/// На Windows, если команда — PowerShell, оборачивает её через
+/// `-NoProfile -NonInteractive -Command "& { [Console]::OutputEncoding=...; & <cmd> }"`,
+/// форсируя UTF-8 в stdout (иначе кириллица из OEM-кодовой страницы ломается).
+///
+/// `cwd` — произвольный абсолютный путь (скрипты скиллов лежат вне sandbox).
+pub fn execute_command(
+    command: &str,
+    args: &[String],
+    cwd: &std::path::Path,
+    timeout_ms: u64,
+) -> CommandOutput {
+    let timeout_ms = timeout_ms.clamp(1_000, 300_000);
     let started = std::time::Instant::now();
-    let result: Result<Value, String> = tokio::task::block_in_place(|| {
+
+    let result = tokio::task::block_in_place(|| {
+        let mut cmd = build_command(command, args, cwd);
         let mut child = match cmd.spawn() {
             Ok(c) => c,
-            Err(e) => return Ok(json!({ "stdout": "", "stderr": format!("Failed to spawn: {}", e), "exit_code": 1 })),
+            Err(e) => {
+                return CommandOutput {
+                    stdout: String::new(),
+                    stderr: format!("Failed to spawn: {}", e),
+                    exit_code: 1,
+                    duration_ms: started.elapsed().as_millis() as u64,
+                }
+            }
         };
 
-        // Забираем дескрипторы через mem::take, чтобы не двигать поля структуры
-        // и оставить child пригодным для try_wait().
         let (out_rd, err_rd) = match (std::mem::take(&mut child.stdout), std::mem::take(&mut child.stderr)) {
             (Some(o), Some(e)) => (o, e),
-            _ => return Ok(json!({ "stdout": "", "stderr": "pipe error", "exit_code": 1 })),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return CommandOutput {
+                    stdout: String::new(),
+                    stderr: "pipe error".to_string(),
+                    exit_code: 1,
+                    duration_ms: started.elapsed().as_millis() as u64,
+                };
+            }
         };
 
-        // Чтение stdout/stderr (ограничим 10 MB)
         let stdout_read = std::thread::spawn(move || {
             use std::io::Read;
             let mut buf = Vec::new();
@@ -485,7 +496,6 @@ fn tool_run_command(args: &Value, sb: &Sandbox) -> Result<Value, String> {
             String::from_utf8_lossy(&buf).to_string()
         });
 
-        // Ожидание с таймаутом
         let deadline = started + std::time::Duration::from_millis(timeout_ms);
         let status;
         loop {
@@ -506,19 +516,104 @@ fn tool_run_command(args: &Value, sb: &Sandbox) -> Result<Value, String> {
         let stderr = stderr_read.join().unwrap_or_default();
 
         match status {
-            Some(st) => {
-                let code = st.code().unwrap_or(1);
-                Ok(json!({ "stdout": stdout, "stderr": stderr, "exit_code": code }))
-            }
-            None => Ok(json!({
-                "stdout": stdout,
-                "stderr": format!("Command timed out after {}ms\n{}", timeout_ms, stderr),
-                "exit_code": 1
-            })),
+            Some(st) => CommandOutput {
+                stdout,
+                stderr,
+                exit_code: st.code().unwrap_or(1),
+                duration_ms: started.elapsed().as_millis() as u64,
+            },
+            None => CommandOutput {
+                stdout,
+                stderr: format!("Command timed out after {}ms\n{}", timeout_ms, stderr),
+                exit_code: 1,
+                duration_ms: started.elapsed().as_millis() as u64,
+            },
         }
     });
 
-    result.map_err(|e| format!("Command error: {}", e))
+    result
+}
+
+/// Собирает `Command`. На Windows для PowerShell форсирует UTF-8 в выводе.
+///
+/// Обёртка: `powershell -NoProfile -NonInteractive -Command "& { [Console]::OutputEncoding=...; & '<cmd>' '<arg>' ... }"`.
+/// Аргументы экранируются одинарными кавычками (PowerShell нативный синтаксис,
+/// одинарная кавычка внутри удваивается) — это безопасно для путей с пробелами.
+fn build_command(command: &str, args: &[String], cwd: &std::path::Path) -> std::process::Command {
+    #[cfg(windows)]
+    let is_powershell = command == "powershell"
+        || command == "powershell.exe"
+        || command == "pwsh"
+        || command == "pwsh.exe";
+
+    #[cfg(windows)]
+    {
+        if is_powershell {
+            let ps_quote = |s: &str| -> String {
+                format!("'{}'", s.replace('\'', "''"))
+            };
+            let mut inner = ps_quote(command);
+            for a in args {
+                inner.push(' ');
+                inner.push_str(&ps_quote(a));
+            }
+            let script = format!(
+                "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; & {}",
+                inner
+            );
+            let mut cmd = std::process::Command::new("powershell.exe");
+            cmd.arg("-NoProfile")
+                .arg("-NonInteractive")
+                .arg("-Command")
+                .arg(script)
+                .current_dir(cwd)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+            return cmd;
+        }
+    }
+
+    let mut cmd = std::process::Command::new(command);
+    cmd.args(args)
+        .current_dir(cwd)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    cmd
+}
+
+fn tool_run_command(args: &Value, sb: &Sandbox) -> Result<Value, String> {
+    let command = arg_str(args, "command").ok_or("Command is required")?;
+    let args_arr: Vec<String> = args
+        .get("args")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+        .unwrap_or_default();
+    let timeout_ms = args
+        .get("timeout_ms")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(30_000);
+
+    // CWD: сначала пробуем как sandbox-относительный путь, затем как абсолютный.
+    let cwd_str = arg_str(args, "cwd").unwrap_or(".");
+    let cwd = if cwd_str.starts_with('.') || cwd_str == "" {
+        sb.resolve(cwd_str).ok_or("Working directory escapes sandbox")?
+    } else {
+        let abs = std::path::PathBuf::from(cwd_str);
+        if !abs.exists() {
+            return Err("Working directory not found".to_string());
+        }
+        abs
+    };
+
+    let out = execute_command(command, &args_arr, &cwd, timeout_ms);
+    Ok(json!({
+        "stdout": out.stdout,
+        "stderr": out.stderr,
+        "exit_code": out.exit_code,
+        "duration_ms": out.duration_ms
+    }))
 }
 
 #[cfg(test)]
@@ -635,5 +730,49 @@ mod tests {
         let j: serde_json::Value = serde_json::from_str(&result_text(&res)).expect("json");
         assert_eq!(j["exit_code"], 0);
         assert!(j["stdout"].as_str().unwrap_or("").contains("hello"));
+    }
+
+    #[test]
+    fn run_command_absolute_cwd_outside_sandbox() {
+        // Скрипты скиллов лежат вне sandbox — run_command должен принимать абсолютный cwd.
+        let sb = make_sandbox();
+        let outside = std::env::temp_dir().join(format!("mcp-fs-out-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&outside);
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("marker.txt"), "made").unwrap();
+        let res = call_tool(
+            "run_command",
+            &json!({"command": "ls", "args": [], "cwd": outside.to_string_lossy()}),
+            &sb,
+        ).unwrap();
+        let j: serde_json::Value = serde_json::from_str(&result_text(&res)).expect("json");
+        assert_eq!(j["exit_code"], 0);
+        assert!(j["stdout"].as_str().unwrap_or("").contains("marker.txt"));
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn run_command_utf8_cyrillic_output() {
+        // Кириллица в stdout не должна ломаться (обёртка PowerShell форсирует UTF-8).
+        let sb = make_sandbox();
+        #[cfg(windows)]
+        let res = call_tool(
+            "run_command",
+            &json!({"command": "powershell", "args": ["-Command", "Write-Output 'Привет мир'"]}),
+            &sb,
+        ).unwrap();
+        #[cfg(unix)]
+        let res = call_tool(
+            "run_command",
+            &json!({"command": "sh", "args": ["-c", "printf 'Привет мир'"]}),
+            &sb,
+        ).unwrap();
+        let j: serde_json::Value = serde_json::from_str(&result_text(&res)).expect("json");
+        assert_eq!(j["exit_code"], 0);
+        assert!(
+            j["stdout"].as_str().unwrap_or("").contains("Привет"),
+            "stdout: {:?}",
+            j["stdout"]
+        );
     }
 }

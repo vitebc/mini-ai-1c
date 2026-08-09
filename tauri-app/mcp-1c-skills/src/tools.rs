@@ -1,14 +1,15 @@
 //! Определения MCP-инструментов и их обработчики.
 //!
-//! Порт mcp-skills.ts: 9 инструментов — list_skills, get_skill, get_skill_file,
-//! search_skills, list_docs, get_doc, search_docs, list_rules, get_rule.
+//! Порт mcp-skills.ts: инструменты — list_skills, get_skill, search_skills,
+//! run_skill, list_docs, get_doc, search_docs, search, list_rules, get_rule.
+//! get_skill_file удалён (путаница путей — скрипты запускаются через run_skill).
 
 use serde_json::{json, Value};
 use std::path::Path;
 
 use crate::search::{Bm25, DocKind};
 use crate::skills::{
-    doc_path_from_id, get_skill_files, is_valid_skill_id, read_skill_file, rule_path_from_id,
+    args_to_flat_list, doc_path_from_id, is_valid_skill_id, resolve_skill_script, rule_path_from_id,
     scan_docs, scan_rules, scan_skills, skill_dir_from_id, SkillInfo,
 };
 
@@ -30,7 +31,7 @@ pub fn list_tools() -> Vec<Value> {
         }),
         json!({
             "name": "get_skill",
-            "description": "Получить полное содержимое SKILL.md + список файлов скилла. Содержимое файлов (скрипты, документы) читай через отдельный инструмент get_skill_file. ВАЖНО: вызывай этот инструмент ОДИН раз для каждого скилла и запоминай полученный контент. Если ты уже получал SKILL.md для этого скилла earlier в сессии — НЕ вызывай повторно, используй уже прочитанное.",
+            "description": "Получить полное содержимое SKILL.md скилла + список файлов. ВАЖНО: вызывай этот инструмент ОДИН раз для каждого скилла и запоминай полученный контент. Если ты уже получал SKILL.md для этого скилла earlier в сессии — НЕ вызывай повторно, используй уже прочитанное. Скрипты скилла (.ps1/.py) НЕ читай через файловые инструменты — запускай их через run_skill(id, args).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -40,24 +41,6 @@ pub fn list_tools() -> Vec<Value> {
                     }
                 },
                 "required": ["id"]
-            }
-        }),
-        json!({
-            "name": "get_skill_file",
-            "description": "Прочитать содержимое конкретного файла скилла (PS1-скрипт, документация и т.д.). Сначала вызови get_skill чтобы увидеть список доступных файлов, затем вызови этот инструмент с путём.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "description": "ID скилла (получи список доступных через list_skills)"
-                    },
-                    "path": {
-                        "type": "string",
-                        "description": "Относительный путь к файлу внутри скилла (получи список файлов через get_skill)"
-                    }
-                },
-                "required": ["id", "path"]
             }
         }),
         json!({
@@ -113,6 +96,28 @@ pub fn list_tools() -> Vec<Value> {
                         "description": "Фильтр по категории (опционально)"
                     }
                 }
+            }
+        }),
+        json!({
+            "name": "run_skill",
+            "description": "Выполнить скрипт скилла (PowerShell .ps1 на Windows, Python .py на Linux). Сервер сам находит скрипт в каталоге скилла и запускает его с переданными аргументами. ОДИН вызов вместо run_command с ручной сборкой пути. Возвращает stdout/stderr/exit_code.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "ID скилла (получи список доступных через list_skills)"
+                    },
+                    "args": {
+                        "type": "object",
+                        "description": "Аргументы для скрипта, ключ-значение (напр. {\"-SourceFile\": \"src/Моя.xml\", \"-OutputFile\": \"build/Моя.epf\"})"
+                    },
+                    "timeout_ms": {
+                        "type": "number",
+                        "description": "Таймаут в мс (по умолчанию 60000, максимум 300000)"
+                    }
+                },
+                "required": ["id"]
             }
         }),
         json!({
@@ -235,12 +240,6 @@ pub fn call_tool(
                 .map_err(|_| format!("Skill \"{}\" not found", id))?;
             let fm = crate::skills::parse_skill_frontmatter(&raw);
 
-            let files = get_skill_files(skills_dir, id);
-            let non_md_files: Vec<_> = files
-                .iter()
-                .filter(|f| *f != "SKILL.md" && !f.ends_with(".exe") && !f.ends_with(".pyc"))
-                .collect();
-
             let mut parts = vec![
                 format!("# {}", info.name),
                 String::new(),
@@ -260,46 +259,11 @@ pub fn call_tool(
                 parts.push(format!("**Зависит от:** {}", info.depends_on.join(", ")));
             }
             parts.push(format!("**Директория скилла:** `{}`", skill_dir.to_string_lossy()));
-            parts.push(format!("**Файлов:** {}", files.len()));
             parts.push(String::new());
             parts.push("---".to_string());
             parts.push(String::new());
             parts.push(fm.body);
-            if !non_md_files.is_empty() {
-                parts.push(String::new());
-                parts.push("---".to_string());
-                parts.push("## Доступные файлы".to_string());
-                parts.push(String::new());
-                parts.push(format!(
-                    "Для чтения содержимого файлов используй инструмент `get_skill_file` с параметрами `id` = `{}` и `path` = относительный путь.",
-                    id
-                ));
-                parts.push(String::new());
-                for f in &non_md_files {
-                    parts.push(format!("- `{}`", f));
-                }
-            }
             parts.join("\n")
-        }
-
-        "get_skill_file" => {
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let file_path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
-            if id.is_empty() || file_path.is_empty() {
-                return Err("Parameters \"id\" and \"path\" are required".to_string());
-            }
-            if !is_valid_skill_id(id) {
-                return Err("Invalid skill id".to_string());
-            }
-            if file_path.contains("..")
-                || file_path.starts_with('/')
-                || file_path.starts_with('\\')
-            {
-                return Err("Invalid file path".to_string());
-            }
-            let content = read_skill_file(skills_dir, id, file_path)
-                .ok_or_else(|| format!("File \"{}\" not found in skill \"{}\"", file_path, id))?;
-            format!("### {}\n\n{}", file_path, content)
         }
 
         "search_skills" => {
@@ -465,6 +429,60 @@ pub fn call_tool(
             format!("### {}\n\n{}", id, content)
         }
 
+        "run_skill" => {
+            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            if id.is_empty() {
+                return Err("Parameter \"id\" is required".to_string());
+            }
+            if !is_valid_skill_id(id) {
+                return Err("Invalid skill id".to_string());
+            }
+            let (script, runtime) = resolve_skill_script(skills_dir, id)
+                .ok_or_else(|| format!("Skill \"{}\" не имеет исполняемого скрипта (scripts/*.ps1 или *.py)", id))?;
+            let flat = args_to_flat_list(args.get("args").unwrap_or(&json!({})));
+            let timeout_ms = args
+                .get("timeout_ms")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(60_000);
+
+            let cwd = skill_dir_from_id(skills_dir, id)
+                .ok_or_else(|| "Invalid skill path".to_string())?;
+
+            let mut cmd_args: Vec<String> = Vec::new();
+            #[cfg(windows)]
+            {
+                if runtime == "powershell.exe" {
+                    cmd_args.push("-NoProfile".to_string());
+                    cmd_args.push("-NonInteractive".to_string());
+                    cmd_args.push("-File".to_string());
+                    cmd_args.push(script.to_string_lossy().to_string());
+                    cmd_args.extend(flat);
+                } else {
+                    cmd_args.push(script.to_string_lossy().to_string());
+                    cmd_args.extend(flat);
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                if runtime == "python3" {
+                    cmd_args.push(script.to_string_lossy().to_string());
+                    cmd_args.extend(flat);
+                } else {
+                    cmd_args.push("-NoProfile".to_string());
+                    cmd_args.push("-NonInteractive".to_string());
+                    cmd_args.push("-File".to_string());
+                    cmd_args.push(script.to_string_lossy().to_string());
+                    cmd_args.extend(flat);
+                }
+            }
+
+            let out = execute_command(&runtime, &cmd_args, &cwd, timeout_ms);
+            format!(
+                "{{ \"stdout\": {:?}, \"stderr\": {:?}, \"exit_code\": {}, \"duration_ms\": {} }}",
+                out.stdout, out.stderr, out.exit_code, out.duration_ms
+            )
+        }
+
         _ => return Err(format!("Unknown tool: {}", name)),
     };
 
@@ -474,4 +492,224 @@ pub fn call_tool(
             "text": text
         }]
     }))
+}
+
+/// Результат выполнения внешней команды.
+struct CommandOutput {
+    stdout: String,
+    stderr: String,
+    exit_code: i32,
+    duration_ms: u64,
+}
+
+/// Выполняет внешнюю команду с таймаутом. На Windows для PowerShell форсирует
+/// UTF-8 в stdout (иначе кириллица из OEM-кодовой страницы ломается).
+fn execute_command(
+    command: &str,
+    args: &[String],
+    cwd: &std::path::Path,
+    timeout_ms: u64,
+) -> CommandOutput {
+    let timeout_ms = timeout_ms.clamp(1_000, 300_000);
+    let started = std::time::Instant::now();
+
+    tokio::task::block_in_place(|| {
+        let mut cmd = build_command(command, args, cwd);
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                return CommandOutput {
+                    stdout: String::new(),
+                    stderr: format!("Failed to spawn: {}", e),
+                    exit_code: 1,
+                    duration_ms: started.elapsed().as_millis() as u64,
+                }
+            }
+        };
+
+        let (out_rd, err_rd) = match (std::mem::take(&mut child.stdout), std::mem::take(&mut child.stderr)) {
+            (Some(o), Some(e)) => (o, e),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return CommandOutput {
+                    stdout: String::new(),
+                    stderr: "pipe error".to_string(),
+                    exit_code: 1,
+                    duration_ms: started.elapsed().as_millis() as u64,
+                };
+            }
+        };
+
+        let stdout_read = std::thread::spawn(move || {
+            use std::io::Read;
+            let mut buf = Vec::new();
+            let _ = out_rd.take(10 * 1024 * 1024).read_to_end(&mut buf);
+            String::from_utf8_lossy(&buf).to_string()
+        });
+        let stderr_read = std::thread::spawn(move || {
+            use std::io::Read;
+            let mut buf = Vec::new();
+            let _ = err_rd.take(10 * 1024 * 1024).read_to_end(&mut buf);
+            String::from_utf8_lossy(&buf).to_string()
+        });
+
+        let deadline = started + std::time::Duration::from_millis(timeout_ms);
+        let status;
+        loop {
+            if std::time::Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                status = None;
+                break;
+            }
+            if let Ok(Some(st)) = child.try_wait() {
+                status = Some(st);
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+
+        let stdout = stdout_read.join().unwrap_or_default();
+        let stderr = stderr_read.join().unwrap_or_default();
+
+        match status {
+            Some(st) => CommandOutput {
+                stdout,
+                stderr,
+                exit_code: st.code().unwrap_or(1),
+                duration_ms: started.elapsed().as_millis() as u64,
+            },
+            None => CommandOutput {
+                stdout,
+                stderr: format!("Command timed out after {}ms\n{}", timeout_ms, stderr),
+                exit_code: 1,
+                duration_ms: started.elapsed().as_millis() as u64,
+            },
+        }
+    })
+}
+
+/// Собирает `Command`. На Windows для PowerShell форсирует UTF-8.
+fn build_command(command: &str, args: &[String], cwd: &std::path::Path) -> std::process::Command {
+    #[cfg(windows)]
+    let is_powershell = command == "powershell.exe";
+
+    #[cfg(windows)]
+    {
+        if is_powershell {
+            let ps_quote = |s: &str| -> String {
+                format!("'{}'", s.replace('\'', "''"))
+            };
+            let mut inner = ps_quote(command);
+            for a in args {
+                inner.push(' ');
+                inner.push_str(&ps_quote(a));
+            }
+            let script = format!(
+                "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; & {}",
+                inner
+            );
+            let mut cmd = std::process::Command::new("powershell.exe");
+            cmd.arg("-NoProfile")
+                .arg("-NonInteractive")
+                .arg("-Command")
+                .arg(script)
+                .current_dir(cwd)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+            return cmd;
+        }
+    }
+
+    let mut cmd = std::process::Command::new(command);
+    cmd.args(args)
+        .current_dir(cwd)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    cmd
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static DIR_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    fn tmp_skills_dir() -> std::path::PathBuf {
+        let n = DIR_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("mcp-skills-run-test-{}-{}", std::process::id(), n));
+        let _ = std::fs::remove_dir_all(&dir);
+        let skills_root = dir.join(".agents").join("skills");
+        std::fs::create_dir_all(&skills_root).unwrap();
+        dir
+    }
+
+    fn result_text(res: &Value) -> String {
+        res["content"][0]["text"].as_str().unwrap_or("").to_string()
+    }
+
+    #[test]
+    fn run_skill_executes_script_and_returns_stdout() {
+        let dir = tmp_skills_dir();
+        let skills_root = dir.join(".agents").join("skills");
+        let skill_dir = skills_root.join("1c-hello");
+        std::fs::create_dir_all(&skill_dir.join("scripts")).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "---\nname: 1c-hello\n---\n").unwrap();
+        #[cfg(windows)]
+        std::fs::write(
+            skill_dir.join("scripts").join("hello.ps1"),
+            "Write-Output 'Привет из скилла'",
+        ).unwrap();
+        #[cfg(unix)]
+        std::fs::write(
+            skill_dir.join("scripts").join("hello.py"),
+            "print('Привет из скилла')",
+        ).unwrap();
+
+        let res = call_tool("run_skill", &json!({"id": "1c-hello"}), &skills_root, None).unwrap();
+        let text = result_text(&res);
+        assert!(
+            text.contains("Привет из скилла"),
+            "stdout: {:?}",
+            text
+        );
+        assert!(text.contains("\"exit_code\": 0"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn run_skill_no_scripts_returns_error() {
+        let dir = tmp_skills_dir();
+        let skills_root = dir.join(".agents").join("skills");
+        let skill_dir = skills_root.join("1c-emptyskill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "---\nname: 1c-emptyskill\n---\n").unwrap();
+
+        let res = call_tool("run_skill", &json!({"id": "1c-emptyskill"}), &skills_root, None);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("не имеет исполняемого скрипта"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn run_skill_missing_skill_returns_error() {
+        let dir = tmp_skills_dir();
+        let skills_root = dir.join(".agents").join("skills");
+        let res = call_tool("run_skill", &json!({"id": "nope"}), &skills_root, None);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("не имеет исполняемого скрипта"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_tools_has_no_get_skill_file_and_has_run_skill() {
+        let tools = list_tools();
+        let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+        assert!(!names.contains(&"get_skill_file"), "get_skill_file должен быть удалён");
+        assert!(names.contains(&"run_skill"), "run_skill должен присутствовать");
+    }
 }
