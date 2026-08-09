@@ -236,6 +236,22 @@ fn save_skill_file(id: &str, content: &str) -> Result<PathBuf, String> {
 
 // ─── Tauri Commands ──────────────────────────────────────────────
 
+/// Компактная сводка доступных скиллов для инжекта в system prompt.
+/// Возвращает markdown-список `- name — описание` по каждому скиллу.
+pub fn skill_summary_md() -> String {
+    let skills = scan_skills_dir();
+    if skills.is_empty() {
+        return String::new();
+    }
+    let mut lines: Vec<String> = Vec::with_capacity(skills.len() + 1);
+    lines.push("Доступные скиллы:".to_string());
+    for s in skills {
+        let desc: String = s.description.chars().take(110).collect();
+        lines.push(format!("- `{}` — {}", s.name, desc));
+    }
+    lines.join("\n")
+}
+
 #[tauri::command]
 pub fn list_skills() -> Vec<SkillFile> {
     scan_skills_dir()

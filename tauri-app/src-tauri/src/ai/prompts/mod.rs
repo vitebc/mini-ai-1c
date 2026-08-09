@@ -1,4 +1,5 @@
 use super::models::{ApiMessage, ToolInfo};
+use crate::commands::skills::skill_summary_md;
 use crate::llm_profiles::LLMProvider;
 use crate::settings::{load_settings, CustomPromptsSettings, PromptBehaviorPreset};
 
@@ -217,6 +218,13 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
     prompt.push_str("\n");
     prompt.push_str(SKILLS_SCRIPTS_BLOCK);
     prompt.push_str("\n");
+
+    // --- Каталог доступных скиллов (компактно, 1 строка на скилл) ---
+    let skill_summary = skill_summary_md();
+    if !skill_summary.is_empty() {
+        prompt.push_str(&skill_summary);
+        prompt.push_str("\n");
+    }
 
     // --- Режим «вопрос/действие» (только Project и Maintenance) ---
     if matches!(
