@@ -36,7 +36,7 @@ config/
 - **Окончания строк — LF** (не CRLF): парсер frontmatter в mcp-1c-skills падает на `---\r\n` и description молча становится пустым (BM25/поиск ломается). Конвертируй: `sed -i 's/\r$//'`.
 - YAML frontmatter: `name`, `description` (начинать с «Используй когда…» — ключевой сигнал для BM25-поиска и выбора скилла агентом), `argument-hint`, `allowed-tools`, `tags` (через запятую, домены: `epf`, `erf`, `forms`, `mxl`, `skd`, `db`, `query`, `template`, `bsp`, `workflow`, `help`), `depends_on` (только для workflow-скиллов: `1c-epf-full-cycle` перечисляет под-скиллы цепочки). Без кавычек вокруг значений; без многострочного YAML `description: >` — парсер его не понимает.
 - Заголовок `# /<command>` — имя команды без префикса (пример: папка `1c-form-add`, заголовок `# /form-add`). Заголовки команд должны быть **уникальны** — не допускай двух скиллов с одной командой (был конфликт `1c-epf-init`/`1c-epf-scaffold`, scaffold удалён).
-- Описание формата, таблица параметров, блок «## Команда» с вызовом `powershell.exe -NoProfile -File ...`. Пути в командах — **только** `skills/<name>/scripts/<script>.ps1` (напр. `skills/1c-form-add/scripts/form-add.ps1`); не используй `.claude/skills/...` или `${CLAUDE_SKILL_DIR}`. Примечание: ERF-скиллы не имеют своих скриптов и переиспользуют EPF-скрипты (напр. `1c-erf-build` → `skills/1c-epf-build/scripts/epf-build.ps1`).
+- Описание формата, таблица параметров, блок «## Команда» с вызовом `powershell.exe -NoProfile -File ...`. Пути в командах — **только** `<name>/scripts/<script>.ps1` (напр. `1c-form-add/scripts/form-add.ps1`), т.е. относительно каталога скиллов, **без префикса `skills/`** — агент запускает скрипт из расположения скилла, и `skills/` ломает путь. Не используй `.claude/skills/...` или `${CLAUDE_SKILL_DIR}`. Примечание: ERF-скиллы не имеют своих скриптов и переиспользуют EPF-скрипты (напр. `1c-erf-build` → `1c-epf-build/scripts/epf-build.ps1`).
 - `evals/evals.json`: массив `{prompt, expected_output, expectations[]}` для проверки скилла; `skill_name` должен совпадать с `name` в frontmatter.
 
 **PS1 vs Python** (см. `config/docs/python-porting-guide.md`):
@@ -61,12 +61,12 @@ config/
    - `tags:` — домены через запятую (`epf`, `erf`, `forms`, `mxl`, `skd`, `db`, `query`, `template`, `bsp`, `workflow`, `help`).
    - `depends_on:` — только для workflow-скиллов: под-скиллы цепочки через запятую (как `1c-epf-full-cycle`).
 4. **Заголовок** `# /<command>` — команда без префикса `1c-`; команда должна быть **уникальна** (проверь: `grep -rn "^# /" config/skills/1c-skills/*/SKILL.md`).
-5. **«## Команда»** — вызов `powershell.exe -NoProfile -File skills/<name>/scripts/<script>.ps1 ...`. Путь — от раскладки `skills/<name>/`, без `.claude/` и `${CLAUDE_SKILL_DIR}`.
+5. **«## Команда»** — вызов `powershell.exe -NoProfile -File <name>/scripts/<script>.ps1 ...`. Путь — от каталога скиллов (`1c-form-add/scripts/form-add.ps1`), **без `skills/`**, `.claude/` и `${CLAUDE_SKILL_DIR}`.
 6. **Evals** — `skill_name` строго равен `name`; опиши 2-3 сценария с ожидаемыми параметрами скрипта.
 7. **Верификация** (обязательно, по аналогии с живыми проверками из истории):
    - `sed -i 's/\r$//'` на `.md` (LF, иначе парсер не увидит description);
    - проверь, что папка = `name` и evals согласованы;
-   - проверь, что все пути `skills/<name>/scripts/*` существуют;
+   - проверь, что все пути `<name>/scripts/*` существуют;
    - прогони живые MCP-запросы на сервере `mcp-1c-skills` (см. main-репо, `tauri-app/mcp-1c-skills`): `list_skills`, `search` по ключевым словам, `get_skill` — убедись, что скилл находится и корректно отображается (Вызов/Теги/Зависит от).
 8. **Коммит** кратко на русском, затем **пуш** (по правилу «всегда пуш после коммита»).
 

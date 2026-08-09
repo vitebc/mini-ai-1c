@@ -42,7 +42,7 @@ allowed-tools:
 Используй общий скрипт из epf-dump:
 
 ```powershell
-powershell.exe -NoProfile -File skills/1c-epf-dump/scripts/epf-dump.ps1 <параметры>
+powershell.exe -NoProfile -File 1c-epf-dump/scripts/epf-dump.ps1 <параметры>
 ```
 
 ### Параметры скрипта
@@ -65,8 +65,8 @@ powershell.exe -NoProfile -File skills/1c-epf-dump/scripts/epf-dump.ps1 <пар�
 
 ```powershell
 # Разборка отчёта (файловая база)
-powershell.exe -NoProfile -File skills/1c-epf-dump/scripts/epf-dump.ps1 -InfoBasePath "C:\Bases\MyDB" -InputFile "build/МойОтчёт.erf" -OutputDir "src"
+powershell.exe -NoProfile -File 1c-epf-dump/scripts/epf-dump.ps1 -InfoBasePath "C:\Bases\MyDB" -InputFile "build/МойОтчёт.erf" -OutputDir "src"
 
 # Серверная база
-powershell.exe -NoProfile -File skills/1c-epf-dump/scripts/epf-dump.ps1 -InfoBaseServer "srv01" -InfoBaseRef "MyDB" -UserName "Admin" -Password "secret" -InputFile "build/МойОтчёт.erf" -OutputDir "src"
+powershell.exe -NoProfile -File 1c-epf-dump/scripts/epf-dump.ps1 -InfoBaseServer "srv01" -InfoBaseRef "MyDB" -UserName "Admin" -Password "secret" -InputFile "build/МойОтчёт.erf" -OutputDir "src"
 ```

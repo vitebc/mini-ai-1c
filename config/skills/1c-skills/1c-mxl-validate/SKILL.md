@@ -24,7 +24,7 @@ allowed-tools:
 ## Команда
 
 ```powershell
-powershell.exe -NoProfile -File skills/1c-mxl-validate/scripts/mxl-validate.ps1 -TemplatePath "Catalogs/Номенклатура/Templates/Макет"
-powershell.exe -NoProfile -File skills/1c-mxl-validate/scripts/mxl-validate.ps1 -TemplatePath "src/МояОбработка/Templates/ПечатнаяФорма"
+powershell.exe -NoProfile -File 1c-mxl-validate/scripts/mxl-validate.ps1 -TemplatePath "Catalogs/Номенклатура/Templates/Макет"
+powershell.exe -NoProfile -File 1c-mxl-validate/scripts/mxl-validate.ps1 -TemplatePath "src/МояОбработка/Templates/ПечатнаяФорма"
 ```
 

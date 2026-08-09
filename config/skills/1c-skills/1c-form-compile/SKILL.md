@@ -30,10 +30,10 @@ allowed-tools:
 
 ```powershell
 # Режим JSON DSL
-powershell.exe -NoProfile -File skills/1c-form-compile/scripts/form-compile.ps1 -JsonPath "<json>" -OutputPath "<Form.xml>"
+powershell.exe -NoProfile -File 1c-form-compile/scripts/form-compile.ps1 -JsonPath "<json>" -OutputPath "<Form.xml>"
 
 # Режим from-object (объект и purpose выводятся из OutputPath; Document и Catalog)
-powershell.exe -NoProfile -File skills/1c-form-compile/scripts/form-compile.ps1 -FromObject -OutputPath "<.../TypePlural/ObjectName/Forms/FormName/Ext/Form.xml>"
+powershell.exe -NoProfile -File 1c-form-compile/scripts/form-compile.ps1 -FromObject -OutputPath "<.../TypePlural/ObjectName/Forms/FormName/Ext/Form.xml>"
 ```
 
 ## JSON DSL — справка

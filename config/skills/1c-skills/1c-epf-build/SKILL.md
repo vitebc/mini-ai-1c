@@ -34,7 +34,7 @@ allowed-tools:
 ## Команда
 
 ```powershell
-powershell.exe -NoProfile -File skills/1c-epf-build/scripts/epf-build.ps1 <параметры>
+powershell.exe -NoProfile -File 1c-epf-build/scripts/epf-build.ps1 <параметры>
 ```
 
 ### Параметры скрипта
@@ -56,8 +56,8 @@ powershell.exe -NoProfile -File skills/1c-epf-build/scripts/epf-build.ps1 <па�
 
 ```powershell
 # Сборка обработки (файловая база)
-powershell.exe -NoProfile -File skills/1c-epf-build/scripts/epf-build.ps1 -InfoBasePath "C:\Bases\MyDB" -SourceFile "src/МояОбработка.xml" -OutputFile "build/МояОбработка.epf"
+powershell.exe -NoProfile -File 1c-epf-build/scripts/epf-build.ps1 -InfoBasePath "C:\Bases\MyDB" -SourceFile "src/МояОбработка.xml" -OutputFile "build/МояОбработка.epf"
 
 # Серверная база
-powershell.exe -NoProfile -File skills/1c-epf-build/scripts/epf-build.ps1 -InfoBaseServer "srv01" -InfoBaseRef "MyDB" -UserName "Admin" -Password "secret" -SourceFile "src/МояОбработка.xml" -OutputFile "build/МояОбработка.epf"
+powershell.exe -NoProfile -File 1c-epf-build/scripts/epf-build.ps1 -InfoBaseServer "srv01" -InfoBaseRef "MyDB" -UserName "Admin" -Password "secret" -SourceFile "src/МояОбработка.xml" -OutputFile "build/МояОбработка.epf"
 ```

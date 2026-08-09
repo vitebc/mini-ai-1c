@@ -39,12 +39,12 @@ allowed-tools:
 ## Команда
 
 ```powershell
-powershell.exe -NoProfile -File skills/1c-mxl-info/scripts/mxl-info.ps1 -TemplatePath "<путь>"
+powershell.exe -NoProfile -File 1c-mxl-info/scripts/mxl-info.ps1 -TemplatePath "<путь>"
 ```
 
 Или по имени обработки/макета:
 ```powershell
-powershell.exe -NoProfile -File skills/1c-mxl-info/scripts/mxl-info.ps1 -ProcessorName "<Имя>" -TemplateName "<Макет>" [-SrcDir "<каталог>"]
+powershell.exe -NoProfile -File 1c-mxl-info/scripts/mxl-info.ps1 -ProcessorName "<Имя>" -TemplateName "<Макет>" [-SrcDir "<каталог>"]
 ```
 
 Дополнительные флаги:
