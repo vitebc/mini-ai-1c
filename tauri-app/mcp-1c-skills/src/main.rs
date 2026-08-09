@@ -10,6 +10,7 @@ use std::sync::Arc;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+mod search;
 mod skills;
 mod tools;
 
@@ -17,25 +18,20 @@ mod tools;
 async fn main() {
     let skills_dir = skills::resolve_skills_dir();
 
-    let counts = match &skills_dir {
-        Some(d) => {
-            let s = skills::scan_skills(d).len();
-            let docs = skills::scan_docs(d).len();
-            let rules = skills::scan_rules(d).len();
-            (s, docs, rules)
-        }
-        None => (0, 0, 0),
-    };
-    eprintln!(
-        "[mcp-skills] {} skills, {} docs, {} rules loaded from {}",
-        counts.0,
-        counts.1,
-        counts.2,
-        skills_dir
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|| "(empty)".to_string())
-    );
+    let bm25: Option<Arc<search::Bm25>> = skills_dir.as_ref().map(|d| {
+        let s = skills::scan_skills(d);
+        let docs = skills::scan_docs(d);
+        let rules = skills::scan_rules(d);
+        let index = Arc::new(search::Bm25::build(&s, &docs, &rules));
+        eprintln!(
+            "[mcp-skills] {} skills, {} docs, {} rules loaded from {}",
+            s.len(),
+            docs.len(),
+            rules.len(),
+            d.to_string_lossy()
+        );
+        index
+    });
 
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
@@ -72,10 +68,11 @@ async fn main() {
                 let params = request.get("params").cloned().unwrap_or(json!({}));
 
                 let skills_dir = skills_dir.clone();
+                let bm25 = bm25.clone();
                 let stdout_task = Arc::clone(&stdout);
 
                 tokio::spawn(async move {
-                    let result = handle_method(&method, &params, skills_dir.as_deref());
+                    let result = handle_method(&method, &params, skills_dir.as_deref(), bm25.as_deref());
 
                     let response = match result {
                         Ok(res) => json!({
@@ -108,7 +105,12 @@ async fn main() {
     }
 }
 
-fn handle_method(method: &str, params: &Value, skills_dir: Option<&Path>) -> Result<Value, String> {
+fn handle_method(
+    method: &str,
+    params: &Value,
+    skills_dir: Option<&Path>,
+    bm25: Option<&search::Bm25>,
+) -> Result<Value, String> {
     match method {
         "initialize" => Ok(json!({
             "protocolVersion": "2024-11-05",
@@ -122,7 +124,7 @@ fn handle_method(method: &str, params: &Value, skills_dir: Option<&Path>) -> Res
             let skills_dir = skills_dir.ok_or_else(|| {
                 "Каталог скиллов не найден. Укажите SKILLS_DIR или расположите .agents/skills рядом с бинарником.".to_string()
             })?;
-            tools::call_tool(tool_name, &arguments, skills_dir)
+            tools::call_tool(tool_name, &arguments, skills_dir, bm25)
         }
         "ping" => Ok(json!({})),
         _ => Err(format!("Method not found: {}", method)),

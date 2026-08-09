@@ -18,6 +18,10 @@ pub struct SkillInfo {
     pub description: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub argument_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_tools: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,6 +215,21 @@ pub fn scan_skills(skills_dir: &Path) -> Vec<SkillInfo> {
                     metadata_str(&fm.metadata, "domain")
                 }
             };
+            let arg_hint = {
+                let v = metadata_str(&fm.metadata, "argument-hint");
+                if v.is_empty() {
+                    None
+                } else {
+                    Some(v)
+                }
+            };
+            let allowed = match fm.metadata.get("allowed-tools") {
+                Some(serde_json::Value::Array(arr)) => arr
+                    .iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect(),
+                _ => Vec::new(),
+            };
             out.push(SkillInfo {
                 id,
                 name: if md_name.is_empty() { name.to_string() } else { md_name },
@@ -224,6 +243,8 @@ pub fn scan_skills(skills_dir: &Path) -> Vec<SkillInfo> {
                 } else {
                     Some(category.to_string())
                 },
+                argument_hint: arg_hint,
+                allowed_tools: allowed,
             });
         }
     };

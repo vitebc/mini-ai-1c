@@ -6,6 +6,7 @@
 use serde_json::{json, Value};
 use std::path::Path;
 
+use crate::search::{Bm25, DocKind};
 use crate::skills::{
     doc_path_from_id, get_skill_files, is_valid_skill_id, read_skill_file, rule_path_from_id,
     scan_docs, scan_rules, scan_skills, skill_dir_from_id, SkillInfo,
@@ -60,8 +61,31 @@ pub fn list_tools() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "search",
+            "description": "Поиск по скиллам, документации и правилам 1С. BM25-ранжирование: наиболее релевантные результаты первыми. Используй для быстрого поиска нужного скилла, правила или документа по описанию задачи. Запрос может быть многословным на русском или английском.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Поисковый запрос (например: 'создать обработку с формой и макетом')"
+                    },
+                    "kinds": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": ["skill", "doc", "rule"] },
+                        "description": "Фильтр по типам. Если не указан — поиск по всем трём коллекциям."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Максимум результатов (по умолчанию 10)"
+                    }
+                },
+                "required": ["query"]
+            }
+        }),
+        json!({
             "name": "search_skills",
-            "description": "Поиск по названиям и описаниям скиллов. Вернёт список подходящих скиллов с их ID и описанием.",
+            "description": "Поиск по названиям и описаниям скиллов (BM25). Вернёт список подходящих скиллов с их ID, описанием и форматом вызова.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -102,7 +126,7 @@ pub fn list_tools() -> Vec<Value> {
         }),
         json!({
             "name": "search_docs",
-            "description": "Поиск по названиям и описаниям документов. Вернёт список подходящих документов с их ID и описанием.",
+            "description": "Поиск по названиям и описаниям документов (BM25). Вернёт список подходящих документов с их ID и описанием.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -140,16 +164,31 @@ pub fn list_tools() -> Vec<Value> {
 }
 
 fn skill_listing_md(s: &SkillInfo) -> String {
+    let hint = s
+        .argument_hint
+        .as_deref()
+        .map(|h| format!("\nВызов: `{}`", h))
+        .unwrap_or_default();
+    let tools = if s.allowed_tools.is_empty() {
+        String::new()
+    } else {
+        format!("\nТребует: {}", s.allowed_tools.join(", "))
+    };
     let cat = s
         .category
         .as_deref()
         .map(|c| format!("\nКатегория: {}", c))
         .unwrap_or_default();
-    format!("### {}\nID: `{}`\n{}{}", s.name, s.id, s.description, cat)
+    format!("### {}\nID: `{}`\n{}{}{}{}", s.name, s.id, s.description, hint, tools, cat)
 }
 
 /// Обрабатывает tools/call. Возвращает содержимое ответа MCP.
-pub fn call_tool(name: &str, args: &Value, skills_dir: &Path) -> Result<Value, String> {
+pub fn call_tool(
+    name: &str,
+    args: &Value,
+    skills_dir: &Path,
+    bm25: Option<&Bm25>,
+) -> Result<Value, String> {
     let text = match name {
         "list_skills" => {
             let category = args.get("category").and_then(|v| v.as_str()).unwrap_or("");
@@ -242,19 +281,18 @@ pub fn call_tool(name: &str, args: &Value, skills_dir: &Path) -> Result<Value, S
         }
 
         "search_skills" => {
-            let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
-            let results: Vec<_> = scan_skills(skills_dir)
-                .into_iter()
-                .filter(|s| {
-                    s.name.to_lowercase().contains(&query)
-                        || s.description.to_lowercase().contains(&query)
-                        || s.id.to_lowercase().contains(&query)
-                })
-                .collect();
-            if results.is_empty() {
+            let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            let hits = match bm25 {
+                Some(bm) => bm.search(query, Some(&[DocKind::Skill]), 20),
+                None => Vec::new(),
+            };
+            if hits.is_empty() {
                 format!("По запросу \"{}\" ничего не найдено.", query)
             } else {
-                results.iter().map(|s| format!("### {}\nID: `{}`\n{}", s.name, s.id, s.description)).collect::<Vec<_>>().join("\n\n")
+                hits.iter()
+                    .map(|h| format!("### {}\nID: `{}`\n{}", h.name, h.id, h.description))
+                    .collect::<Vec<_>>()
+                    .join("\n\n")
             }
         }
 
@@ -303,19 +341,61 @@ pub fn call_tool(name: &str, args: &Value, skills_dir: &Path) -> Result<Value, S
         }
 
         "search_docs" => {
-            let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
-            let results: Vec<_> = scan_docs(skills_dir)
-                .into_iter()
-                .filter(|d| {
-                    d.name.to_lowercase().contains(&query)
-                        || d.description.to_lowercase().contains(&query)
-                        || d.id.to_lowercase().contains(&query)
-                })
-                .collect();
-            if results.is_empty() {
+            let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            let hits = match bm25 {
+                Some(bm) => bm.search(query, Some(&[DocKind::Doc]), 20),
+                None => Vec::new(),
+            };
+            if hits.is_empty() {
                 format!("По запросу \"{}\" ничего не найдено.", query)
             } else {
-                results.iter().map(|d| format!("### {}\nID: `{}`\n{}", d.name, d.id, d.description)).collect::<Vec<_>>().join("\n\n")
+                hits.iter()
+                    .map(|h| format!("### {}\nID: `{}`\n{}", h.name, h.id, h.description))
+                    .collect::<Vec<_>>()
+                    .join("\n\n")
+            }
+        }
+
+        "search" => {
+            let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            let kinds: Option<Vec<DocKind>> = args
+                .get("kinds")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().and_then(DocKind::from_str))
+                        .collect()
+                });
+            let limit = args
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(10) as usize;
+            let hits = match bm25 {
+                Some(bm) => bm.search(query, kinds.as_deref(), limit),
+                None => Vec::new(),
+            };
+            if hits.is_empty() {
+                format!("По запросу \"{}\" ничего не найдено.", query)
+            } else {
+                hits.iter()
+                    .map(|h| {
+                        let kind_icon = match h.kind {
+                            DocKind::Skill => "🔧",
+                            DocKind::Doc => "📄",
+                            DocKind::Rule => "📏",
+                        };
+                        let cat = h
+                            .category
+                            .as_deref()
+                            .map(|c| format!("\nКатегория: {}", c))
+                            .unwrap_or_default();
+                        format!(
+                            "### {} {} (score {:.1})\nID: `{}`\n{}{}",
+                            kind_icon, h.name, h.score, h.id, h.description, cat
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n\n")
             }
         }
 
