@@ -1,8 +1,8 @@
 MCP-сервер: скиллы, документация и правила кодирования 1С
 
 Исходный TypeScript: tauri-app/src/mcp-servers/mcp-skills.ts
-Синхронизирован до коммита: 08106a2 (2026-08-06)
+Синхронизирован до коммита: d559477 (2026-08-09) — удалён get_skill_file, добавлен run_skill
 
 Отслеживание изменений TS-оригинала:
-  git log --oneline 08106a2..HEAD -- tauri-app/src/mcp-servers/mcp-skills.ts
+  git log --oneline d559477..HEAD -- tauri-app/src/mcp-servers/mcp-skills.ts
 Если вывод непустой — TS менялся, нужно синхронизировать Rust-порт.
