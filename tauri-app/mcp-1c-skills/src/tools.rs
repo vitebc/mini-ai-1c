@@ -75,6 +75,11 @@ pub fn list_tools() -> Vec<Value> {
                         "items": { "type": "string", "enum": ["skill", "doc", "rule"] },
                         "description": "Фильтр по типам. Если не указан — поиск по всем трём коллекциям."
                     },
+                    "tags": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Фильтр по тегам скиллов (например: ['epf', 'forms', 'mxl', 'skd', 'bsp', 'db', 'query', 'template', 'workflow']). Учитывается только для kinds=['skill']."
+                    },
                     "limit": {
                         "type": "integer",
                         "description": "Максимум результатов (по умолчанию 10)"
@@ -179,7 +184,12 @@ fn skill_listing_md(s: &SkillInfo) -> String {
         .as_deref()
         .map(|c| format!("\nКатегория: {}", c))
         .unwrap_or_default();
-    format!("### {}\nID: `{}`\n{}{}{}{}", s.name, s.id, s.description, hint, tools, cat)
+    let tags = if s.tags.is_empty() {
+        String::new()
+    } else {
+        format!("\nТеги: {}", s.tags.join(", "))
+    };
+    format!("### {}\nID: `{}`\n{}{}{}{}{}", s.name, s.id, s.description, hint, tools, tags, cat)
 }
 
 /// Обрабатывает tools/call. Возвращает содержимое ответа MCP.
@@ -236,13 +246,25 @@ pub fn call_tool(
                 String::new(),
                 format!("**ID:** `{}`", info.id),
                 format!("**Описание:** {}", info.description),
-                format!("**Директория скилла:** `{}`", skill_dir.to_string_lossy()),
-                format!("**Файлов:** {}", files.len()),
-                String::new(),
-                "---".to_string(),
-                String::new(),
-                fm.body,
             ];
+            if let Some(hint) = info.argument_hint.as_deref() {
+                parts.push(format!("**Вызов:** `{}`", hint));
+            }
+            if !info.allowed_tools.is_empty() {
+                parts.push(format!("**Требует:** {}", info.allowed_tools.join(", ")));
+            }
+            if !info.tags.is_empty() {
+                parts.push(format!("**Теги:** {}", info.tags.join(", ")));
+            }
+            if !info.depends_on.is_empty() {
+                parts.push(format!("**Зависит от:** {}", info.depends_on.join(", ")));
+            }
+            parts.push(format!("**Директория скилла:** `{}`", skill_dir.to_string_lossy()));
+            parts.push(format!("**Файлов:** {}", files.len()));
+            parts.push(String::new());
+            parts.push("---".to_string());
+            parts.push(String::new());
+            parts.push(fm.body);
             if !non_md_files.is_empty() {
                 parts.push(String::new());
                 parts.push("---".to_string());
@@ -283,14 +305,21 @@ pub fn call_tool(
         "search_skills" => {
             let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
             let hits = match bm25 {
-                Some(bm) => bm.search(query, Some(&[DocKind::Skill]), 20),
+                Some(bm) => bm.search(query, Some(&[DocKind::Skill]), None, 20),
                 None => Vec::new(),
             };
             if hits.is_empty() {
                 format!("По запросу \"{}\" ничего не найдено.", query)
             } else {
                 hits.iter()
-                    .map(|h| format!("### {}\nID: `{}`\n{}", h.name, h.id, h.description))
+                    .map(|h| {
+                        let tags = if h.tags.is_empty() {
+                            String::new()
+                        } else {
+                            format!("\nТеги: {}", h.tags.join(", "))
+                        };
+                        format!("### {}\nID: `{}`\n{}{}", h.name, h.id, h.description, tags)
+                    })
                     .collect::<Vec<_>>()
                     .join("\n\n")
             }
@@ -343,7 +372,7 @@ pub fn call_tool(
         "search_docs" => {
             let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
             let hits = match bm25 {
-                Some(bm) => bm.search(query, Some(&[DocKind::Doc]), 20),
+                Some(bm) => bm.search(query, Some(&[DocKind::Doc]), None, 20),
                 None => Vec::new(),
             };
             if hits.is_empty() {
@@ -366,12 +395,20 @@ pub fn call_tool(
                         .filter_map(|v| v.as_str().and_then(DocKind::from_str))
                         .collect()
                 });
+            let tags: Option<Vec<String>> = args
+                .get("tags")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                });
             let limit = args
                 .get("limit")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(10) as usize;
             let hits = match bm25 {
-                Some(bm) => bm.search(query, kinds.as_deref(), limit),
+                Some(bm) => bm.search(query, kinds.as_deref(), tags.as_deref(), limit),
                 None => Vec::new(),
             };
             if hits.is_empty() {
@@ -389,9 +426,14 @@ pub fn call_tool(
                             .as_deref()
                             .map(|c| format!("\nКатегория: {}", c))
                             .unwrap_or_default();
+                        let tags = if h.tags.is_empty() {
+                            String::new()
+                        } else {
+                            format!("\nТеги: {}", h.tags.join(", "))
+                        };
                         format!(
-                            "### {} {} (score {:.1})\nID: `{}`\n{}{}",
-                            kind_icon, h.name, h.score, h.id, h.description, cat
+                            "### {} {} (score {:.1})\nID: `{}`\n{}{}{}",
+                            kind_icon, h.name, h.score, h.id, h.description, cat, tags
                         )
                     })
                     .collect::<Vec<_>>()

@@ -22,6 +22,10 @@ pub struct SkillInfo {
     pub argument_hint: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allowed_tools: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub depends_on: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,6 +179,14 @@ fn metadata_str(m: &serde_json::Map<String, serde_json::Value>, key: &str) -> St
         .to_string()
 }
 
+/// Разбивает строку-список (`tags: a, b, c`) на вектор, обрезая пробелы.
+fn split_comma_list(s: &str) -> Vec<String> {
+    s.split(',')
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
+}
+
 // ─── Скиллы ───────────────────────────────────────────────────────
 
 /// Проверяет валидность ID скилла (защита от path traversal).
@@ -232,6 +244,8 @@ pub fn scan_skills(skills_dir: &Path) -> Vec<SkillInfo> {
                     .collect(),
                 _ => Vec::new(),
             };
+            let tags = split_comma_list(&metadata_str(&fm.metadata, "tags"));
+            let depends_on = split_comma_list(&metadata_str(&fm.metadata, "depends_on"));
             out.push(SkillInfo {
                 id,
                 name: if md_name.is_empty() { name.to_string() } else { md_name },
@@ -247,6 +261,8 @@ pub fn scan_skills(skills_dir: &Path) -> Vec<SkillInfo> {
                 },
                 argument_hint: arg_hint,
                 allowed_tools: allowed,
+                tags,
+                depends_on,
             });
         }
     };
