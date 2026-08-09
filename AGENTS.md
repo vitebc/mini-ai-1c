@@ -35,6 +35,9 @@ mini-ai-1c/
 │   │       ├── bsl_client.rs     # BSL Language Server WebSocket клиент
 │   │       ├── editor_bridge.rs  # EditorBridge (.NET named pipe)
 │   │       ├── llm_profiles.rs   # LLM профили с AES-GCM шифрованием ключей
+│   │       ├── ai/prompts/       # Промпты 4 режимов (project, maintenance, cli, planning)
+│   │       │   ├── mod.rs        # Сборка промпта, выбор режима, поисковая матрица
+│   │       │   └── issues-*.md   # Проблемы сессий и план решения по режимам (см. issues-common.md)
 │   │       └── commands/         # Tauri команды
 │   │           ├── skills.rs     # CRUD локальных скиллов
 │   │           ├── enterprise.rs # Команды enterprise-режима
