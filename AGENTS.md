@@ -15,7 +15,7 @@ config/
 ├── etalon/     # GITIGNORED. 4 upstream-репозитория-источника (полные git-клоны):
 │               #   1c-ai-development-kit, 1c-ssl-skills, cc-1c-skills, cursor-1c-skills
 ├── skills/
-│   ├── 1c-skills/<skill>/   # 38 скиллов. Каждый: SKILL.md + scripts/*.{ps1,py}
+│   ├── 1c-skills/<skill>/   # 35 скиллов. Каждый: SKILL.md + scripts/*.{ps1,py}
 │   │                        #   + evals/evals.json, иногда references/, presets/
 │   └── bsp/                 # Скилл БСП 3.1.11: SKILL.md + references/ (24 топика) + scripts/bsp_api.py
 ├── rules/                   # 29 правил: *.md с YAML frontmatter `paths:` (glob по BSL)
@@ -46,6 +46,29 @@ config/
 **Правило** (`config/rules/*.md`): frontmatter `paths:` с glob-масками (напр. `**/*.bsl`), далее правило. Правила ссылаются друг на друга по имени файла (напр. «Дополняет `1c-coding-standards.md`»).
 
 **Документация** (`config/docs/`): спецификации XML-формата 1С и DSL-спеки взаимосвязаны; `1c-specs-index.md` — точка входа. При правке спецификаций обновляй перекрёстные ссылки в индексе.
+
+## Добавление нового скилла (чеклист)
+
+Собери все правила из раздела «Форматы» в один порядок действий:
+
+1. **Выбери имя.** Папка = `name` = `skill_name` в evals, с префиксом `1c-` (напр. `1c-meta-compile`). Если скилл берётся из эталона — обычно это кастомизация из `config/etalon/cursor-1c-skills/skills/<name>` или `1c-ai-development-kit/.claude/skills/<name>`; скопируй и адаптируй.
+2. **Создай структуру** `config/skills/1c-skills/<name>/`: `SKILL.md`, `scripts/` (`.ps1` + `.py`), `evals/evals.json`. Скрипты клади по парам PS1/Python (см. `python-porting-guide.md`).
+3. **Frontmatter** (все поля, без кавычек, LF-окончания):
+   - `name: 1c-<...>`
+   - `description:` — начинается с «Используй когда …», затем суть (тип объекта, операция) — это ключевой сигнал для BM25-поиска и выбора агентом. Добавляй слова-синонимы из предметной области, чтобы поиск находил скилл.
+   - `argument-hint:` — формат вызова в `<скобках>`.
+   - `allowed-tools:` — список через `-`.
+   - `tags:` — домены через запятую (`epf`, `erf`, `forms`, `mxl`, `skd`, `db`, `query`, `template`, `bsp`, `workflow`, `help`).
+   - `depends_on:` — только для workflow-скиллов: под-скиллы цепочки через запятую (как `1c-epf-full-cycle`).
+4. **Заголовок** `# /<command>` — команда без префикса `1c-`; команда должна быть **уникальна** (проверь: `grep -rn "^# /" config/skills/1c-skills/*/SKILL.md`).
+5. **«## Команда»** — вызов `powershell.exe -NoProfile -File skills/<name>/scripts/<script>.ps1 ...`. Путь — от раскладки `skills/<name>/`, без `.claude/` и `${CLAUDE_SKILL_DIR}`.
+6. **Evals** — `skill_name` строго равен `name`; опиши 2-3 сценария с ожидаемыми параметрами скрипта.
+7. **Верификация** (обязательно, по аналогии с живыми проверками из истории):
+   - `sed -i 's/\r$//'` на `.md` (LF, иначе парсер не увидит description);
+   - проверь, что папка = `name` и evals согласованы;
+   - проверь, что все пути `skills/<name>/scripts/*` существуют;
+   - прогони живые MCP-запросы на сервере `mcp-1c-skills` (см. main-репо, `tauri-app/mcp-1c-skills`): `list_skills`, `search` по ключевым словам, `get_skill` — убедись, что скилл находится и корректно отображается (Вызов/Теги/Зависит от).
+8. **Коммит** кратко на русском, затем **пуш** (по правилу «всегда пуш после коммита»).
 
 ## Knowledge graph (graphify)
 
