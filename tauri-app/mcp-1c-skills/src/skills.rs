@@ -122,18 +122,20 @@ pub struct Frontmatter {
 ///
 /// Поддерживает `key: value`, `key: "true"/"false"`, числовые значения.
 /// Не YAML-парсер — совпадает с логикой TypeScript-версии.
+/// Устойчив к CRLF (Windows): `---\r\n`, `key: value\r\n` обрабатываются.
 pub fn parse_skill_frontmatter(content: &str) -> Frontmatter {
     let mut metadata = serde_json::Map::new();
-    if !content.starts_with("---\n") {
+    let normalized = content.replace("\r\n", "\n");
+    if !normalized.starts_with("---\n") {
         return Frontmatter {
             metadata,
             body: content.to_string(),
         };
     }
 
-    if let Some(end_rel) = content[4..].find("\n---\n") {
+    if let Some(end_rel) = normalized[4..].find("\n---\n") {
         let end = 4 + end_rel;
-        let fm = &content[4..end];
+        let fm = &normalized[4..end];
         for line in fm.split('\n') {
             if let Some(idx) = line.find(": ") {
                 let key = line[..idx].trim().to_string();
@@ -142,7 +144,7 @@ pub fn parse_skill_frontmatter(content: &str) -> Frontmatter {
                 metadata.insert(key, val);
             }
         }
-        let body = content[end + 5..].trim().to_string();
+        let body = normalized[end + 5..].trim().to_string();
         Frontmatter { metadata, body }
     } else {
         Frontmatter {
@@ -493,6 +495,15 @@ mod tests {
         assert_eq!(metadata_str(&fm.metadata, "description"), "Описание");
         assert_eq!(fm.metadata.get("enabled"), Some(&serde_json::Value::Bool(true)));
         assert_eq!(fm.metadata.get("count"), Some(&serde_json::Value::Number(5.into())));
+    }
+
+    #[test]
+    fn parses_crlf_frontmatter() {
+        let content = "---\r\nname: Тест\r\ndescription: Описание\r\n---\r\n\r\nТело";
+        let fm = parse_skill_frontmatter(content);
+        assert_eq!(fm.body, "Тело");
+        assert_eq!(metadata_str(&fm.metadata, "name"), "Тест");
+        assert_eq!(metadata_str(&fm.metadata, "description"), "Описание");
     }
 
     #[test]
