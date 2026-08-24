@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "mini-ai-1c": "tauri",
+    "setup": "node ../scripts/setup.mjs",
     "app:dev": "npm run build:mcp-search && npm run build:mcp && tauri dev",
     "app:build": "npm run build:mcp-search && npm run build:mcp && tauri build",
     "build:mcp": "node scripts/build-mcp.mjs mcp",
