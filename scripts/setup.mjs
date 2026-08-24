@@ -148,8 +148,9 @@ async function setupWindows() {
   // Rust
   if (!hasCmdWin('cargo.exe')) {
     run('winget install --id Rustlang.Rust.MSVC --source winget --accept-source-agreements --accept-package-agreements');
+    const rustupPath = process.env.USERPROFILE + '\\.cargo\\bin\\rustup.exe';
+    run(`"${rustupPath}" component add rustfmt clippy`);
     process.env.PATH += ';' + process.env.USERPROFILE + '\\.cargo\\bin';
-    run('rustup component add rustfmt clippy');
   }
 
   // Node.js

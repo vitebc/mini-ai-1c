@@ -15,9 +15,10 @@ if (Test-Command cargo) {
 } else {
     Write-Info "Установка Rust через winget (MSVC toolchain)..."
     winget install --id Rustlang.Rust.MSVC --source winget --accept-source-agreements --accept-package-agreements
+    $rustup = "$env:USERPROFILE\.cargo\bin\rustup.exe"
+    & $rustup component add rustfmt clippy
     $env:PATH += ";$env:USERPROFILE\.cargo\bin"
     [Environment]::SetEnvironmentVariable("PATH", $env:PATH, "User")
-    & "$env:USERPROFILE\.cargo\bin\rustup.exe" component add rustfmt clippy
     Write-Info "Rust установлен: $(cargo --version)"
 }
 
