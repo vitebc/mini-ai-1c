@@ -9,17 +9,30 @@ function Write-Err  { Write-Host "[ERR]  $args" -ForegroundColor Red }
 
 function Test-Command($name) { Get-Command $name -ErrorAction SilentlyContinue }
 
+function Install-WingetPackage($id) {
+    try {
+        winget install --id $id --source winget --accept-source-agreements --accept-package-agreements -ErrorAction Stop
+    } catch {
+        if ($_.Exception.Message -like "*already installed*" -or $_.Exception.Message -like "*No available upgrade*") {
+            Write-Info "Пакет $id уже установлен, пропускаем"
+        } else {
+            throw $_
+        }
+    }
+}
+
 # --- Rust ---
-if (Test-Command cargo) {
-    Write-Info "Rust уже установлен: $(cargo --version)"
+$cargoPath = "$env:USERPROFILE\.cargo\bin\cargo.exe"
+if (Test-Command cargo -or (Test-Path $cargoPath)) {
+    Write-Info "Rust уже установлен: $(& $cargoPath --version 2>$null || cargo --version)"
 } else {
     Write-Info "Установка Rust через winget (MSVC toolchain)..."
-    winget install --id Rustlang.Rust.MSVC --source winget --accept-source-agreements --accept-package-agreements
+    Install-WingetPackage 'Rustlang.Rust.MSVC'
     $rustup = "$env:USERPROFILE\.cargo\bin\rustup.exe"
-    & $rustup component add rustfmt clippy
+    if (Test-Path $rustup) { & $rustup component add rustfmt clippy }
     $env:PATH += ";$env:USERPROFILE\.cargo\bin"
     [Environment]::SetEnvironmentVariable("PATH", $env:PATH, "User")
-    Write-Info "Rust установлен: $(cargo --version)"
+    Write-Info "Rust установлен: $(& $cargoPath --version 2>$null || cargo --version)"
 }
 
 # --- Node.js ---
@@ -28,7 +41,7 @@ if (Test-Command node -and Test-Command npm) {
 } else {
     Write-Info "Установка Node.js 20 LTS через winget..."
     if (Test-Command winget) {
-        winget install --id OpenJS.NodeJS.LTS --source winget --accept-source-agreements --accept-package-agreements
+        Install-WingetPackage 'OpenJS.NodeJS.LTS'
     } else {
         Write-Warn "winget не найден. Скачайте Node.js 20+ с https://nodejs.org"
         exit 1
@@ -48,7 +61,7 @@ if (Test-Command java) {
 }
 if (-not (Test-Command java) -or $javaVer -lt 17) {
     Write-Info "Установка Eclipse Temurin JDK 17 через winget..."
-    winget install --id EclipseAdoptium.Temurin.17.JDK --source winget --accept-source-agreements --accept-package-agreements
+    Install-WingetPackage 'EclipseAdoptium.Temurin.17.JDK'
     $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH","User")
     Write-Info "Java: $(java -version 2>&1 | Select-Object -First 1)"
 }
@@ -64,7 +77,7 @@ if (Test-Command dotnet) {
 }
 if (-not (Test-Command dotnet) -or $dotnetVer -lt 8) {
     Write-Info "Установка .NET 8 SDK через winget..."
-    winget install --id Microsoft.DotNet.SDK.8 --source winget --accept-source-agreements --accept-package-agreements
+    Install-WingetPackage 'Microsoft.DotNet.SDK.8'
     $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH","User")
     Write-Info ".NET: $(dotnet --version)"
 }
@@ -76,7 +89,7 @@ try {
     Write-Info "WebView2 Runtime уже установлен: $($webview2.pv)"
 } catch {
     Write-Info "Установка WebView2 Runtime через winget..."
-    winget install --id Microsoft.WebView2Runtime --source winget --accept-source-agreements --accept-package-agreements
+    Install-WingetPackage 'Microsoft.WebView2Runtime'
 }
 
 # --- Visual Studio Build Tools (для нативных зависимостей) ---
@@ -102,7 +115,7 @@ if (Test-Command cargo-tauri) {
 # --- Git ---
 if (-not (Test-Command git)) {
     Write-Info "Установка Git через winget..."
-    winget install --id Git.Git --source winget --accept-source-agreements --accept-package-agreements
+    Install-WingetPackage 'Git.Git'
 }
 
 Write-Host ""

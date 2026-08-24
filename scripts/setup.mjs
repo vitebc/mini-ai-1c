@@ -5,6 +5,8 @@
 
 import { execSync } from 'node:child_process';
 import { platform, arch } from 'node:os';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 const OS = platform();
 const ARCH = arch();
@@ -33,25 +35,35 @@ function hasCmd(cmd) {
 }
 
 function hasCmdWin(cmd) {
+  // First check PATH via where
   try {
     execSync(`where ${cmd}`, { stdio: 'ignore', windowsHide: true });
     return true;
-  } catch {
-    // Check common install paths for cargo/rustup
-    if (cmd === 'cargo.exe' || cmd === 'rustup.exe') {
-      const cargoPath = process.env.USERPROFILE + '\\.cargo\\bin\\' + cmd;
-      try {
-        execSync(`"${cargoPath}" --version`, { stdio: 'ignore', windowsHide: true });
-        return true;
-      } catch {}
-    }
-    return false;
+  } catch {}
+  // Check common install paths for cargo/rustup
+  if (cmd === 'cargo.exe' || cmd === 'rustup.exe') {
+    const cargoPath = join(process.env.USERPROFILE || '', '.cargo', 'bin', cmd);
+    if (existsSync(cargoPath)) return true;
   }
+  return false;
 }
 
 function run(cmd, opts = {}) {
   log('info', `$ ${cmd}`);
   execSync(cmd, { stdio: 'inherit', ...opts });
+}
+
+function runWingetInstall(id) {
+  try {
+    run(`winget install --id ${id} --source winget --accept-source-agreements --accept-package-agreements`);
+  } catch (e) {
+    const msg = e.message || String(e);
+    if (msg.includes('already installed') || msg.includes('No available upgrade')) {
+      log('info', `Пакет ${id} уже установлен, пропускаем`);
+    } else {
+      throw e;
+    }
+  }
 }
 
 async function setupLinux() {
@@ -155,10 +167,12 @@ async function setupWindows() {
 
   // Rust
   if (!hasCmdWin('cargo.exe')) {
-    run('winget install --id Rustlang.Rust.MSVC --source winget --accept-source-agreements --accept-package-agreements');
-    const rustupPath = process.env.USERPROFILE + '\\.cargo\\bin\\rustup.exe';
-    run(`"${rustupPath}" component add rustfmt clippy`);
-    process.env.PATH += ';' + process.env.USERPROFILE + '\\.cargo\\bin';
+    runWingetInstall('Rustlang.Rust.MSVC');
+    const rustupPath = join(process.env.USERPROFILE || '', '.cargo', 'bin', 'rustup.exe');
+    if (existsSync(rustupPath)) {
+      run(`"${rustupPath}" component add rustfmt clippy`);
+    }
+    process.env.PATH += ';' + join(process.env.USERPROFILE || '', '.cargo', 'bin');
   } else {
     log('info', 'Rust уже установлен: ' + execSync('cargo --version', { encoding: 'utf8' }).trim());
   }
