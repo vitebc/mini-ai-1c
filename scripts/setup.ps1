@@ -10,29 +10,41 @@ function Write-Err  { Write-Host "[ERR]  $args" -ForegroundColor Red }
 function Test-Command($name) { Get-Command $name -ErrorAction SilentlyContinue }
 
 function Install-WingetPackage($id) {
-    try {
-        winget install --id $id --source winget --accept-source-agreements --accept-package-agreements -ErrorAction Stop
-    } catch {
-        if ($_.Exception.Message -like "*already installed*" -or $_.Exception.Message -like "*No available upgrade*") {
-            Write-Info "Пакет $id уже установлен, пропускаем"
-        } else {
-            throw $_
-        }
+    winget install --id $id --source winget --accept-source-agreements --accept-package-agreements | Out-Host
+    # 0x8A15002B = -1978335189: "уже установлена последняя версия"
+    if ($LASTEXITCODE -eq -1978335189) {
+        Write-Info "Пакет $id уже установлен, пропускаем"
+        return
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "winget install ${id} завершился с кодом $LASTEXITCODE"
     }
 }
 
 # --- Rust ---
-$cargoPath = "$env:USERPROFILE\.cargo\bin\cargo.exe"
-if (Test-Command cargo -or (Test-Path $cargoPath)) {
-    Write-Info "Rust уже установлен: $(& $cargoPath --version 2>$null || cargo --version)"
+# Ищем cargo: ~/.cargo/bin → Program Files (MSI-установка winget)
+$cargoExe = "$env:USERPROFILE\.cargo\bin\cargo.exe"
+if (-not (Test-Path $cargoExe)) {
+    Get-ChildItem "C:\Program Files" -Directory -Filter "Rust*" -ErrorAction SilentlyContinue | ForEach-Object {
+        $p = Join-Path $_.FullName "bin\cargo.exe"
+        if (Test-Path $p) { $cargoExe = $p }
+    }
+}
+
+if ($cargoExe -and (Test-Path $cargoExe)) {
+    Write-Info "Rust уже установлен: $(& $cargoExe --version)"
+    $env:PATH += ";" + (Split-Path $cargoExe)
 } else {
-    Write-Info "Установка Rust через winget (MSVC toolchain)..."
-    Install-WingetPackage 'Rustlang.Rust.MSVC'
-    $rustup = "$env:USERPROFILE\.cargo\bin\rustup.exe"
-    if (Test-Path $rustup) { & $rustup component add rustfmt clippy }
+    Write-Info "Установка Rust через rustup..."
+    $installer = "$env:TEMP\rustup-init.exe"
+    Invoke-WebRequest -Uri "https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe" -OutFile $installer
+    & $installer -y --default-toolchain stable-x86_64-pc-windows-msvc
+    Remove-Item $installer -Force -ErrorAction SilentlyContinue
+    & "$env:USERPROFILE\.cargo\bin\rustup.exe" component add rustfmt clippy
+    $cargoExe = "$env:USERPROFILE\.cargo\bin\cargo.exe"
     $env:PATH += ";$env:USERPROFILE\.cargo\bin"
     [Environment]::SetEnvironmentVariable("PATH", $env:PATH, "User")
-    Write-Info "Rust установлен: $(& $cargoPath --version 2>$null || cargo --version)"
+    Write-Info "Rust установлен: $(& $cargoExe --version)"
 }
 
 # --- Node.js ---
@@ -108,7 +120,7 @@ if (Test-Command cargo-tauri) {
     Write-Info "Tauri CLI уже установлен"
 } else {
     Write-Info "Установка Tauri CLI..."
-    cargo install tauri-cli --version "^2.0"
+    & $cargoExe install tauri-cli --version "^2.0"
     Write-Info "Tauri CLI установлен"
 }
 

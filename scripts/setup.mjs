@@ -5,7 +5,7 @@
 
 import { execSync } from 'node:child_process';
 import { platform, arch } from 'node:os';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
 const OS = platform();
@@ -40,12 +40,19 @@ function hasCmdWin(cmd) {
     execSync(`where ${cmd}`, { stdio: 'ignore', windowsHide: true });
     return true;
   } catch {}
-  // Check common install paths for cargo/rustup
-  if (cmd === 'cargo.exe' || cmd === 'rustup.exe') {
-    const cargoPath = join(process.env.USERPROFILE || '', '.cargo', 'bin', cmd);
-    if (existsSync(cargoPath)) return true;
-  }
   return false;
+}
+
+// Возвращает команду для запуска: имя (если в PATH) или полный путь в кавычках, либо null
+function resolveWindowsTool(name, extraPaths = []) {
+  try {
+    execSync(`where ${name}`, { stdio: 'ignore', windowsHide: true });
+    return name;
+  } catch {}
+  for (const p of extraPaths) {
+    if (p && existsSync(p)) return `"${p}"`;
+  }
+  return null;
 }
 
 function run(cmd, opts = {}) {
@@ -53,17 +60,28 @@ function run(cmd, opts = {}) {
   execSync(cmd, { stdio: 'inherit', ...opts });
 }
 
+// Код 0x8A15002B = "обновление неприменимо / уже установлена последняя версия"
+const WINGET_ALREADY_INSTALLED = -1978335189;
+
 function runWingetInstall(id) {
+  log('info', `$ winget install --id ${id}`);
+  let out = '';
   try {
-    run(`winget install --id ${id} --source winget --accept-source-agreements --accept-package-agreements`);
+    out = execSync(
+      `winget install --id ${id} --source winget --accept-source-agreements --accept-package-agreements`,
+      { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
+    ) || '';
   } catch (e) {
-    const msg = e.message || String(e);
-    if (msg.includes('already installed') || msg.includes('No available upgrade')) {
+    out = String(e.stdout || '') + String(e.stderr || '');
+    if (e.status === WINGET_ALREADY_INSTALLED || /no available upgrade|already installed/i.test(out)) {
       log('info', `Пакет ${id} уже установлен, пропускаем`);
-    } else {
-      throw e;
+      console.log(out.trim());
+      return;
     }
+    if (out.trim()) console.log(out.trim());
+    throw e;
   }
+  if (out.trim()) console.log(out.trim());
 }
 
 async function setupLinux() {
@@ -165,16 +183,40 @@ async function setupWindows() {
   log('info', 'Обнаружен Windows');
   if (!hasCmdWin('winget.exe')) throw new Error('winget не найден (Windows 10 1809+ / Windows 11)');
 
-  // Rust
-  if (!hasCmdWin('cargo.exe')) {
-    runWingetInstall('Rustlang.Rust.MSVC');
-    const rustupPath = join(process.env.USERPROFILE || '', '.cargo', 'bin', 'rustup.exe');
-    if (existsSync(rustupPath)) {
-      run(`"${rustupPath}" component add rustfmt clippy`);
-    }
-    process.env.PATH += ';' + join(process.env.USERPROFILE || '', '.cargo', 'bin');
+    // --- Rust ---
+  // Ищем cargo: PATH → %USERPROFILE%\.cargo\bin → Program Files (MSI-установка)
+  const cargoHome = join(process.env.USERPROFILE || '', '.cargo');
+  const findMsiCargo = () => {
+    try {
+      for (const d of readdirSync('C:\\Program Files')) {
+        if (/^Rust/i.test(d)) {
+          const p = join('C:\\Program Files', d, 'bin', 'cargo.exe');
+          if (existsSync(p)) return p;
+        }
+      }
+    } catch {}
+    return null;
+  };
+
+  let cargo = resolveWindowsTool('cargo.exe', [join(cargoHome, 'bin', 'cargo.exe'), findMsiCargo()]);
+
+  if (!cargo) {
+    // Устанавливаем через rustup: предсказуемые пути, rustup доступен для компонентов
+    log('info', 'Установка Rust через rustup...');
+    const rustupInit = join(process.env.TEMP || '.', 'rustup-init.exe');
+    run(`curl.exe -fsSL -o "${rustupInit}" https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe`);
+    run(`"${rustupInit}" -y --default-toolchain stable-x86_64-pc-windows-msvc`);
+    try { unlinkSync(rustupInit); } catch {}
+    process.env.PATH += ';' + join(cargoHome, 'bin');
+    run(`"${join(cargoHome, 'bin', 'rustup.exe')}" component add rustfmt clippy`);
+    cargo = `"${join(cargoHome, 'bin', 'cargo.exe')}"`;
+    log('info', 'Rust установлен: ' + execSync(`${cargo} --version`, { encoding: 'utf8' }).trim());
   } else {
-    log('info', 'Rust уже установлен: ' + execSync('cargo --version', { encoding: 'utf8' }).trim());
+    log('info', 'Rust найден: ' + execSync(`${cargo} --version`, { encoding: 'utf8' }).trim());
+    const rustup = resolveWindowsTool('rustup.exe', [join(cargoHome, 'bin', 'rustup.exe')]);
+    if (rustup) {
+      try { run(`${rustup} component add rustfmt clippy`); } catch {}
+    }
   }
 
   // Node.js
@@ -208,8 +250,8 @@ async function setupWindows() {
     log('warn', 'Выберите: "Desktop development with C++"');
   }
 
-  // Tauri CLI
-  if (!hasCmdWin('cargo-tauri.exe')) run('cargo install tauri-cli --version "^2.0"');
+  // Tauri CLI (используем найденный cargo — он может быть вне PATH текущего процесса)
+  if (!hasCmdWin('cargo-tauri.exe')) run(`${cargo} install tauri-cli --version "^2.0"`);
 
   // Git
   if (!hasCmdWin('git.exe')) run('winget install --id Git.Git --source winget --accept-source-agreements --accept-package-agreements');
