@@ -147,7 +147,7 @@ async function setupWindows() {
 
   // Rust
   if (!hasCmdWin('cargo.exe')) {
-    run('winget install --id Rustlang.Rust --source winget --accept-source-agreements --accept-package-agreements');
+    run('winget install --id Rustlang.Rust.MSVC --source winget --accept-source-agreements --accept-package-agreements');
     process.env.PATH += ';' + process.env.USERPROFILE + '\\.cargo\\bin';
     run('rustup component add rustfmt clippy');
   }

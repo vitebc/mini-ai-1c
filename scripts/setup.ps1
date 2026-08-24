@@ -13,12 +13,8 @@ function Test-Command($name) { Get-Command $name -ErrorAction SilentlyContinue }
 if (Test-Command cargo) {
     Write-Info "Rust уже установлен: $(cargo --version)"
 } else {
-    Write-Info "Установка Rust через rustup..."
-    $wc = New-Object System.Net.WebClient
-    $installer = "$env:TEMP\rustup-init.exe"
-    $wc.DownloadFile("https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe", $installer)
-    & $installer -y --default-toolchain stable --profile default
-    Remove-Item $installer -Force -ErrorAction SilentlyContinue
+    Write-Info "Установка Rust через winget (MSVC toolchain)..."
+    winget install --id Rustlang.Rust.MSVC --source winget --accept-source-agreements --accept-package-agreements
     $env:PATH += ";$env:USERPROFILE\.cargo\bin"
     [Environment]::SetEnvironmentVariable("PATH", $env:PATH, "User")
     & "$env:USERPROFILE\.cargo\bin\rustup.exe" component add rustfmt clippy
