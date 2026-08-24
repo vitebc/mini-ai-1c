@@ -221,24 +221,34 @@ async function setupWindows() {
 
   // Node.js
   if (!hasCmdWin('node.exe')) {
-    run('winget install --id OpenJS.NodeJS.LTS --source winget --accept-source-agreements --accept-package-agreements');
+    runWingetInstall('OpenJS.NodeJS.LTS');
   }
 
   // Java 17
   if (!hasCmdWin('java.exe')) {
-    run('winget install --id EclipseAdoptium.Temurin.17.JDK --source winget --accept-source-agreements --accept-package-agreements');
+    runWingetInstall('EclipseAdoptium.Temurin.17.JDK');
+    // Добавляем в PATH текущего процесса свежеустановленный JDK
+    const adoptium = 'C:\\Program Files\\Eclipse Adoptium';
+    try {
+      for (const d of readdirSync(adoptium)) {
+        if (/^jdk-17/i.test(d)) {
+          process.env.PATH += ';' + join(adoptium, d, 'bin');
+          break;
+        }
+      }
+    } catch {}
   }
 
   // .NET 8
   if (!hasCmdWin('dotnet.exe')) {
-    run('winget install --id Microsoft.DotNet.SDK.8 --source winget --accept-source-agreements --accept-package-agreements');
+    runWingetInstall('Microsoft.DotNet.SDK.8');
   }
 
   // WebView2
   try {
     run('reg query "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"');
   } catch {
-    run('winget install --id Microsoft.WebView2Runtime --source winget --accept-source-agreements --accept-package-agreements');
+    runWingetInstall('Microsoft.WebView2Runtime');
   }
 
   // VS Build Tools (warning only)
@@ -254,7 +264,7 @@ async function setupWindows() {
   if (!hasCmdWin('cargo-tauri.exe')) run(`${cargo} install tauri-cli --version "^2.0"`);
 
   // Git
-  if (!hasCmdWin('git.exe')) run('winget install --id Git.Git --source winget --accept-source-agreements --accept-package-agreements');
+  if (!hasCmdWin('git.exe')) runWingetInstall('Git.Git');
 }
 
 async function main() {
