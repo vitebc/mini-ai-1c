@@ -37,6 +37,14 @@ function hasCmdWin(cmd) {
     execSync(`where ${cmd}`, { stdio: 'ignore', windowsHide: true });
     return true;
   } catch {
+    // Check common install paths for cargo/rustup
+    if (cmd === 'cargo.exe' || cmd === 'rustup.exe') {
+      const cargoPath = process.env.USERPROFILE + '\\.cargo\\bin\\' + cmd;
+      try {
+        execSync(`"${cargoPath}" --version`, { stdio: 'ignore', windowsHide: true });
+        return true;
+      } catch {}
+    }
     return false;
   }
 }
@@ -151,6 +159,8 @@ async function setupWindows() {
     const rustupPath = process.env.USERPROFILE + '\\.cargo\\bin\\rustup.exe';
     run(`"${rustupPath}" component add rustfmt clippy`);
     process.env.PATH += ';' + process.env.USERPROFILE + '\\.cargo\\bin';
+  } else {
+    log('info', 'Rust уже установлен: ' + execSync('cargo --version', { encoding: 'utf8' }).trim());
   }
 
   // Node.js
