@@ -75,12 +75,22 @@ function parseConnectionString(connect: string): { connection: string; type: 'fi
     return null;
 }
 
+// Строка формата key=value с ASCII-ключом; остальное — продолжение перенесённого значения.
+function isKeyLine(trimmed: string): boolean {
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) return false;
+    const key = trimmed.slice(0, eqIdx);
+    if (!key.length) return false;
+    return /^[A-Za-z0-9_-]+$/.test(key);
+}
+
 function parseV8iContent(content: string): InfobaseInfo[] {
     const bases: InfobaseInfo[] = [];
     let currentName = '';
     let currentConnect = '';
     let currentId = '';
     let currentFolder = '';
+    let lastKey = '';
 
     const text = content.replace(/^\u{FEFF}/u, '');
 
@@ -106,19 +116,26 @@ function parseV8iContent(content: string): InfobaseInfo[] {
             currentConnect = '';
             currentId = '';
             currentFolder = '';
+            lastKey = '';
             continue;
         }
 
-        // Key=Value
-        const eqIdx = trimmed.indexOf('=');
-        if (eqIdx !== -1) {
+        if (isKeyLine(trimmed)) {
+            const eqIdx = trimmed.indexOf('=');
             const key = trimmed.slice(0, eqIdx).trim().toLowerCase();
             const value = trimmed.slice(eqIdx + 1).trim();
             switch (key) {
-                case 'connect': currentConnect = value; break;
-                case 'id': currentId = value; break;
-                case 'folder': currentFolder = value; break;
+                case 'connect': currentConnect = value; lastKey = 'connect'; break;
+                case 'id': currentId = value; lastKey = 'id'; break;
+                case 'folder': currentFolder = value; lastKey = 'folder'; break;
+                default: lastKey = '';
             }
+        } else if (trimmed && currentName) {
+            // 1С переносит длинные значения в ibases.v8i без маркера продолжения —
+            // приклеиваем к предыдущему значению без разделителя.
+            if (lastKey === 'connect') currentConnect += trimmed;
+            else if (lastKey === 'id') currentId += trimmed;
+            else if (lastKey === 'folder') currentFolder += trimmed;
         }
     }
 

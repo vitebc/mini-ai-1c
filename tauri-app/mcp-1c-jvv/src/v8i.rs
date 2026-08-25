@@ -95,6 +95,22 @@ fn push_base(
     }
 }
 
+/// Строка формата `key=value` с ключом из ASCII-символов (Connect=, ID=, Folder=...).
+/// Всё остальное — продолжение предыдущего значения (1С переносит длинные значения
+/// в ibases.v8i на следующую строку без маркера продолжения).
+fn is_key_line(trimmed: &str) -> bool {
+    match trimmed.find('=') {
+        None => false,
+        Some(eq) => {
+            let key = &trimmed[..eq];
+            !key.is_empty()
+                && key
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        }
+    }
+}
+
 /// Разбирает содержимое ibases.v8i.
 pub fn parse_v8i_content(content: &str) -> Vec<InfobaseInfo> {
     let mut bases = Vec::new();
@@ -102,6 +118,7 @@ pub fn parse_v8i_content(content: &str) -> Vec<InfobaseInfo> {
     let mut current_connect = String::new();
     let mut current_id = String::new();
     let mut current_folder = String::new();
+    let mut last_key = String::new();
 
     // Убираем BOM
     let text = content.strip_prefix('\u{FEFF}').unwrap_or(content);
@@ -117,20 +134,39 @@ pub fn parse_v8i_content(content: &str) -> Vec<InfobaseInfo> {
                 current_connect.clear();
                 current_id.clear();
                 current_folder.clear();
+                last_key.clear();
                 continue;
             }
         }
 
-        // Key=Value
-        if let Some(eq_idx) = trimmed.find('=') {
+        if is_key_line(trimmed) {
+            let eq_idx = trimmed.find('=').expect("is_key_line guarantees '='");
             let key = trimmed[..eq_idx].trim().to_lowercase();
             let value = trimmed[eq_idx + 1..].trim().to_string();
             match key.as_str() {
-                "connect" => current_connect = value,
-                "id" => current_id = value,
-                "folder" => current_folder = value,
-                _ => {}
+                "connect" => {
+                    current_connect = value;
+                    last_key = "connect".to_string();
+                }
+                "id" => {
+                    current_id = value;
+                    last_key = "id".to_string();
+                }
+                "folder" => {
+                    current_folder = value;
+                    last_key = "folder".to_string();
+                }
+                _ => last_key.clear(),
             }
+        } else if !trimmed.is_empty() && !current_name.is_empty() {
+            // Продолжение перенесённого значения — приклеиваем без разделителя.
+            let target = match last_key.as_str() {
+                "connect" => &mut current_connect,
+                "id" => &mut current_id,
+                "folder" => &mut current_folder,
+                _ => continue,
+            };
+            target.push_str(trimmed);
         }
     }
 
@@ -221,6 +257,31 @@ Connect=Srvr="SRV01";Ref="УПП"
         let bases = parse_v8i_content(content);
         assert_eq!(bases.len(), 1);
         assert_eq!(bases[0].name, "ОК");
+    }
+
+    #[test]
+    fn joins_wrapped_connection_lines() {
+        // 1С переносит длинные значения в ibases.v8i без маркера продолжения.
+        let content = "[Серверная]\nConnect=Srvr=\"192.168.0.49\n\";Ref=\"ca2_td_otchet_zhvv\";\nID=42\n";
+        let bases = parse_v8i_content(content);
+        assert_eq!(bases.len(), 1);
+        assert_eq!(bases[0].name, "Серверная");
+        assert_eq!(bases[0].r#type, "server");
+        assert_eq!(
+            bases[0].connection,
+            "Srvr=\"192.168.0.49\";Ref=\"ca2_td_otchet_zhvv\";"
+        );
+        assert_eq!(bases[0].id.as_deref(), Some("42"));
+    }
+
+    #[test]
+    fn continuation_line_does_not_leak_into_next_section() {
+        // Перенос в последней секции не должен попасть в следующую
+        let content = "[А]\nConnect=File=\"C:\\a\"\n\n[Б]\nConnect=Srvr=\"srv\n2\";Ref=\"b\";\n";
+        let bases = parse_v8i_content(content);
+        assert_eq!(bases.len(), 2);
+        assert_eq!(bases[0].connection, "File=\"C:\\a\"");
+        assert_eq!(bases[1].connection, "Srvr=\"srv2\";Ref=\"b\";");
     }
 
     #[test]

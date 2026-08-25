@@ -487,6 +487,123 @@ pub async fn get_1c_platform_path_cmd() -> Result<String, String> {
     Err("Не удалось определить путь к платформе".to_string())
 }
 
+/// Case-insensitive поиск ASCII-подстроки в байтах (ключи строк подключения 1С — ASCII).
+fn find_ascii_ci(haystack: &str, needle: &str) -> Option<usize> {
+    let hb = haystack.as_bytes();
+    let nb = needle.as_bytes();
+    if nb.is_empty() || nb.len() > hb.len() {
+        return None;
+    }
+    'outer: for i in 0..=(hb.len() - nb.len()) {
+        for j in 0..nb.len() {
+            if hb[i + j].to_ascii_lowercase() != nb[j].to_ascii_lowercase() {
+                continue 'outer;
+            }
+        }
+        return Some(i);
+    }
+    None
+}
+
+/// Убирает управляющие символы (переносы строк из перенесённых значений ibases.v8i)
+/// и обрезает пробелы по краям.
+fn sanitize_connection_value(value: &str) -> String {
+    value
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+/// Извлекает значение параметра из строки подключения 1С (`Srvr="..."` / `Ref="..."` /
+/// `Ref=...;`). Терпимо к переносам строк внутри кавычек и вокруг разделителей.
+fn extract_connection_value(connection: &str, key: &str) -> Option<String> {
+    let mut from = 0usize;
+    while let Some(rel) = find_ascii_ci(&connection[from..], key) {
+        let after_key = from + rel + key.len();
+        let rest = connection[after_key..].trim_start();
+        from = after_key;
+        let Some(rest) = rest.strip_prefix('=') else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        let raw = if let Some(quoted) = rest.strip_prefix('"') {
+            let end = quoted.find('"')?;
+            &quoted[..end]
+        } else {
+            match rest.find(';') {
+                Some(end) => &rest[..end],
+                None => rest,
+            }
+        };
+        let cleaned = sanitize_connection_value(raw);
+        if !cleaned.is_empty() {
+            return Some(cleaned);
+        }
+    }
+    None
+}
+
+/// Аргумент инфобазы для `/S`: короткая форма `host\base` без внутренних кавычек
+/// (экранирование `\"` в командной строке Windows ломает запуск Конфигуратора).
+fn build_server_infobase_arg(connection: &str) -> String {
+    if let (Some(host), Some(name)) = (
+        extract_connection_value(connection, "Srvr"),
+        extract_connection_value(connection, "Ref"),
+    ) {
+        if !host.is_empty() && !name.is_empty() {
+            return format!("{}\\{}", host, name);
+        }
+    }
+    // Уже короткая форма `host\base` или неизвестный формат — только санитизация.
+    sanitize_connection_value(connection)
+}
+
+/// Собирает аргументы командной строки для `1cestart.exe DESIGNER`.
+fn build_designer_args(
+    infobase_path: &str,
+    is_server: bool,
+    login: Option<&str>,
+    password: Option<&str>,
+) -> Vec<String> {
+    let mut args = vec!["DESIGNER".to_string()];
+
+    if is_server {
+        args.push("/S".to_string());
+        args.push(build_server_infobase_arg(infobase_path));
+    } else {
+        // File="..." format — extract path from connection string
+        let path = if infobase_path.starts_with("File=\"") {
+            infobase_path
+                .trim_start_matches("File=\"")
+                .trim_end_matches('"')
+                .to_string()
+        } else {
+            infobase_path.to_string()
+        };
+        args.push("/F".to_string());
+        args.push(path);
+    }
+
+    if let Some(user) = login
+        .map(sanitize_connection_value)
+        .filter(|s| !s.is_empty())
+    {
+        args.push("/N".to_string());
+        args.push(user);
+    }
+    if let Some(pass) = password
+        .map(sanitize_connection_value)
+        .filter(|s| !s.is_empty())
+    {
+        args.push("/P".to_string());
+        args.push(pass);
+    }
+
+    args
+}
+
 /// Launch 1C Configurator for a given infobase.
 #[tauri::command]
 pub async fn launch_configurator_cmd(
@@ -503,35 +620,12 @@ pub async fn launch_configurator_cmd(
         return Err(format!("Платформа не найдена: {}", platform_path));
     }
 
-    let mut args = vec!["DESIGNER".to_string()];
-
-    if is_server {
-        // Srvr="server\ref" format
-        args.push("/S".to_string());
-        args.push(infobase_path);
-    } else {
-        // File="..." format — extract path from connection string
-        let path = if infobase_path.starts_with("File=\"") {
-            infobase_path
-                .trim_start_matches("File=\"")
-                .trim_end_matches("\"")
-                .to_string()
-        } else {
-            infobase_path.clone()
-        };
-        args.push("/F".to_string());
-        args.push(path);
-    }
-
-    // Add login/password if provided
-    if let Some(user) = login.filter(|s| !s.is_empty()) {
-        args.push("/N".to_string());
-        args.push(user);
-    }
-    if let Some(pass) = password.filter(|s| !s.is_empty()) {
-        args.push("/P".to_string());
-        args.push(pass);
-    }
+    let args = build_designer_args(
+        &infobase_path,
+        is_server,
+        login.as_deref(),
+        password.as_deref(),
+    );
 
     #[cfg(windows)]
     {
@@ -625,5 +719,77 @@ mod tests {
             .expect("custom search-index directory should resolve");
 
         assert_eq!(dir, std::path::PathBuf::from(r"D:\cfg\erp\search-index"));
+    }
+
+    #[test]
+    fn build_designer_args_server_quoted_connection_becomes_shorthand() {
+        let connection = "Srvr=\"192.168.0.49\";Ref=\"ca2_td_otchet_zhvv\";";
+        let args = build_designer_args(
+            connection,
+            true,
+            Some("жеребятьев виталий викторович"),
+            Some("315426"),
+        );
+
+        assert_eq!(
+            args,
+            vec![
+                "DESIGNER",
+                "/S",
+                "192.168.0.49\\ca2_td_otchet_zhvv",
+                "/N",
+                "жеребятьев виталий викторович",
+                "/P",
+                "315426",
+            ]
+        );
+    }
+
+    #[test]
+    fn build_designer_args_server_multiline_srvr_still_resolves_shorthand() {
+        // Реальный кейс: ibases.v8i с перенесённой строкой Connect —
+        // перевод строки внутри Srvr="..." не должен ломать запуск.
+        let connection = "Srvr=\"192.168.0.49\n\";Ref=\"ca2_td_otchet_zhvv\";";
+        let args = build_designer_args(connection, true, None, None);
+
+        assert_eq!(args, vec!["DESIGNER", "/S", "192.168.0.49\\ca2_td_otchet_zhvv"]);
+    }
+
+    #[test]
+    fn build_designer_args_server_shorthand_passthrough() {
+        let args = build_designer_args("192.168.0.49\\base_name", true, None, None);
+
+        assert_eq!(args, vec!["DESIGNER", "/S", "192.168.0.49\\base_name"]);
+    }
+
+    #[test]
+    fn build_designer_args_file_base_extracts_path() {
+        let connection = "File=\"C:\\1C\\Demo\"";
+        let args = build_designer_args(connection, false, None, None);
+
+        assert_eq!(args, vec!["DESIGNER", "/F", "C:\\1C\\Demo"]);
+    }
+
+    #[test]
+    fn build_designer_args_skips_empty_credentials() {
+        let connection = "Srvr=\"srv01\";Ref=\"erp\"";
+        let args = build_designer_args(connection, true, Some("   "), Some(""));
+
+        assert_eq!(args, vec!["DESIGNER", "/S", "srv01\\erp"]);
+    }
+
+    #[test]
+    fn extract_connection_value_is_case_insensitive_and_tolerates_spaces() {
+        let connection = "  srvr = \"Host.local\" ;  ref=\"Base Name\";";
+
+        assert_eq!(
+            extract_connection_value(connection, "SRVR").as_deref(),
+            Some("Host.local")
+        );
+        assert_eq!(
+            extract_connection_value(connection, "ref").as_deref(),
+            Some("Base Name")
+        );
+        assert_eq!(extract_connection_value(connection, "ID"), None);
     }
 }
