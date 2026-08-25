@@ -97,6 +97,9 @@ pub struct LLMProfile {
     pub disable_streaming: Option<bool>,
     #[serde(default)]
     pub stream_timeout_secs: Option<u32>,
+    /// Компактный системный промпт. None → авто (компактный для Ollama/LMStudio, полный для остальных).
+    #[serde(default)]
+    pub lightweight_prompt: Option<bool>,
     /// Context compression strategy: "disabled" | "sliding_window" | "summarize"
     #[serde(default)]
     pub context_compress_strategy: String,
@@ -122,6 +125,7 @@ impl LLMProfile {
             enable_thinking: None,
             disable_streaming: None,
             stream_timeout_secs: None,
+            lightweight_prompt: None,
             context_compress_strategy: String::new(),
             max_context_messages: None,
         }

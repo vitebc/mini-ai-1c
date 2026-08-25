@@ -310,6 +310,7 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
             max_tokens: 4096,
             temperature: (providerValue === 'QwenCli' || providerValue === 'CodexCli' || providerValue === 'OllamaCloud') ? 0.1 : 0.7,
             reasoning_effort: providerValue === 'CodexCli' ? 'medium' : undefined,
+            lightweight_prompt: (providerValue === 'Ollama' || providerValue === 'LMStudio') ? true : undefined,
         };
         try {
             await invoke('save_profile', { profile: newProfile, apiKey: null });
@@ -1082,6 +1083,25 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                         className={`relative w-9 h-5 rounded-full transition-colors focus:outline-none ${editForm.disable_streaming ? 'bg-blue-500' : 'bg-zinc-700'}`}
                                     >
                                         <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${editForm.disable_streaming ? 'translate-x-4' : 'translate-x-0'}`} />
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Compact system prompt toggle — Ollama/LMStudio */}
+                            {(editForm.provider === 'Ollama' || editForm.provider === 'LMStudio') && (
+                                <div className="flex items-center justify-between pt-3 px-1">
+                                    <div>
+                                        <span className="text-xs text-zinc-400 font-medium">Компактный промпт</span>
+                                        <p className="text-[10px] text-zinc-600 mt-0.5">
+                                            Короткий системный промпт для слабых моделей. Выкл. — полный промпт со всеми правилами
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditForm({ ...editForm, lightweight_prompt: !(editForm.lightweight_prompt ?? true) })}
+                                        className={`relative w-9 h-5 rounded-full transition-colors focus:outline-none ${(editForm.lightweight_prompt ?? true) ? 'bg-blue-500' : 'bg-zinc-700'}`}
+                                    >
+                                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${(editForm.lightweight_prompt ?? true) ? 'translate-x-4' : 'translate-x-0'}`} />
                                     </button>
                                 </div>
                             )}

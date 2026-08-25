@@ -319,7 +319,12 @@ pub async fn stream_chat_completion(
     let tools: Vec<Tool> = tools_info.iter().map(|i| i.tool.clone()).collect();
     let tools_opt = if tools.is_empty() { None } else { Some(tools) };
 
-    let system_prompt = if is_local_provider(Some(&profile.provider)) {
+    // Компактный промпт: явный выбор профиля, иначе авто — для локальных провайдеров
+    // (Ollama/LMStudio) компактный, для остальных полный.
+    let use_lightweight_prompt = profile
+        .lightweight_prompt
+        .unwrap_or_else(|| is_local_provider(Some(&profile.provider)));
+    let system_prompt = if use_lightweight_prompt {
         get_lightweight_system_prompt(&tools_info, &messages)
     } else {
         get_system_prompt(&tools_info, &messages)

@@ -1491,6 +1491,7 @@ mod tests {
             enable_thinking: None,
             disable_streaming: None,
             stream_timeout_secs: None,
+            lightweight_prompt: None,
             context_compress_strategy: String::new(),
             max_context_messages: None,
         };
