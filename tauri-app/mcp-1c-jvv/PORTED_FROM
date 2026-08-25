@@ -1,7 +1,7 @@
 MCP-сервер: обнаружение платформ 1С и список баз (ibases.v8i)
 
 Исходный TypeScript: tauri-app/src/mcp-servers/jvv-1c.ts
-Синхронизирован до коммита: PENDING (склейка перенесённых строк Connect в parseV8iContent)
+Синхронизирован до коммита: 67629d2 — склейка перенесённых строк Connect в parseV8iContent
 
 Отслеживание изменений TS-оригинала:
   git log --oneline 6068914..HEAD -- tauri-app/src/mcp-servers/jvv-1c.ts
