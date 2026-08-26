@@ -24,8 +24,9 @@ pub async fn get_available_tools() -> Vec<ToolInfo> {
     {
         if let Ok(cache) = TOOLS_CACHE.lock() {
             if let Some((time, tools)) = &*cache {
-                if time.elapsed().as_secs() < 120 {
-                    // 2 minute cache
+                if time.elapsed().as_secs() < 900 {
+                    // 15-мин кэш: меньше «Collecting tools…» между итерациями
+                    // медленных CPU-моделей (review.md §2.2).
                     let duration = time.elapsed().as_millis();
                     crate::app_log!(
                         "[MCP][CACHE] Using cached tools ({} items, {} ms ago)",
