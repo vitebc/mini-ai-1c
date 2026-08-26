@@ -260,7 +260,9 @@ pub fn get_settings() -> AppSettings {
 
 /// Save application settings
 #[tauri::command]
-pub fn save_settings(new_settings: AppSettings) -> Result<(), String> {
+pub fn save_settings(mut new_settings: AppSettings) -> Result<(), String> {
+    // builtin-1c-filesystem включён без sandbox → путь по умолчанию
+    settings::ensure_default_sandbox_path(&mut new_settings);
     settings::save_settings(&new_settings)?;
 
     #[cfg(windows)]

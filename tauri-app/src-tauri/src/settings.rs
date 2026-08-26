@@ -965,6 +965,52 @@ pub fn get_settings_dir() -> PathBuf {
     home.join(".config").join("mini-ai-1c")
 }
 
+/// Дефолтный sandbox для builtin-1c-filesystem: `<settings_dir>/workspace`.
+/// Если сервер включён, а `MINI_AI_1C_SANDBOX_PATH` пуст — задаёт путь и создаёт каталог.
+/// Возвращает true, если настройки изменились.
+pub fn ensure_default_sandbox_path(settings: &mut AppSettings) -> bool {
+    let Some(server) = settings
+        .mcp_servers
+        .iter_mut()
+        .find(|s| s.id == "builtin-1c-filesystem")
+    else {
+        return false;
+    };
+    if !server.enabled {
+        return false;
+    }
+    let path_empty = server
+        .env
+        .as_ref()
+        .and_then(|e| e.get("MINI_AI_1C_SANDBOX_PATH"))
+        .map_or(true, |v| v.trim().is_empty());
+    if !path_empty {
+        return false;
+    }
+
+    let workspace = get_settings_dir().join("workspace");
+    if let Err(e) = fs::create_dir_all(&workspace) {
+        crate::app_log!(
+            force: true,
+            "[SETTINGS] Не удалось создать sandbox {}: {}",
+            workspace.display(),
+            e
+        );
+    }
+    crate::app_log!(
+        "[SETTINGS] builtin-1c-filesystem включён без sandbox — задан путь по умолчанию: {}",
+        workspace.display()
+    );
+    server
+        .env
+        .get_or_insert_with(Default::default)
+        .insert(
+            "MINI_AI_1C_SANDBOX_PATH".to_string(),
+            workspace.to_string_lossy().to_string(),
+        );
+    true
+}
+
 /// Get the settings file path
 pub fn get_settings_file() -> PathBuf {
     get_settings_dir().join("settings.json")
@@ -1057,6 +1103,11 @@ pub fn load_settings() -> AppSettings {
 
     // Migration: ensure all built-in MCP servers are present
     if ensure_builtin_mcp_servers(&mut settings) {
+        modified = true;
+    }
+
+    // Migration: builtin-1c-filesystem включён, но sandbox не задан → путь по умолчанию
+    if ensure_default_sandbox_path(&mut settings) {
         modified = true;
     }
 
