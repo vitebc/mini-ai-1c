@@ -100,7 +100,7 @@ pub fn list_tools() -> Vec<Value> {
         }),
         json!({
             "name": "run_skill",
-            "description": "Выполнить скрипт скилла (PowerShell .ps1 на Windows, Python .py на Linux). Сервер сам находит скрипт в каталоге скилла и запускает его с переданными аргументами. ОДИН вызов вместо run_command с ручной сборкой пути. Возвращает stdout/stderr/exit_code.",
+            "description": "Выполнить скрипт скилла (PowerShell .ps1 на Windows, Python .py на Linux). Сервер сам находит скрипт в каталоге скилла и запускает его с переданными аргументами. ОДИН вызов вместо run_command с ручной сборкой пути. ВАЖНО: скрипт ОБЯЗАН писать выходные файлы в песочницу — путь из переменной окружения MINI_AI_1C_SANDBOX_PATH (передаётся в процесс). Напр.: -OutputPath $env:MINI_AI_1C_SANDBOX_PATH/output/src. НИКОГДА не пиши в каталог скилла. Возвращает stdout/stderr/exit_code.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -110,7 +110,7 @@ pub fn list_tools() -> Vec<Value> {
                     },
                     "args": {
                         "type": "object",
-                        "description": "Аргументы для скрипта, ключ-значение (напр. {\"-SourceFile\": \"src/Моя.xml\", \"-OutputFile\": \"build/Моя.epf\"})"
+                        "description": "Аргументы для скрипта, ключ-значение. Пути выходных файлов — только внутри песочницы ($env:MINI_AI_1C_SANDBOX_PATH), напр. {\"-OutputPath\": \"$env:MINI_AI_1C_SANDBOX_PATH/out\"}"
                     },
                     "timeout_ms": {
                         "type": "number",
@@ -590,7 +590,19 @@ fn execute_command(
     })
 }
 
+fn sandbox_env_value() -> Option<String> {
+    let v = std::env::var("MINI_AI_1C_SANDBOX_PATH").ok()?;
+    let t = v.trim().to_string();
+    if t.is_empty() {
+        None
+    } else {
+        Some(t)
+    }
+}
+
 /// Собирает `Command`. На Windows для PowerShell форсирует UTF-8.
+/// Пробрасывает `MINI_AI_1C_SANDBOX_PATH` в дочерний процесс, чтобы скрипты
+/// скиллов писали результаты в песочницу (review.md §3.1.B).
 fn build_command(command: &str, args: &[String], cwd: &std::path::Path) -> std::process::Command {
     #[cfg(windows)]
     let is_powershell = command == "powershell.exe";
@@ -619,6 +631,9 @@ fn build_command(command: &str, args: &[String], cwd: &std::path::Path) -> std::
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped());
+            if let Some(v) = sandbox_env_value() {
+                cmd.env("MINI_AI_1C_SANDBOX_PATH", v);
+            }
             return cmd;
         }
     }
@@ -629,6 +644,9 @@ fn build_command(command: &str, args: &[String], cwd: &std::path::Path) -> std::
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    if let Some(v) = sandbox_env_value() {
+        cmd.env("MINI_AI_1C_SANDBOX_PATH", v);
+    }
     cmd
 }
 

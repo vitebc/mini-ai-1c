@@ -23,8 +23,8 @@ use planning::{PLANNING_IDENTITY, PLANNING_READONLY_RULES};
 use project::{PROJECT_IDENTITY, PROJECT_MARKING};
 use search::SEARCH_GUIDE;
 use shared::{
-    DOC_FORMAT_BLOCK, LANGUAGE_BLOCK, QUESTION_ACTION_NO_CODE, QUESTION_ACTION_WITH_CODE,
-    SKILLS_SCRIPTS_BLOCK, TABS_BLOCK,
+    DOC_FORMAT_BLOCK, DO_NOT_TEACH_BLOCK, LANGUAGE_BLOCK, QUESTION_ACTION_NO_CODE,
+    QUESTION_ACTION_WITH_CODE, SANDBOX_ISOLATION_BLOCK, SKILLS_SCRIPTS_BLOCK, TABS_BLOCK,
 };
 
 /// Число последних сообщений, которые учитываются при детекции кода в контексте.
@@ -163,6 +163,13 @@ fn build_lightweight_system_prompt_with_custom_prompts(
             "\nФайловые операции выполняются в каталоге: `{sandbox}`. Скрипты скиллов — через run_skill(id, args).\n"
         ));
     }
+
+    // Изоляция песочницы + запрет «обучения вместо действия» (review.md §3.1.C, §3.5)
+    prompt.push_str("\n");
+    prompt.push_str(SANDBOX_ISOLATION_BLOCK);
+    prompt.push_str("\n");
+    prompt.push_str(DO_NOT_TEACH_BLOCK);
+    prompt.push_str("\n");
 
     append_custom_prompt_settings(&mut prompt, custom_prompts);
 
@@ -333,6 +340,12 @@ pub fn get_system_prompt(available_tools: &[ToolInfo], messages: &[ApiMessage]) 
             sandbox
         ));
     }
+
+    // --- Изоляция песочницы и запрет «обучения вместо действия» (review.md §3.1.C, §3.5) ---
+    prompt.push_str(SANDBOX_ISOLATION_BLOCK);
+    prompt.push_str("\n");
+    prompt.push_str(DO_NOT_TEACH_BLOCK);
+    prompt.push_str("\n");
 
     // --- Инструменты ---
     if !available_tools.is_empty() {

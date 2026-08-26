@@ -445,7 +445,8 @@ pub struct CommandOutput {
 /// `-NoProfile -NonInteractive -Command "& { [Console]::OutputEncoding=...; & <cmd> }"`,
 /// форсируя UTF-8 в stdout (иначе кириллица из OEM-кодовой страницы ломается).
 ///
-/// `cwd` — произвольный абсолютный путь (скрипты скиллов лежат вне sandbox).
+/// `cwd` резолвится только внутри sandbox (`sb.resolve`). Абсолютные пути вне
+/// песочницы отклоняются — изоляция песочницы (см. review.md §2.1).
 pub fn execute_command(
     command: &str,
     args: &[String],
@@ -595,17 +596,13 @@ fn tool_run_command(args: &Value, sb: &Sandbox) -> Result<Value, String> {
         .and_then(|v| v.as_u64())
         .unwrap_or(30_000);
 
-    // CWD: сначала пробуем как sandbox-относительный путь, затем как абсолютный.
+    // CWD резолвится только внутри песочницы (sb.resolve). Абсолютные пути вне
+    // sandbox отклоняются (см. review.md §2.1). Скрипты скиллов теперь пишут
+    // результаты в песочницу через $env:MINI_AI_1C_SANDBOX_PATH и run_skill.
     let cwd_str = arg_str(args, "cwd").unwrap_or(".");
-    let cwd = if cwd_str.starts_with('.') || cwd_str == "" {
-        sb.resolve(cwd_str).ok_or("Working directory escapes sandbox")?
-    } else {
-        let abs = std::path::PathBuf::from(cwd_str);
-        if !abs.exists() {
-            return Err("Working directory not found".to_string());
-        }
-        abs
-    };
+    let cwd = sb
+        .resolve(cwd_str)
+        .ok_or("Working directory escapes sandbox")?;
 
     let out = execute_command(command, &args_arr, &cwd, timeout_ms);
     Ok(json!({
@@ -734,20 +731,22 @@ mod tests {
 
     #[test]
     fn run_command_absolute_cwd_outside_sandbox() {
-        // Скрипты скиллов лежат вне sandbox — run_command должен принимать абсолютный cwd.
+        // Изоляция песочницы: абсолютный cwd вне sandbox отклоняется (review.md §2.1).
         let sb = make_sandbox();
         let outside = std::env::temp_dir().join(format!("mcp-fs-out-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&outside);
         std::fs::create_dir_all(&outside).unwrap();
-        std::fs::write(outside.join("marker.txt"), "made").unwrap();
         let res = call_tool(
             "run_command",
             &json!({"command": "ls", "args": [], "cwd": outside.to_string_lossy()}),
             &sb,
         ).unwrap();
-        let j: serde_json::Value = serde_json::from_str(&result_text(&res)).expect("json");
-        assert_eq!(j["exit_code"], 0);
-        assert!(j["stdout"].as_str().unwrap_or("").contains("marker.txt"));
+        assert!(
+            result_text(&res).contains("Path escapes sandbox")
+                || result_text(&res).contains("Working directory escapes sandbox"),
+            "ожидался отказ по песочнице, получено: {}",
+            result_text(&res)
+        );
         let _ = std::fs::remove_dir_all(&outside);
     }
 

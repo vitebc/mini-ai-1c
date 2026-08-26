@@ -738,7 +738,10 @@ pub fn ensure_builtin_mcp_servers(settings: &mut AppSettings) -> bool {
             transport: McpTransport::Stdio,
             command: Some(rust_mcp_binary_name("mcp-1c-skills")),
             args: None,
-            env: None,
+            env: Some(std::collections::HashMap::from([(
+                "MINI_AI_1C_SANDBOX_PATH".to_string(),
+                String::new(),
+            )])),
             ..Default::default()
         });
         modified = true;
@@ -965,50 +968,107 @@ pub fn get_settings_dir() -> PathBuf {
     home.join(".config").join("mini-ai-1c")
 }
 
-/// Дефолтный sandbox для builtin-1c-filesystem: `<settings_dir>/workspace`.
-/// Если сервер включён, а `MINI_AI_1C_SANDBOX_PATH` пуст — задаёт путь и создаёт каталог.
+/// Дефолтный sandbox для `builtin-1c-filesystem` и `builtin-mcp-skills`:
+/// `<settings_dir>/workspace` (review.md §3.1).
+///
+/// Если `builtin-1c-filesystem` включён, а путь пуст — задаёт путь и создаёт
+/// каталог. `builtin-mcp-skills` синхронизируется с тем же путём, чтобы скрипты
+/// скиллов (`run_skill`) писали результаты в песочницу через `MINI_AI_1C_SANDBOX_PATH`.
 /// Возвращает true, если настройки изменились.
 pub fn ensure_default_sandbox_path(settings: &mut AppSettings) -> bool {
-    let Some(server) = settings
+    // Текущий путь filesystem, если задан пользователем.
+    let fs_path_opt = settings
         .mcp_servers
-        .iter_mut()
+        .iter()
         .find(|s| s.id == "builtin-1c-filesystem")
-    else {
-        return false;
-    };
-    if !server.enabled {
-        return false;
-    }
-    let path_empty = server
-        .env
-        .as_ref()
-        .and_then(|e| e.get("MINI_AI_1C_SANDBOX_PATH"))
-        .map_or(true, |v| v.trim().is_empty());
-    if !path_empty {
-        return false;
+        .and_then(|s| s.env.as_ref()?.get("MINI_AI_1C_SANDBOX_PATH"))
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+
+    let mut modified = false;
+    let mut desired: Option<String> = fs_path_opt.clone();
+
+    // Filesystem enabled + empty → заполнить дефолтом workspace.
+    let fs_needs_fill = settings
+        .mcp_servers
+        .iter()
+        .find(|s| s.id == "builtin-1c-filesystem")
+        .map(|s| s.enabled && s.env.as_ref().and_then(|e| e.get("MINI_AI_1C_SANDBOX_PATH")).map_or(true, |v| v.trim().is_empty()))
+        .unwrap_or(false);
+
+    if fs_needs_fill {
+        let ws = fs_path_opt
+            .clone()
+            .unwrap_or_else(|| get_settings_dir().join("workspace").to_string_lossy().to_string());
+        let ws_path = std::path::PathBuf::from(&ws);
+        if ws_path.starts_with(get_settings_dir()) {
+            if let Err(e) = fs::create_dir_all(&ws_path) {
+                crate::app_log!(
+                    force: true,
+                    "[SETTINGS] Не удалось создать sandbox {}: {}",
+                    ws_path.display(),
+                    e
+                );
+            }
+        }
+        if let Some(fs) = settings
+            .mcp_servers
+            .iter_mut()
+            .find(|s| s.id == "builtin-1c-filesystem")
+        {
+            crate::app_log!(
+                "[SETTINGS] builtin-1c-filesystem включён без sandbox — задан путь по умолчанию: {}",
+                ws
+            );
+            fs.env
+                .get_or_insert_with(Default::default)
+                .insert("MINI_AI_1C_SANDBOX_PATH".to_string(), ws.clone());
+            desired = Some(ws);
+            modified = true;
+        }
     }
 
-    let workspace = get_settings_dir().join("workspace");
-    if let Err(e) = fs::create_dir_all(&workspace) {
-        crate::app_log!(
-            force: true,
-            "[SETTINGS] Не удалось создать sandbox {}: {}",
-            workspace.display(),
-            e
-        );
+    // Skills должен получать тот же путь (скрипты пишут в песочницу).
+    let skills_empty = settings
+        .mcp_servers
+        .iter()
+        .find(|s| s.id == "builtin-mcp-skills")
+        .map(|s| {
+            s.env
+                .as_ref()
+                .and_then(|e| e.get("MINI_AI_1C_SANDBOX_PATH"))
+                .map_or(true, |v| v.trim().is_empty())
+        })
+        .unwrap_or(false);
+
+    if skills_empty {
+        let value = desired.clone().unwrap_or_else(|| {
+            get_settings_dir()
+                .join("workspace")
+                .to_string_lossy()
+                .to_string()
+        });
+        let v_path = std::path::PathBuf::from(&value);
+        if v_path.starts_with(get_settings_dir()) {
+            let _ = fs::create_dir_all(&v_path);
+        }
+        if let Some(sk) = settings
+            .mcp_servers
+            .iter_mut()
+            .find(|s| s.id == "builtin-mcp-skills")
+        {
+            crate::app_log!(
+                "[SETTINGS] builtin-mcp-skills sandbox synced to {}",
+                value
+            );
+            sk.env
+                .get_or_insert_with(Default::default)
+                .insert("MINI_AI_1C_SANDBOX_PATH".to_string(), value);
+            modified = true;
+        }
     }
-    crate::app_log!(
-        "[SETTINGS] builtin-1c-filesystem включён без sandbox — задан путь по умолчанию: {}",
-        workspace.display()
-    );
-    server
-        .env
-        .get_or_insert_with(Default::default)
-        .insert(
-            "MINI_AI_1C_SANDBOX_PATH".to_string(),
-            workspace.to_string_lossy().to_string(),
-        );
-    true
+
+    modified
 }
 
 /// Get the settings file path

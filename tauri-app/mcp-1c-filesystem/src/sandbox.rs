@@ -134,4 +134,22 @@ mod tests {
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
+
+    #[test]
+    fn resolves_cyrillic_path_within_sandbox() {
+        // Песочница и относительные пути с кириллицей должны резолвиться
+        // (review.md §2.1 — «пути с кириллицей выходят за пределы песочницы»).
+        let dir = std::env::temp_dir().join(format!(
+            "мпс-фс-кириллица-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sb = Sandbox::from_env_with_test_root(dir.clone()).unwrap();
+
+        assert!(sb.resolve("Отчёт/Файл.txt").is_some());
+        assert!(sb.resolve_for_write("Протокол.epf/Выгрузка.txt").is_some());
+        assert!(sb.resolve("Файлы/Отчёт_№1.bsl").is_some());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
