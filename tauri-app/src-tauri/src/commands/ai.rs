@@ -594,8 +594,6 @@ pub async fn stream_chat(
         let settings = crate::settings::load_settings();
 
         let max_iterations = settings.max_agent_iterations.unwrap_or(30);
-        const TURN_WALL_CLOCK_BUDGET_SECS: u64 = 30 * 60; // review.md §3.2 — бюджет
-        let turn_started = std::time::Instant::now();
         let mut current_iteration = 0;
         // Guard: ask AI to write text response only once (when it returns thinking-only with no text)
         let mut asked_for_text_response = false;
@@ -724,11 +722,6 @@ pub async fn stream_chat(
         loop {
             current_iteration += 1;
             let _ = task_app_handle.emit("chat-iteration", current_iteration);
-
-            if turn_started.elapsed().as_secs() > TURN_WALL_CLOCK_BUDGET_SECS {
-                let _ = task_app_handle.emit("chat-chunk", &format!("\n\n**[Система] Превышен лимит времени диалога ({} мин).** Пожалуйста, уточните запрос или продолжите в новом сообщении (накопленный результат сохранён).", TURN_WALL_CLOCK_BUDGET_SECS / 60));
-                break;
-            }
 
             if current_iteration > max_iterations {
                 let _ = task_app_handle.emit("chat-chunk", &format!("\n\n**[Система] Достигнут лимит итераций диалога ({}).** Пожалуйста, уточните запрос или продолжите в новом сообщении.", max_iterations));
