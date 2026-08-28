@@ -593,7 +593,7 @@ pub async fn stream_chat(
             task_app_handle.state::<Arc<tokio::sync::Mutex<crate::bsl_client::BSLClient>>>();
         let settings = crate::settings::load_settings();
 
-        let max_iterations = settings.max_agent_iterations.unwrap_or(30);
+        let max_iterations = settings.max_agent_iterations.unwrap_or(u32::MAX);
         let mut current_iteration = 0;
         // Guard: ask AI to write text response only once (when it returns thinking-only with no text)
         let mut asked_for_text_response = false;
