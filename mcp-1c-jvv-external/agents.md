@@ -10,6 +10,7 @@
 - `mcp-1c-jvv-macos-arm64.tar.gz` — macOS Apple Silicon (744K, `aarch64`)
 - `mcp-1c-jvv-macos-x64.tar.gz` — macOS Intel (800K, `x86_64`)
 - `mcp-1c-jvv-macos-universal.tar.gz` — macOS Universal (1.6M, оба арха, `lipo`)
+- `mcp-1c-jvv-windows-x64.tar.gz` / `.zip` — Windows x64 (806K, `PE32+ x86-64`, `gnu`)
 
 ---
 
