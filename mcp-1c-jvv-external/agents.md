@@ -5,6 +5,12 @@
 Исходник: `tauri-app/mcp-1c-jvv/` — порт `tauri-app/src/mcp-servers/jvv-1c.ts` (`PORTED_FROM` → коммит `67629d2`).
 Собранный бинарник: `tauri-app/src-tauri/mcp-servers/mcp-1c-jvv` (`.exe` на Windows), собирается скриптом `tauri-app/scripts/build-mcp.mjs`.
 
+**Готовые архивы в этой папке:**
+- `mcp-1c-jvv-linux-x64.tar.gz` — Linux x64 (856K)
+- `mcp-1c-jvv-macos-arm64.tar.gz` — macOS Apple Silicon (744K, `aarch64`)
+- `mcp-1c-jvv-macos-x64.tar.gz` — macOS Intel (800K, `x86_64`)
+- `mcp-1c-jvv-macos-universal.tar.gz` — macOS Universal (1.6M, оба арха, `lipo`)
+
 ---
 
 ## 1. Что делает
