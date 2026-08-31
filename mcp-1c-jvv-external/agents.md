@@ -40,6 +40,8 @@ Env-переменные **не требуются**. Единственный �
 
 ## 2. Сборка (локально, один раз)
 
+### 2.0 Linux / Windows (общий)
+
 ```bash
 # Из корня репо — соберёт все 6 Rust MCP (включая jvv) в src-tauri/mcp-servers/
 npm run build:mcp --workspace=tauri-app
@@ -52,15 +54,59 @@ cargo build --release --manifest-path tauri-app/mcp-1c-jvv/Cargo.toml
 # скрипт скопирует его в tauri-app/src-tauri/mcp-servers/
 ```
 
+### 2.1 macOS (Intel и Apple Silicon)
+
+На macOS бинарник **собирается так же** — одной командой. Кросc-сборка с Linux на macOS не нужна, просто собери на самом Mac.
+
+```bash
+# 1. Rust (если нет):
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+
+# 2. Клонируй ветку и собери:
+git clone https://github.com/vitebc/mini-ai-1c.git
+cd mini-ai-1c
+git checkout feature/mcp-1c-jvv-external
+
+# вариант A — через скрипт (соберёт все 6 в src-tauri/mcp-servers/)
+npm run build:mcp --workspace=tauri-app
+
+# вариант B — только jvv (быстрее, ~12 сек на M1):
+cargo build --release --manifest-path tauri-app/mcp-1c-jvv/Cargo.toml
+# → tauri-app/mcp-1c-jvv/target/release/mcp-1c-jvv
+# → копия → tauri-app/src-tauri/mcp-servers/mcp-1c-jvv
+chmod +x tauri-app/src-tauri/mcp-servers/mcp-1c-jvv
+```
+
+Архитектура определяется автоматически: на Apple Silicon (`arm64`) соберётся `aarch64`, на Intel — `x86_64`. Универсальный бинарь (опционально):
+
+```bash
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+cargo build --release --manifest-path tauri-app/mcp-1c-jvv/Cargo.toml --target aarch64-apple-darwin
+cargo build --release --manifest-path tauri-app/mcp-1c-jvv/Cargo.toml --target x86_64-apple-darwin
+lipo -create \
+  tauri-app/mcp-1c-jvv/target/aarch64-apple-darwin/release/mcp-1c-jvv \
+  tauri-app/mcp-1c-jvv/target/x86_64-apple-darwin/release/mcp-1c-jvv \
+  -output tauri-app/src-tauri/mcp-servers/mcp-1c-jvv
+```
+
+Снятие карантина (если скачивал архив с Linux):
+
+```bash
+xattr -d com.apple.quarantine tauri-app/src-tauri/mcp-servers/mcp-1c-jvv 2>/dev/null; true
+```
+
 Проверка бинаря:
 
 ```bash
 ls -lh tauri-app/src-tauri/mcp-servers/mcp-1c-jvv*
+file tauri-app/src-tauri/mcp-servers/mcp-1c-jvv
+# Mach-O 64-bit executable arm64/x86_64
 ./tauri-app/src-tauri/mcp-servers/mcp-1c-jvv --help 2>&1 | head
 # Должен стартовать как MCP stdio — без аргументов ждёт JSON-RPC на stdin
 ```
 
-На Linux/CI без установленной 1С `find_platform` и `list_infobases` вернут пустые списки — это нормально.
+На macOS/Linux без установленной 1С `find_platform` и `list_infobases` вернут пустые списки — это нормально (1С на Mac редка, сервер ищет только `ibases.v8i` по Windows-путям).
 
 ---
 
@@ -110,6 +156,35 @@ Windows:
 }
 ```
 
+macOS (путь с `$HOME` — раскрой заранее):
+
+```jsonc
+{
+  "mcp": {
+    "1c-jvv": {
+      "type": "local",
+      // Apple Silicon / Intel — один бинарь, без .exe
+      "command": ["/Users/you/mini-ai-1c/tauri-app/src-tauri/mcp-servers/mcp-1c-jvv"],
+      "enabled": true
+    }
+  }
+}
+```
+
+macOS — относительный путь (если `opencode` запускаешь из корня репо):
+
+```jsonc
+{
+  "mcp": {
+    "1c-jvv": {
+      "type": "local",
+      "command": ["./tauri-app/src-tauri/mcp-servers/mcp-1c-jvv"],
+      "enabled": true
+    }
+  }
+}
+```
+
 ### Claude Code / Cursor / Windsurf / Zed (`.mcp.json`)
 
 Тот же формат — поле `command` + `args` (env не нужен):
@@ -125,11 +200,27 @@ Windows:
 }
 ```
 
+macOS пример (`.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "1c-jvv": {
+      "command": "/Users/you/mini-ai-1c/tauri-app/src-tauri/mcp-servers/mcp-1c-jvv",
+      "args": []
+    }
+  }
+}
+```
+
 ### MCP Inspector (проверка без агента)
 
 ```bash
 npx @modelcontextprotocol/inspector ./tauri-app/src-tauri/mcp-servers/mcp-1c-jvv
 # → открой http://localhost:6274, вызови tools/list, затем find_platform / get_1c_environment
+
+# macOS — тот же вызов:
+npx @modelcontextprotocol/inspector /Users/you/mini-ai-1c/tauri-app/src-tauri/mcp-servers/mcp-1c-jvv
 ```
 
 ---
