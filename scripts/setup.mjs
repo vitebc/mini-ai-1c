@@ -10,6 +10,8 @@ import { join } from 'node:path';
 
 const OS = platform();
 const ARCH = arch();
+const SILENT = process.argv.includes('--silent') || process.argv.includes('-s') || process.argv.includes('--quiet');
+const SKIP_BUILD_TOOLS = process.argv.includes('--no-build-tools');
 
 const colors = {
   reset: '\x1b[0m',
@@ -63,14 +65,13 @@ function run(cmd, opts = {}) {
 // Код 0x8A15002B = "обновление неприменимо / уже установлена последняя версия"
 const WINGET_ALREADY_INSTALLED = -1978335189;
 
-function runWingetInstall(id) {
-  log('info', `$ winget install --id ${id}`);
+function runWingetInstall(id, extraArgs = '') {
+  const silentFlag = SILENT ? ' --silent' : '';
+  const cmd = `winget install --id ${id} --source winget --accept-source-agreements --accept-package-agreements${silentFlag} ${extraArgs}`.trim();
+  log('info', `$ ${cmd}`);
   let out = '';
   try {
-    out = execSync(
-      `winget install --id ${id} --source winget --accept-source-agreements --accept-package-agreements`,
-      { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
-    ) || '';
+    out = execSync(cmd, { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }) || '';
   } catch (e) {
     out = String(e.stdout || '') + String(e.stderr || '');
     if (e.status === WINGET_ALREADY_INSTALLED || /no available upgrade|already installed/i.test(out)) {
@@ -272,12 +273,17 @@ async function setupWindows() {
       } catch {}
     }
   }
-  if (!hasVS || !hasLinker) {
+  if (SKIP_BUILD_TOOLS) {
+    log('warn', 'Пропуск Build Tools по флагу --no-build-tools');
+  } else if (!hasVS || !hasLinker) {
     log('warn', 'Build Tools / MSVC linker (link.exe) не найден — cargo не соберёт tauri-cli.');
     try {
-      log('info', 'Установка Build Tools с C++ workload (~6 ГБ, 10-20 мин)...');
+      const vsQuiet = SILENT ? '--quiet' : '--passive';
+      log('info', `Установка Build Tools с C++ workload (~6 ГБ, 10-20 мин) [${vsQuiet}]...`);
+      const override = `--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended ${vsQuiet} --norestart`;
+      const silentFlag = SILENT ? ' --silent' : '';
       const out = execSync(
-        'winget install --id Microsoft.VisualStudio.2022.BuildTools --source winget --accept-source-agreements --accept-package-agreements --override "--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive"',
+        `winget install --id Microsoft.VisualStudio.2022.BuildTools --source winget --accept-source-agreements --accept-package-agreements${silentFlag} --override "${override}"`,
         { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
       );
       if (out) console.log(out.trim());
@@ -288,8 +294,9 @@ async function setupWindows() {
         log('warn', 'Build Tools уже установлен, но link.exe не найден — добавьте workload C++ через Visual Studio Installer: "Desktop development with C++".');
       } else {
         if (out.trim()) console.log(out.trim());
+        const vsQ = SILENT ? '--quiet' : '--passive';
         log('warn', 'Автоустановка не удалась. Установите вручную:');
-        log('warn', '  winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive"');
+        log('warn', `  winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended ${vsQ} --norestart"`);
       }
     }
   } else {

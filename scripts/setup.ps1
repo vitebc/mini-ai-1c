@@ -1,7 +1,17 @@
 ﻿<# Mini AI 1C — Setup dependencies for Windows
-Usage: .\scripts\setup.ps1 (в PowerShell от администратора) #>
+Usage: .\scripts\setup.ps1 [-Silent] [-NoBuildTools]
+  -Silent       — полностью тихий режим (winget --silent, VS --quiet, без пауз)
+  -NoBuildTools — пропустить установку Build Tools (если ставишь отдельно)
+  Запуск от администратора обязателен.
+#>
+param(
+    [switch]$Silent,
+    [switch]$NoBuildTools
+)
 
 $ErrorActionPreference = "Stop"
+$WingetSilentArgs = if ($Silent) { "--silent --accept-source-agreements --accept-package-agreements" } else { "--accept-source-agreements --accept-package-agreements" }
+$VsQuietFlag = if ($Silent) { "--quiet" } else { "--passive" }
 
 function Write-Info { Write-Host "[INFO] $args" -ForegroundColor Green }
 function Write-Warn { Write-Host "[WARN] $args" -ForegroundColor Yellow }
@@ -10,7 +20,11 @@ function Write-Err  { Write-Host "[ERR]  $args" -ForegroundColor Red }
 function Test-Command($name) { Get-Command $name -ErrorAction SilentlyContinue }
 
 function Install-WingetPackage($id) {
-    winget install --id $id --source winget --accept-source-agreements --accept-package-agreements | Out-Host
+    $extraOut = if ($Silent) { "--silent" } else { "" }
+    # winget 1.8+ понимает --silent (эквивалент --disable-interactivity); фолбэк — accept-флаги
+    $cmd = "winget install --id $id --source winget $WingetSilentArgs"
+    if (-not $Silent) { $cmd += " | Out-Host" }
+    Invoke-Expression $cmd | Out-Host
     # 0x8A15002B = -1978335189: "уже установлена последняя версия"
     if ($LASTEXITCODE -eq -1978335189) {
         Write-Info "Пакет $id уже установлен, пропускаем"
@@ -114,22 +128,26 @@ if (-not $linkFound) {
     $vsLink = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\link.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($vsLink) { $linkFound = $true }
 }
-if (-not $vsFound -or -not $linkFound) {
+if ($NoBuildTools) {
+    Write-Warn "Пропуск Build Tools по флагу -NoBuildTools"
+} elseif (-not $vsFound -or -not $linkFound) {
     Write-Warn "Build Tools / MSVC linker (link.exe) не найден — без него cargo не соберёт tauri-cli."
     if (Test-Command winget) {
-        Write-Info "Установка Build Tools с workload C++ (~6 ГБ, займёт 10-20 мин)..."
+        $vsMode = if ($Silent) { "--quiet" } else { "--passive" }
+        Write-Info "Установка Build Tools с workload C++ (~6 ГБ, займёт 10-20 мин) [$vsMode]..."
         try {
-            winget install --id Microsoft.VisualStudio.2022.BuildTools --source winget --accept-source-agreements --accept-package-agreements --override "--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive" | Out-Host
+            $override = "--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended $vsMode --norestart"
+            winget install --id Microsoft.VisualStudio.2022.BuildTools --source winget $WingetSilentArgs --override "$override" | Out-Host
             if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) {
                 Write-Info "Build Tools установлен. Перезапустите PowerShell и снова запустите setup."
-                Write-Warn "Если link.exe всё ещё не найден — запустите 'Visual Studio Installer' и добавьте 'Desktop development with C++'."
+                if (-not $Silent) { Write-Warn "Если link.exe всё ещё не найден — запустите 'Visual Studio Installer' и добавьте 'Desktop development with C++'." }
             } else {
                 throw "winget завершился с кодом $LASTEXITCODE"
             }
         } catch {
             Write-Warn "Автоустановка не удалась: $_"
             Write-Warn "Установите вручную:"
-            Write-Warn "  winget install --id Microsoft.VisualStudio.2022.BuildTools --override `"--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive`""
+            Write-Warn "  winget install --id Microsoft.VisualStudio.2022.BuildTools --override `"--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended $vsMode --norestart`""
         }
     } else {
         Write-Warn "winget не найден. Скачайте Build Tools: https://visualstudio.microsoft.com/visual-cpp-build-tools/"
