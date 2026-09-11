@@ -1,4 +1,4 @@
-<# Mini AI 1C — Setup dependencies for Windows
+﻿<# Mini AI 1C — Setup dependencies for Windows
 Usage: .\scripts\setup.ps1 (в PowerShell от администратора) #>
 
 $ErrorActionPreference = "Stop"
@@ -104,15 +104,39 @@ try {
     Install-WingetPackage 'Microsoft.WebView2Runtime'
 }
 
-# --- Visual Studio Build Tools (для нативных зависимостей) ---
+# --- Visual Studio Build Tools (требуется link.exe для cargo) ---
 Write-Info "Проверка Visual Studio Build Tools..."
-if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\VisualStudio\SxS\VS7" -ErrorAction SilentlyContinue)) {
-    Write-Warn "Visual Studio Build Tools не найдены."
-    Write-Warn "Для компиляции нативных модулей (mcp-1c-search) нужны:"
-    Write-Warn "  winget install --id Microsoft.VisualStudio.2022.BuildTools --source winget --accept-source-agreements --accept-package-agreements"
-    Write-Warn "Выберите рабочую нагрузку: 'Desktop development with C++'"
+$vsFound = Test-Path "HKLM:\SOFTWARE\Microsoft\VisualStudio\SxS\VS7" -ErrorAction SilentlyContinue
+$linkFound = $false
+try { Get-Command link -ErrorAction Stop | Out-Null; $linkFound = $true } catch {}
+# Дополнительно ищем link.exe в типичных путях VS
+if (-not $linkFound) {
+    $vsLink = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\link.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($vsLink) { $linkFound = $true }
+}
+if (-not $vsFound -or -not $linkFound) {
+    Write-Warn "Build Tools / MSVC linker (link.exe) не найден — без него cargo не соберёт tauri-cli."
+    if (Test-Command winget) {
+        Write-Info "Установка Build Tools с workload C++ (~6 ГБ, займёт 10-20 мин)..."
+        try {
+            winget install --id Microsoft.VisualStudio.2022.BuildTools --source winget --accept-source-agreements --accept-package-agreements --override "--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive" | Out-Host
+            if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) {
+                Write-Info "Build Tools установлен. Перезапустите PowerShell и снова запустите setup."
+                Write-Warn "Если link.exe всё ещё не найден — запустите 'Visual Studio Installer' и добавьте 'Desktop development with C++'."
+            } else {
+                throw "winget завершился с кодом $LASTEXITCODE"
+            }
+        } catch {
+            Write-Warn "Автоустановка не удалась: $_"
+            Write-Warn "Установите вручную:"
+            Write-Warn "  winget install --id Microsoft.VisualStudio.2022.BuildTools --override `"--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive`""
+        }
+    } else {
+        Write-Warn "winget не найден. Скачайте Build Tools: https://visualstudio.microsoft.com/visual-cpp-build-tools/"
+        Write-Warn "Выберите: 'Desktop development with C++'"
+    }
 } else {
-    Write-Info "Visual Studio Build Tools найдены"
+    Write-Info "Visual Studio Build Tools найдены (link.exe доступен)"
 }
 
 # --- Tauri CLI ---

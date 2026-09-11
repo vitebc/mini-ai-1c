@@ -251,13 +251,49 @@ async function setupWindows() {
     runWingetInstall('Microsoft.WebView2Runtime');
   }
 
-  // VS Build Tools (warning only)
-  try {
-    run('reg query "HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\SxS\\VS7"');
-  } catch {
-    log('warn', 'Visual Studio Build Tools не найдены. Для нативных модулей установите:');
-    log('warn', '  winget install --id Microsoft.VisualStudio.2022.BuildTools --source winget --accept-source-agreements --accept-package-agreements');
-    log('warn', 'Выберите: "Desktop development with C++"');
+  // VS Build Tools — требуется link.exe (MSVC linker) для cargo
+  let hasVS = false;
+  try { run('reg query "HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\SxS\\VS7"'); hasVS = true; } catch {}
+  let hasLinker = false;
+  try { execSync('where link.exe', { stdio: 'ignore', windowsHide: true }); hasLinker = true; } catch {}
+  if (!hasLinker) {
+    // Поищем в типичных путях VS
+    const candidates = [
+      'C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC',
+      'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC',
+      'C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC',
+    ];
+    for (const base of candidates) {
+      try {
+        for (const ver of readdirSync(base)) {
+          if (existsSync(join(base, ver, 'bin', 'Hostx64', 'x64', 'link.exe'))) { hasLinker = true; break; }
+        }
+        if (hasLinker) break;
+      } catch {}
+    }
+  }
+  if (!hasVS || !hasLinker) {
+    log('warn', 'Build Tools / MSVC linker (link.exe) не найден — cargo не соберёт tauri-cli.');
+    try {
+      log('info', 'Установка Build Tools с C++ workload (~6 ГБ, 10-20 мин)...');
+      const out = execSync(
+        'winget install --id Microsoft.VisualStudio.2022.BuildTools --source winget --accept-source-agreements --accept-package-agreements --override "--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive"',
+        { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+      if (out) console.log(out.trim());
+      log('info', 'Build Tools установлен. Перезапустите терминал и снова запустите setup.');
+    } catch (e) {
+      const out = String(e.stdout || '') + String(e.stderr || '');
+      if (e.status === WINGET_ALREADY_INSTALLED || /already installed/i.test(out)) {
+        log('warn', 'Build Tools уже установлен, но link.exe не найден — добавьте workload C++ через Visual Studio Installer: "Desktop development with C++".');
+      } else {
+        if (out.trim()) console.log(out.trim());
+        log('warn', 'Автоустановка не удалась. Установите вручную:');
+        log('warn', '  winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive"');
+      }
+    }
+  } else {
+    log('info', 'Visual Studio Build Tools найдены (link.exe доступен)');
   }
 
   // Tauri CLI (используем найденный cargo — он может быть вне PATH текущего процесса)
