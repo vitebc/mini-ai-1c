@@ -33,6 +33,18 @@ function cargoBinDir() {
     return join(homedir(), '.cargo', 'bin');
 }
 
+function cargoEnvTargetDir(serverDir) {
+    // На мапленных дисках Y: cargo может падать с os error 87 на rlib — фолбэк на короткий путь
+    if (process.platform === 'win32' && /^[A-Z]:/.test(serverDir) && serverDir[0].toUpperCase() !== 'C') {
+        return join(process.env.TEMP || 'C:\\Temp', 'cargo-target', serverDir.replace(/[:\\]/g, '_'));
+    }
+    return null;
+}
+
+function effectiveTargetDir(serverDir) {
+    return cargoEnvTargetDir(serverDir) ?? join(serverDir, 'target');
+}
+
 function cleanStaleTempArchives(targetDir) {
     // cargo на Windows иногда оставляет .tmp*.temp-archive с ошибкой 87 при сборке на мапленном диске Y:
     // (антивирус / MAX_PATH / RemoveDirectory с trailing). Чистим перед билдом.
@@ -50,14 +62,17 @@ function cleanStaleTempArchives(targetDir) {
 
 function runCargoBuild(serverDir) {
     const manifest = join(serverDir, 'Cargo.toml');
-    const targetDir = join(serverDir, 'target');
+    const targetDir = effectiveTargetDir(serverDir);
     cleanStaleTempArchives(targetDir);
+    const overrideDir = cargoEnvTargetDir(serverDir);
     const env = {
         ...process.env,
         PATH: `${cargoBinDir()}${delimiter}${process.env.PATH ?? ''}`,
-        // На мапленных дисках Y: cargo может падать с os error 87 на rlib — фолбэк на короткий путь
-        ...(process.platform === 'win32' && /^[A-Z]:/.test(serverDir) && serverDir[0].toUpperCase() !== 'C' ? { CARGO_TARGET_DIR: join(process.env.TEMP || 'C:\\Temp', 'cargo-target', serverDir.replace(/[:\\]/g, '_')) } : {}),
+        ...(overrideDir ? { CARGO_TARGET_DIR: overrideDir } : {}),
     };
+    if (overrideDir) {
+        console.log(`[build-mcp] CARGO_TARGET_DIR=${overrideDir}`);
+    }
     try {
         execSync(`cargo build --release --manifest-path ${JSON.stringify(manifest)}`, {
             stdio: 'inherit',
@@ -76,10 +91,11 @@ function runCargoBuild(serverDir) {
             throw e;
         }
     }
+    return { targetDir, env };
 }
 
 function copyToOut(serverDir, serverName) {
-    const binary = join(serverDir, 'target', 'release', binaryName(serverName));
+    const binary = join(effectiveTargetDir(serverDir), 'release', binaryName(serverName));
     const dest = join(mcpOutDir, binaryName(serverName));
     copyFileSync(binary, dest);
     if (process.platform !== 'win32') {
@@ -120,7 +136,7 @@ function buildMcpSearch({ alsoCopyToTargets = false } = {}) {
     console.log('Building mcp-1c-search (release)...');
     runCargoBuild(searchDir);
 
-    const binary = join(searchDir, 'target', 'release', searchBinaryName());
+    const binary = join(effectiveTargetDir(searchDir), 'release', searchBinaryName());
     const dest = join(mcpOutDir, searchBinaryName());
     copyFileSync(binary, dest);
     console.log(`Copied to ${dest}`);
