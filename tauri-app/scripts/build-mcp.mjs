@@ -33,16 +33,49 @@ function cargoBinDir() {
     return join(homedir(), '.cargo', 'bin');
 }
 
+function cleanStaleTempArchives(targetDir) {
+    // cargo на Windows иногда оставляет .tmp*.temp-archive с ошибкой 87 при сборке на мапленном диске Y:
+    // (антивирус / MAX_PATH / RemoveDirectory с trailing). Чистим перед билдом.
+    try {
+        const deps = join(targetDir, 'deps');
+        if (!existsSync(deps)) return;
+        for (const f of readdirSync(deps)) {
+            if (f.startsWith('.tmp') && f.endsWith('.temp-archive')) {
+                const p = join(deps, f);
+                try { rmSync(p, { recursive: true, force: true }); } catch {}
+            }
+        }
+    } catch {}
+}
+
 function runCargoBuild(serverDir) {
     const manifest = join(serverDir, 'Cargo.toml');
+    const targetDir = join(serverDir, 'target');
+    cleanStaleTempArchives(targetDir);
     const env = {
         ...process.env,
         PATH: `${cargoBinDir()}${delimiter}${process.env.PATH ?? ''}`,
+        // На мапленных дисках Y: cargo может падать с os error 87 на rlib — фолбэк на короткий путь
+        ...(process.platform === 'win32' && /^[A-Z]:/.test(serverDir) && serverDir[0].toUpperCase() !== 'C' ? { CARGO_TARGET_DIR: join(process.env.TEMP || 'C:\\Temp', 'cargo-target', serverDir.replace(/[:\\]/g, '_')) } : {}),
     };
-    execSync(`cargo build --release --manifest-path ${JSON.stringify(manifest)}`, {
-        stdio: 'inherit',
-        env,
-    });
+    try {
+        execSync(`cargo build --release --manifest-path ${JSON.stringify(manifest)}`, {
+            stdio: 'inherit',
+            env,
+        });
+    } catch (e) {
+        // Ретрай после полной чистки target (антивирус / битый .tmp)
+        if (e.status === 101) {
+            console.warn('[build-mcp] cargo failed, retrying after cargo clean...');
+            try { rmSync(targetDir, { recursive: true, force: true }); } catch {}
+            execSync(`cargo build --release --manifest-path ${JSON.stringify(manifest)}`, {
+                stdio: 'inherit',
+                env,
+            });
+        } else {
+            throw e;
+        }
+    }
 }
 
 function copyToOut(serverDir, serverName) {
@@ -85,15 +118,7 @@ function searchBinaryName() {
 
 function buildMcpSearch({ alsoCopyToTargets = false } = {}) {
     console.log('Building mcp-1c-search (release)...');
-    const manifest = join(searchDir, 'Cargo.toml');
-    const env = {
-        ...process.env,
-        PATH: `${cargoBinDir()}${delimiter}${process.env.PATH ?? ''}`,
-    };
-    execSync(`cargo build --release --manifest-path ${JSON.stringify(manifest)}`, {
-        stdio: 'inherit',
-        env,
-    });
+    runCargoBuild(searchDir);
 
     const binary = join(searchDir, 'target', 'release', searchBinaryName());
     const dest = join(mcpOutDir, searchBinaryName());
