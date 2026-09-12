@@ -8,6 +8,11 @@ use std::{
 use tauri::Emitter;
 
 use super::models::*;
+use super::opencode_zen::{
+    apply_configured_headers, configured_opencode_session_id, ensure_zen_session_id,
+    invalidate_zen_session, is_missing_opencode_session_error, is_opencode_zen_url,
+    OPENCODE_SESSION_HEADER,
+};
 use super::prompts::*;
 use super::tools::*;
 use crate::llm_profiles::{get_active_profile, LLMProvider};
@@ -503,6 +508,21 @@ pub async fn stream_chat_completion(
         headers.insert("X-Title", HeaderValue::from_static("Mini AI 1C Agent"));
     }
 
+    // User-configured headers are applied without overriding auth/content-type.
+    apply_configured_headers(&mut headers, profile.extra_headers.as_ref());
+    if is_opencode_zen_url(&profile.get_base_url()) {
+        let session_id =
+            match configured_opencode_session_id(profile.extra_headers.as_ref()) {
+                Some(session_id) => session_id,
+                None => ensure_zen_session_id(&profile.get_base_url(), &api_key).await?,
+            };
+        headers.insert(
+            OPENCODE_SESSION_HEADER,
+            HeaderValue::from_str(&session_id)
+                .map_err(|e| format!("Invalid OpenCode Zen session: {e}"))?,
+        );
+    }
+
     if matches!(profile.provider, LLMProvider::QwenCli) {
         headers.insert(
             "User-Agent",
@@ -616,6 +636,7 @@ pub async fn stream_chat_completion(
 
     let mut attempt = 0;
     let max_retries = 3;
+    let mut refreshed_zen_session = false;
     let response = loop {
         attempt += 1;
         if matches!(profile.provider, LLMProvider::QwenCli) {
@@ -711,6 +732,26 @@ pub async fn stream_chat_completion(
                     }
 
                     return Err(build_qwen_rate_limit_message(&ctx));
+                }
+                if status.as_u16() == 400
+                    && is_opencode_zen_url(&profile.get_base_url())
+                    && is_missing_opencode_session_error(&error_body)
+                    && !refreshed_zen_session
+                    && configured_opencode_session_id(profile.extra_headers.as_ref()).is_none()
+                {
+                    crate::app_log!(
+                        "[Zen] Missing/expired session on attempt {attempt}; creating a fresh session and retrying"
+                    );
+                    invalidate_zen_session(&profile.get_base_url(), &api_key);
+                    let fresh_session_id =
+                        ensure_zen_session_id(&profile.get_base_url(), &api_key).await?;
+                    headers.insert(
+                        OPENCODE_SESSION_HEADER,
+                        HeaderValue::from_str(&fresh_session_id)
+                            .map_err(|e| format!("Invalid OpenCode Zen session: {e}"))?,
+                    );
+                    refreshed_zen_session = true;
+                    continue;
                 }
                 if status.as_u16() == 429 && attempt < max_retries {
                     let retry_after = extract_retry_after_secs(&response_headers).unwrap_or(10);
@@ -1563,12 +1604,9 @@ pub async fn fetch_models(
     };
 
     let client = crate::http_client::build_http_client()?;
-    let mut builder = client.get(&url);
-    builder = builder.header(CONTENT_TYPE, "application/json");
-
-    if !api_key.is_empty() {
-        builder = builder.header(AUTHORIZATION, format!("Bearer {}", api_key));
-    }
+    let request_headers =
+        super::opencode_zen::request_headers_for_profile(profile, &api_key).await?;
+    let mut builder = client.get(&url).headers(request_headers);
 
     if matches!(profile.provider, LLMProvider::OpenRouter) {
         builder = builder

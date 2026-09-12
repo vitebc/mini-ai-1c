@@ -15,6 +15,8 @@ export interface LLMProfile {
     enable_thinking?: boolean;
     disable_streaming?: boolean;
     stream_timeout_secs?: number;
+    /** Дополнительные HTTP-заголовки для Custom/OpenAI-совместимых профилей. */
+    extra_headers?: Record<string, string>;
     /** Компактный системный промпт. Не задано → авто (компактный для Ollama/LMStudio) */
     lightweight_prompt?: boolean;
     context_compress_strategy?: 'disabled' | 'sliding_window' | 'summarize';

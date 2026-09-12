@@ -166,11 +166,18 @@ pub async fn fetch_models_from_provider(
     provider_id: String,
     base_url: String,
     api_key: String,
+    extra_headers: Option<std::collections::HashMap<String, String>>,
 ) -> Result<Vec<crate::llm::providers::Model>, String> {
     use crate::llm::providers;
 
     // 1. Fetch from API
-    let api_models = providers::fetch_models_from_api(&provider_id, &base_url, &api_key).await?;
+    let api_models = providers::fetch_models_from_api(
+        &provider_id,
+        &base_url,
+        &api_key,
+        extra_headers.as_ref(),
+    )
+    .await?;
 
     if api_models.is_empty() {
         return Err("Provider returned empty model list".to_string());
@@ -213,9 +220,13 @@ pub async fn fetch_models_for_profile(
     let base_url = profile.get_base_url();
 
     // 1. Fetch from API
-    let api_models =
-        providers::fetch_models_from_api(&profile.provider.to_string(), &base_url, &api_key)
-            .await?;
+    let api_models = providers::fetch_models_from_api(
+        &profile.provider.to_string(),
+        &base_url,
+        &api_key,
+        profile.extra_headers.as_ref(),
+    )
+    .await?;
 
     if api_models.is_empty() {
         return Err("Provider returned empty model list".to_string());

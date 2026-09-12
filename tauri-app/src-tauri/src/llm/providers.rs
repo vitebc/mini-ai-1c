@@ -334,6 +334,7 @@ pub async fn fetch_models_from_api(
     provider_id: &str,
     base_url: &str,
     api_key: &str,
+    extra_headers: Option<&std::collections::HashMap<String, String>>,
 ) -> Result<Vec<Model>, String> {
     // Special handling for Qwen CLI — return static list immediately (no /v1/models endpoint via OAuth)
     if provider_id == "QwenCli" {
@@ -432,13 +433,16 @@ pub async fn fetch_models_from_api(
         format!("{}/v1/models", trimmed_base)
     };
 
-    // Basic logic for OpenAI compatible APIs
-    let mut builder = client.get(&url);
-
-    if !api_key.is_empty() {
-        builder = builder.header("Authorization", format!("Bearer {}", api_key));
-    }
-
+    // Custom/OpenAI-compatible headers, including an automatically supplied
+    // OpenCode Zen session header when the endpoint requires one.
+    let request_headers =
+        crate::ai::opencode_zen::request_headers_for_custom_endpoint(
+            base_url,
+            api_key,
+            extra_headers,
+        )
+        .await?;
+    let builder = client.get(&url).headers(request_headers);
     let resp = builder.send().await.map_err(|e| e.to_string())?;
 
     if !resp.status().is_success() {
@@ -992,7 +996,7 @@ mod tests {
             std::env::var("OLLAMA_HOST").unwrap_or_else(|_| "http://localhost:11434".to_string());
         let base_url = format!("{}/v1", host.trim_end_matches('/'));
 
-        let result = fetch_models_from_api("Ollama", &base_url, "").await;
+        let result = fetch_models_from_api("Ollama", &base_url, "", None).await;
         let models = result.expect("fetch_models_from_api should succeed for Ollama");
 
         assert!(
@@ -1030,7 +1034,7 @@ mod tests {
             std::env::var("LMSTUDIO_HOST").unwrap_or_else(|_| "http://localhost:1234".to_string());
         let base_url = format!("{}/v1", host.trim_end_matches('/'));
 
-        let result = fetch_models_from_api("LMStudio", &base_url, "").await;
+        let result = fetch_models_from_api("LMStudio", &base_url, "", None).await;
 
         // If server is not running — gracefully skip
         let models = match result {

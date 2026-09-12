@@ -71,6 +71,8 @@ fn sanitize_settings_for_export(mut safe_settings: AppSettings) -> AppSettings {
 fn sanitize_profiles_for_export(mut safe_profiles: ProfileStore) -> ProfileStore {
     for profile in &mut safe_profiles.profiles {
         profile.api_key_encrypted.clear();
+        // Session identifiers and other custom request headers are bearer-equivalent secrets.
+        profile.extra_headers = None;
     }
 
     safe_profiles
@@ -483,6 +485,7 @@ mod tests {
                     enable_thinking: Some(true),
                     disable_streaming: Some(false),
                     stream_timeout_secs: Some(60),
+                    extra_headers: None,
                     lightweight_prompt: None,
                     context_compress_strategy: "summarize".to_string(),
                     max_context_messages: Some(50),
@@ -501,6 +504,7 @@ mod tests {
                     enable_thinking: Some(false),
                     disable_streaming: Some(true),
                     stream_timeout_secs: Some(30),
+                    extra_headers: None,
                     lightweight_prompt: None,
                     context_compress_strategy: "disabled".to_string(),
                     max_context_messages: None,

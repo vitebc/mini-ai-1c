@@ -114,6 +114,8 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
     const [isCodexAuthModalOpen, setIsCodexAuthModalOpen] = useState(false);
     const [cliStatus, setCliStatus] = useState<CliStatus | null>(null);
     const [loadingStatus, setLoadingStatus] = useState(false);
+    const [extraHeaderName, setExtraHeaderName] = useState('');
+    const [extraHeaderValue, setExtraHeaderValue] = useState('');
 
     // Track which profile was previously active to detect real profile switches
     const prevEditingIdRef = useRef<string | null>(null);
@@ -332,7 +334,8 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                 res = await invoke<ProviderModel[]>('fetch_models_from_provider', {
                     providerId: editForm.provider,
                     baseUrl: editForm.base_url || PROVIDERS.find(p => p.value === editForm.provider)?.defaultUrl || '',
-                    apiKey: newApiKey
+                    apiKey: newApiKey,
+                    extraHeaders: editForm.extra_headers ?? null
                 });
             } else if (editForm.api_key_encrypted) {
                 await invoke('save_profile', { profile: editForm, apiKey: null });
@@ -341,7 +344,8 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                 res = await invoke<ProviderModel[]>('fetch_models_from_provider', {
                     providerId: editForm.provider,
                     baseUrl: editForm.base_url || PROVIDERS.find(p => p.value === editForm.provider)?.defaultUrl || '',
-                    apiKey: ''
+                    apiKey: '',
+                    extraHeaders: editForm.extra_headers ?? null
                 });
             }
 
@@ -920,6 +924,68 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                     value={editForm.base_url || ''}
                                     onChange={e => setEditForm({ ...editForm, base_url: e.target.value })}
                                 />
+                            </div>
+                        )}
+
+                        {editForm.provider === 'Custom' && (
+                            <div className="p-4 bg-zinc-950/50 rounded-lg border border-zinc-800 space-y-3">
+                                <label className="text-xs text-zinc-500 uppercase font-bold px-1">Дополнительные заголовки</label>
+                                <p className="text-[11px] text-zinc-500 px-1 leading-relaxed">
+                                    Для OpenCode Zen (`opencode.ai/zen`) сессия `x-opencode-session` создаётся автоматически.
+                                    Заполните поле вручную только если нужно принудительно использовать определённую сессию.
+                                </p>
+                                {Object.entries(editForm.extra_headers ?? {}).map(([name, value]) => (
+                                    <div key={name} className="flex items-center gap-2 px-1">
+                                        <code className="flex-1 truncate font-mono text-xs text-zinc-300">{name}: {value}</code>
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditForm(prev => {
+                                                if (!prev?.extra_headers) return prev;
+                                                const next = { ...prev.extra_headers };
+                                                delete next[name];
+                                                return { ...prev, extra_headers: Object.keys(next).length ? next : undefined };
+                                            })}
+                                            className="text-xs text-red-400 hover:text-red-300"
+                                        >
+                                            Удалить
+                                        </button>
+                                    </div>
+                                ))}
+                                <div className="grid grid-cols-[1fr_1fr_auto] gap-2 px-1">
+                                    <input
+                                        className="bg-[var(--input-bg)] border border-zinc-700 rounded-md px-3 h-9 text-sm font-mono focus:border-blue-500 outline-none text-zinc-200"
+                                        placeholder="x-opencode-session"
+                                        value={extraHeaderName}
+                                        onChange={e => setExtraHeaderName(e.target.value)}
+                                    />
+                                    <input
+                                        className="bg-[var(--input-bg)] border border-zinc-700 rounded-md px-3 h-9 text-sm font-mono focus:border-blue-500 outline-none text-zinc-200"
+                                        placeholder="значение"
+                                        value={extraHeaderValue}
+                                        onChange={e => setExtraHeaderValue(e.target.value)}
+                                    />
+                                    <button
+                                        type="button"
+                                        disabled={!extraHeaderName.trim() || !extraHeaderValue.trim()}
+                                        onClick={() => {
+                                            const name = extraHeaderName.trim();
+                                            const value = extraHeaderValue.trim();
+                                            if (!name || !value) return;
+                                            setEditForm(prev => prev ? ({
+                                                ...prev,
+                                                extra_headers: {
+                                                    ...(prev.extra_headers ?? {}),
+                                                    [name]: value,
+                                                },
+                                            }) : prev);
+                                            setExtraHeaderName('');
+                                            setExtraHeaderValue('');
+                                        }}
+                                        className="h-9 px-3 rounded-md bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        Добавить
+                                    </button>
+                                </div>
                             </div>
                         )}
 

@@ -1,6 +1,7 @@
 //! LLM Profile management with encrypted API keys
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 
 use crate::crypto::{decrypt_string, encrypt_string};
@@ -97,6 +98,10 @@ pub struct LLMProfile {
     pub disable_streaming: Option<bool>,
     #[serde(default)]
     pub stream_timeout_secs: Option<u32>,
+    /// Пользовательские HTTP-заголовки для OpenAI-совместимых Custom-профилей.
+    /// Например, `x-opencode-session` для прокси opencode Zen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra_headers: Option<HashMap<String, String>>,
     /// Компактный системный промпт. None → авто (компактный для Ollama/LMStudio, полный для остальных).
     #[serde(default)]
     pub lightweight_prompt: Option<bool>,
@@ -125,6 +130,7 @@ impl LLMProfile {
             enable_thinking: None,
             disable_streaming: None,
             stream_timeout_secs: None,
+            extra_headers: None,
             lightweight_prompt: None,
             context_compress_strategy: String::new(),
             max_context_messages: None,
