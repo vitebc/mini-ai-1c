@@ -9,13 +9,13 @@
     "preview": "vite preview",
     "mini-ai-1c": "tauri",
     "setup": "node ../scripts/setup.mjs",
-    "app:dev": "npm run build:mcp-search && npm run build:mcp && tauri dev",
-    "app:build": "npm run build:mcp-search && npm run build:mcp && tauri build",
+    "app:dev": "npm run build:mcp-search && npm run build:mcp && node scripts/run-tauri.mjs dev",
+    "app:build": "npm run build:mcp-search && npm run build:mcp && node scripts/run-tauri.mjs build",
     "build:mcp": "node scripts/build-mcp.mjs mcp",
     "build:mcp-search": "node scripts/build-mcp.mjs mcp-search",
     "build:mcp-search:release": "node scripts/build-mcp.mjs mcp-search-release",
     "full:build": "npm run build:mcp-search:release && npm run app:build",
-    "repack:installers": "npm run build:mcp-search:release && npm run build:mcp && tauri build --bundles msi,nsis",
+    "repack:installers": "npm run build:mcp-search:release && npm run build:mcp && node scripts/run-tauri.mjs build --bundles msi,nsis",
     "test:diff": "tsx ../tests/run-diff-tests.mts"
   },
   "dependencies": {
