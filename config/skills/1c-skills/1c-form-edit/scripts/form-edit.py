@@ -337,7 +337,7 @@ event_suffix_map = {
     "BeforeDeleteRow": "\u041f\u0435\u0440\u0435\u0434\u0423\u0434\u0430\u043b\u0435\u043d\u0438\u0435\u043c",
     "BeforeRowChange": "\u041f\u0435\u0440\u0435\u0434\u041d\u0430\u0447\u0430\u043b\u043e\u043c\u0418\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f",
     "OnStartEdit": "\u041f\u0440\u0438\u041d\u0430\u0447\u0430\u043b\u0435\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f",
-    "OnEndEdit": "\u041f\u0440\u0438\u041e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u0438\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f",
+    "OnEditEnd": "\u041f\u0440\u0438\u041e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u0438\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f",
     "Selection": "\u0412\u044b\u0431\u043e\u0440\u0421\u0442\u0440\u043e\u043a\u0438",
     "OnCurrentPageChange": "\u041f\u0440\u0438\u0421\u043c\u0435\u043d\u0435\u0421\u0442\u0440\u0430\u043d\u0438\u0446\u044b",
     "TextEditEnd": "\u041e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u0435\u0412\u0432\u043e\u0434\u0430\u0422\u0435\u043a\u0441\u0442\u0430",
@@ -345,7 +345,17 @@ event_suffix_map = {
     "DragStart": "\u041d\u0430\u0447\u0430\u043b\u043e\u041f\u0435\u0440\u0435\u0442\u0430\u0441\u043a\u0438\u0432\u0430\u043d\u0438\u044f",
     "Drag": "\u041f\u0435\u0440\u0435\u0442\u0430\u0441\u043a\u0438\u0432\u0430\u043d\u0438\u0435",
     "DragCheck": "\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430\u041f\u0435\u0440\u0435\u0442\u0430\u0441\u043a\u0438\u0432\u0430\u043d\u0438\u044f",
-    "Drop": "\u041f\u043e\u043c\u0435\u0449\u0435\u043d\u0438\u0435",
+    "BeforeEditEnd": "\u041f\u0435\u0440\u0435\u0434\u041e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u0435\u043c\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f",
+    "OnActivateCell": "\u041f\u0440\u0438\u0410\u043a\u0442\u0438\u0432\u0438\u0437\u0430\u0446\u0438\u0438\u042f\u0447\u0435\u0439\u043a\u0438",
+    "OnActivateField": "\u041f\u0440\u0438\u0410\u043a\u0442\u0438\u0432\u0438\u0437\u0430\u0446\u0438\u0438\u041f\u043e\u043b\u044f",
+    "ValueChoice": "\u0412\u044b\u0431\u043e\u0440\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u044f",
+    "DragEnd": "\u041e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u0435\u041f\u0435\u0440\u0435\u0442\u0430\u0441\u043a\u0438\u0432\u0430\u043d\u0438\u044f",
+    "OnGetDataAtServer": "\u041f\u0440\u0438\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0438\u0414\u0430\u043d\u043d\u044b\u0445\u041d\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435",
+    "BeforeLoadUserSettingsAtServer": "\u041f\u0435\u0440\u0435\u0434\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u043e\u0439\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c\u0441\u043a\u0438\u0445\u041d\u0430\u0441\u0442\u0440\u043e\u0435\u043a\u041d\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435",
+    "OnUpdateUserSettingSetAtServer": "\u041f\u0440\u0438\u041e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0438\u0421\u043e\u0441\u0442\u0430\u0432\u0430\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c\u0441\u043a\u0438\u0445\u041d\u0430\u0441\u0442\u0440\u043e\u0435\u043a\u041d\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435",
+    "Creating": "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435",
+    "EditTextChange": "\u0418\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0435\u0422\u0435\u043a\u0441\u0442\u0430\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f",
+    "OnActivate": "\u041f\u0440\u0438\u0410\u043a\u0442\u0438\u0432\u0438\u0437\u0430\u0446\u0438\u0438",
     "AfterDeleteRow": "\u041f\u043e\u0441\u043b\u0435\u0423\u0434\u0430\u043b\u0435\u043d\u0438\u044f",
 }
 
@@ -366,7 +376,7 @@ def get_element_name(el, type_key):
 
 
 known_events = {
-    "input": ["OnChange", "StartChoice", "ChoiceProcessing", "AutoComplete", "TextEditEnd", "Clearing", "Creating", "EditTextChange"],
+    "input": ["OnChange", "StartChoice", "ChoiceProcessing", "AutoComplete", "TextEditEnd", "Clearing", "Creating", "EditTextChange", "Opening"],
     "check": ["OnChange"],
     "label": ["Click", "URLProcessing"],
     "labelField": ["OnChange", "StartChoice", "ChoiceProcessing", "Click", "URLProcessing", "Clearing"],
@@ -772,10 +782,20 @@ def emit_popup(el, name, _id, indent):
 
 # --- Element dispatcher ---
 
-ELEMENT_KEYS = ["group", "input", "check", "label", "labelField", "table", "pages", "page", "button", "picture", "picField", "calendar", "cmdBar", "popup"]
+# Дополнения командной панели динамического списка: тег и тип источника сняты с
+# выгрузки платформы 8.3.27.2214.
+ADDITION_TYPES = {
+    "searchString": ("SearchStringAddition", "SearchStringRepresentation"),
+    "viewStatus": ("ViewStatusAddition", "ViewStatusRepresentation"),
+    "searchControl": ("SearchControlAddition", "SearchControl"),
+}
+
+ELEMENT_KEYS = ["group", "input", "check", "label", "labelField", "table", "pages", "page", "button", "picture", "picField", "calendar", "cmdBar", "popup",
+                "searchString", "viewStatus", "searchControl"]
 
 KNOWN_KEYS = {
     "group", "input", "check", "label", "labelField", "table", "pages", "page",
+    "searchString", "viewStatus", "searchControl", "source", "horizontalLocation",
     "button", "picture", "picField", "calendar", "cmdBar", "popup",
     "name", "path", "title",
     "visible", "hidden", "enabled", "disabled", "readOnly",
@@ -827,9 +847,49 @@ def emit_element(el, indent):
     name = get_element_name(el, type_key)
     _id = new_id()
 
+    if type_key in ADDITION_TYPES:
+        emit_addition(el, name, _id, indent, type_key)
+        return
+
     emitter = EMITTER_MAP.get(type_key)
     if emitter:
         emitter(el, name, _id, indent)
+
+
+def emit_addition(el, name, eid, indent, type_key):
+    """Дополнение командной панели: источник, свойства, спутники.
+
+    Порядок снят с выгрузки платформы. Источник обязателен: редактор дописывает элемент
+    в готовую форму и родительскую таблицу по входу не знает.
+    """
+    tag, source_type = ADDITION_TYPES[type_key]
+    X(f'{indent}<{tag} name="{name}" id="{eid}">')
+    inner = f'{indent}\t'
+    source = el.get("source") or ""
+    if not source:
+        print(f"[WARN] Дополнение '{name}': источник не задан - укажите source")
+    X(f'{inner}<AdditionSource>')
+    X(f'{inner}\t<Item>{source}</Item>')
+    X(f'{inner}\t<Type>{source_type}</Type>')
+    X(f'{inner}</AdditionSource>')
+    if el.get("title"):
+        emit_mltext("Title", el["title"], inner)
+    if el.get("visible") is False:
+        X(f'{inner}<Visible>false</Visible>')
+    if el.get("width"):
+        X(f'{inner}<Width>{el["width"]}</Width>')
+    if el.get("horizontalStretch") is not None:
+        val = "true" if el["horizontalStretch"] else "false"
+        X(f'{inner}<HorizontalStretch>{val}</HorizontalStretch>')
+    location = el.get("horizontalLocation")
+    if location:
+        mapped = {"left": "Left", "right": "Right", "center": "Center"}.get(
+            str(location).strip().lower())
+        if mapped:
+            X(f'{inner}<HorizontalLocation>{mapped}</HorizontalLocation>')
+    emit_companion("ContextMenu", f'{name}КонтекстноеМеню', inner)
+    emit_companion("ExtendedTooltip", f'{name}РасширеннаяПодсказка', inner)
+    X(f'{indent}</{tag}>')
 
 
 # ── 6. Find element by name recursively ─────────────────────
@@ -999,7 +1059,10 @@ if elements_list:
             el_name = get_element_name(el, type_key)
             existing = find_element(root_ci, el_name) if root_ci is not None else None
             if existing is not None:
-                print(f"[WARN] Element '{el_name}' already exists in form (id={existing.get('id')})")
+                # Имя элемента формы уникально: платформа второй такой не примет,
+                # а правка с предупреждением оставляла форму с двумя одинаковыми.
+                print(f"[ERROR] Элемент '{el_name}' в форме уже есть (id={existing.get('id')})", file=sys.stderr)
+                sys.exit(1)
 
     # Remember starting element ID for companion counting
     start_elem_id = next_elem_id

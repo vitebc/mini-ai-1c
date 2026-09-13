@@ -7,10 +7,20 @@ param(
 	[Parameter(Mandatory)]
 	[string]$V8Path,
 
-	[string]$TempBasePath
+	[string]$TempBasePath,
+
+	[string]$AdditionalV8Arguments
 )
 
 $ErrorActionPreference = "Stop"
+
+# Дополнительные аргументы приходят от вызывающего скрипта одной строкой через запятую и
+# подмешиваются в каждый запуск платформы: лицензионный ключ нужен и созданию базы, и
+# загрузке конфигурации, иначе цепочка обрывается на первом же шаге.
+$extraSuffix = ""
+foreach ($extraArg in @($AdditionalV8Arguments -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })) {
+	$extraSuffix += " $extraArg"
+}
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # --- 1. Scan XML files for reference types ---
@@ -1254,7 +1264,7 @@ $propsXml		</Properties>$childObjLine
 
 # --- 5. Create infobase ---
 Write-Host "Creating infobase: $TempBasePath"
-$createArgs = "CREATEINFOBASE File=`"$TempBasePath`" /DisableStartupDialogs"
+$createArgs = "CREATEINFOBASE File=`"$TempBasePath`" /DisableStartupDialogs$extraSuffix"
 $proc = Start-Process -FilePath $V8Path -ArgumentList $createArgs -NoNewWindow -Wait -PassThru
 if ($proc.ExitCode -ne 0) {
 	Write-Error "Failed to create infobase (code: $($proc.ExitCode))"
@@ -1267,7 +1277,7 @@ if ($hasRefTypes) {
 	# LoadConfigFromFiles
 	Write-Host "Loading configuration from files..."
 	$loadLog = Join-Path $env:TEMP "stub_load_log.txt"
-	$loadArgs = "DESIGNER /F`"$TempBasePath`" /LoadConfigFromFiles `"$cfgDir`" /Out `"$loadLog`" /DisableStartupDialogs"
+	$loadArgs = "DESIGNER /F`"$TempBasePath`" /LoadConfigFromFiles `"$cfgDir`" /Out `"$loadLog`" /DisableStartupDialogs$extraSuffix"
 	$proc = Start-Process -FilePath $V8Path -ArgumentList $loadArgs -NoNewWindow -Wait -PassThru
 	if ($proc.ExitCode -ne 0) {
 		if (Test-Path $loadLog) { Get-Content $loadLog -Raw -ErrorAction SilentlyContinue | Write-Host }
@@ -1278,7 +1288,7 @@ if ($hasRefTypes) {
 	# UpdateDBCfg
 	Write-Host "Updating database configuration..."
 	$updateLog = Join-Path $env:TEMP "stub_update_log.txt"
-	$updateArgs = "DESIGNER /F`"$TempBasePath`" /UpdateDBCfg /Out `"$updateLog`" /DisableStartupDialogs"
+	$updateArgs = "DESIGNER /F`"$TempBasePath`" /UpdateDBCfg /Out `"$updateLog`" /DisableStartupDialogs$extraSuffix"
 	$proc = Start-Process -FilePath $V8Path -ArgumentList $updateArgs -NoNewWindow -Wait -PassThru
 	if ($proc.ExitCode -ne 0) {
 		if (Test-Path $updateLog) { Get-Content $updateLog -Raw -ErrorAction SilentlyContinue | Write-Host }

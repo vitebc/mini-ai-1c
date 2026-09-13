@@ -126,6 +126,8 @@ Shorthand: `"Имя [Заголовок]: тип = значение @флаги"
 
 Объектная форма: `title`, `hidden: true`, `valueListAllowed: true`, `availableAsField: false`, `denyIncompleteValues: true`, `use: "Always"`.
 
+Пустое значение параметра — это ОТСУТСТВИЕ элемента `<value>`, а не элемент с текстом маркера. Записи без значения, `_` и `null` разворачиваются в отсутствие значения: ссылочный тип и тип без указания дают `<value xsi:nil="true"/>`, строка — пустой `<value xsi:type="xs:string"/>`, составной тип (типы через ПРОБЕЛ) — ничего. Причина: платформа 8.3.27.2214 отвергает такие схемы при чтении (`XDTO при чтении Template.xml`): дата со значением `null`, булево с пустым содержимым, вариант периода из `_`.
+
 Список допустимых значений (availableValues):
 
 ```json
@@ -225,11 +227,14 @@ Shorthand: `"Имя [Заголовок]: тип = значение @флаги"
       }
     ],
     "outputParameters": { "Заголовок": "Мой отчёт" },
+    "additionalProperties": { "ИмяСвойства": "Значение" },
     "dataParameters": ["Период = LastMonth @user"],
     "structure": "Организация > details"
   }
 }]
 ```
+
+Дополнительные свойства варианта (`additionalProperties`) — объект `{имя: значение}` → `<dcsset:additionalProperties>` с `<v8:Property name="..."><v8:Value xsi:type="xs:string">...</v8:Value></v8:Property>`; имя экранируется как атрибут.
 
 ### Условное оформление (conditionalAppearance)
 

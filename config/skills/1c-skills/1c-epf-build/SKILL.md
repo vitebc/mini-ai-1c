@@ -49,6 +49,8 @@ powershell.exe -NoProfile -File 1c-epf-build/scripts/epf-build.ps1 <параме
 | `-Password <пароль>` | нет | Пароль |
 | `-SourceFile <путь>` | да | Путь к корневому XML-файлу исходников |
 | `-OutputFile <путь>` | да | Путь к выходному EPF/ERF-файлу |
+| `-StrictLog` | нет | Отказ в журнале поднимает код возврата до 1, даже если платформа вернула 0 |
+| `-AdditionalV8Arguments <список>` | нет | Аргументы платформы через запятую, доходят и до временной базы |
 
 > `*` — опционально. Если не указано — автоматически создаётся временная база со заглушками метаданных
 
@@ -61,3 +63,21 @@ powershell.exe -NoProfile -File 1c-epf-build/scripts/epf-build.ps1 -InfoBasePath
 # Серверная база
 powershell.exe -NoProfile -File 1c-epf-build/scripts/epf-build.ps1 -InfoBaseServer "srv01" -InfoBaseRef "MyDB" -UserName "Admin" -Password "secret" -SourceFile "src/МояОбработка.xml" -OutputFile "build/МояОбработка.epf"
 ```
+
+## Дополнительные аргументы платформы
+
+Аргумент, которого нет среди параметров навыка, передается ключом `-AdditionalV8Arguments`
+списком через запятую: `-AdditionalV8Arguments "/UseHwLicenses+,/ClearCache"`. Разделитель
+запятая, а не пробел, потому что значение аргумента платформы само содержит пробелы.
+
+Постоянный набор задается в `.v8-project.json` рядом с проектом:
+
+```json
+{
+ "v8args": ["/UseHwLicenses+"],
+ "ibcmdargs": ["--verbose"]
+}
+```
+
+Файл ищется вверх по дереву от целевого каталога. Аргументы вызова заменяют значение из
+настроек целиком, а не дополняют его: иначе снять заданный в проекте аргумент было бы нечем.

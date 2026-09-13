@@ -35,6 +35,9 @@
 .PARAMETER Format
     Формат выгрузки: Hierarchical или Plain (по умолчанию Hierarchical)
 
+.PARAMETER StrictLog
+    Отказ в журнале платформы поднимает код возврата до 1, даже если платформа вернула 0
+
 .EXAMPLE
     .\epf-dump.ps1 -InfoBasePath "C:\Bases\MyDB" -InputFile "build\МояОбработка.epf" -OutputDir "src"
 
@@ -70,7 +73,10 @@ param(
 
     [Parameter(Mandatory=$false)]
     [ValidateSet("Hierarchical", "Plain")]
-    [string]$Format = "Hierarchical"
+    [string]$Format = "Hierarchical",
+
+    [Parameter(Mandatory=$false)]
+    [switch]$StrictLog
 )
 
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -142,20 +148,73 @@ try {
     $process = Start-Process -FilePath $V8Path -ArgumentList $arguments -NoNewWindow -Wait -PassThru
     $exitCode = $process.ExitCode
 
+    # --- Read log ---
+    $logContent = $null
+    if (Test-Path $outFile) {
+        $logContent = Get-Content $outFile -Raw -ErrorAction SilentlyContinue
+    }
+
+    # --- Scan log for silent rejections (эталон: вердикт пакетного запуска, 1.7.0) ---
+    # Платформа штатно возвращает 0 при проваленной операции — отказ виден только в журнале.
+    $fatalLogPatterns = @(
+        'неверное свойство объекта метаданных',
+        'не входит в состав объекта метаданных',
+        'неизвестное имя типа',
+        'неизвестный объект метаданных',
+        'ни один из документов не является регистратором для регистра',
+        'неверное значение перечисления',
+        'не может быть приведен к типу',
+        'необходима версия платформы не меньше',
+        'не найден метод',
+        'не может быть применен'
+    )
+    $cleanLogPatterns = @(
+        'ошибок не обнаружено',
+        'ошибки не обнаружены',
+        'предупреждений не обнаружено',
+        'ошибок: 0',
+        'предупреждений: 0',
+        'errors were not found',
+        '0 errors'
+    )
+    $silentFailures = @()
+    if ($logContent) {
+        foreach ($line in ($logContent -split "`r?`n")) {
+            $trimmed = $line.Trim()
+            if (-not $trimmed) { continue }
+            $lower = $trimmed.ToLowerInvariant()
+            $isClean = $false
+            foreach ($pat in $cleanLogPatterns) {
+                if ($lower.Contains($pat)) { $isClean = $true; break }
+            }
+            if ($isClean) { continue }
+            foreach ($pat in $fatalLogPatterns) {
+                if ($lower.Contains($pat)) { $silentFailures += $trimmed; break }
+            }
+        }
+    }
+
     # --- Result ---
+    # По умолчанию — вердикт платформы по коду возврата; журнал всегда печатается.
+    # С -StrictLog отказ в журнале поднимает код возврата до 1, даже если платформа вернула 0.
     if ($exitCode -eq 0) {
         Write-Host "Dump completed successfully to: $OutputDir" -ForegroundColor Green
     } else {
         Write-Host "Error dumping (code: $exitCode)" -ForegroundColor Red
     }
 
-    if (Test-Path $outFile) {
-        $logContent = Get-Content $outFile -Raw -ErrorAction SilentlyContinue
-        if ($logContent) {
-            Write-Host "--- Log ---"
-            Write-Host $logContent
-            Write-Host "--- End ---"
-        }
+    if ($logContent) {
+        Write-Host "--- Log ---"
+        Write-Host $logContent
+        Write-Host "--- End ---"
+    }
+
+    if ($silentFailures.Count -gt 0) {
+        $msg = "[warning] platform reported success, but the log contains $($silentFailures.Count) problem(s)"
+        if (-not $StrictLog) { $msg += " (pass -StrictLog to treat as error)" }
+        Write-Host $msg -ForegroundColor Yellow
+        foreach ($f in $silentFailures) { Write-Host "  $f" -ForegroundColor Yellow }
+        if ($StrictLog -and $exitCode -eq 0) { $exitCode = 1 }
     }
 
     exit $exitCode

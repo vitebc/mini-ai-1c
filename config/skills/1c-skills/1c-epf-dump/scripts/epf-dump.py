@@ -53,6 +53,8 @@ def main():
         choices=["Hierarchical", "Plain"],
         help="Dump format (default: Hierarchical)",
     )
+    parser.add_argument("-StrictLog", action="store_true",
+                        help="Treat rejection patterns in the platform log as errors (elevate exit code to 1)")
     args = parser.parse_args()
 
     # --- Resolve V8Path ---
@@ -108,22 +110,76 @@ def main():
         )
         exit_code = result.returncode
 
+        # --- Read log ---
+        log_content = ""
+        if os.path.isfile(out_file):
+            try:
+                with open(out_file, "r", encoding="utf-8-sig") as f:
+                    log_content = f.read()
+            except Exception:
+                log_content = ""
+
+        # --- Scan log for silent rejections (эталон: вердикт пакетного запуска, 1.7.0) ---
+        # Платформа штатно возвращает 0 при проваленной операции — отказ виден только в журнале.
+        fatal_log_patterns = [
+            "неверное свойство объекта метаданных",
+            "не входит в состав объекта метаданных",
+            "неизвестное имя типа",
+            "неизвестный объект метаданных",
+            "ни один из документов не является регистратором для регистра",
+            "неверное значение перечисления",
+            "не может быть приведен к типу",
+            "необходима версия платформы не меньше",
+            "не найден метод",
+            "не может быть применен",
+        ]
+        clean_log_patterns = [
+            "ошибок не обнаружено",
+            "ошибки не обнаружены",
+            "предупреждений не обнаружено",
+            "ошибок: 0",
+            "предупреждений: 0",
+            "errors were not found",
+            "0 errors",
+        ]
+        silent_failures = []
+        if log_content:
+            for line in log_content.splitlines():
+                trimmed = line.strip()
+                if not trimmed:
+                    continue
+                lower = trimmed.lower()
+                if any(pat in lower for pat in clean_log_patterns):
+                    continue
+                for pat in fatal_log_patterns:
+                    if pat in lower:
+                        silent_failures.append(trimmed)
+                        break
+
         # --- Result ---
+        # По умолчанию — вердикт платформы по коду возврата; журнал всегда печатается.
+        # С -StrictLog отказ в журнале поднимает код возврата до 1, даже если платформа вернула 0.
         if exit_code == 0:
             print(f"Dump completed successfully to: {args.OutputDir}")
         else:
             print(f"Error dumping (code: {exit_code})", file=sys.stderr)
 
-        if os.path.isfile(out_file):
-            try:
-                with open(out_file, "r", encoding="utf-8-sig") as f:
-                    log_content = f.read()
-                if log_content:
-                    print("--- Log ---")
-                    print(log_content)
-                    print("--- End ---")
-            except Exception:
-                pass
+        if log_content:
+            print("--- Log ---")
+            print(log_content)
+            print("--- End ---")
+
+        if silent_failures:
+            suffix = "" if args.StrictLog else " (pass -StrictLog to treat as error)"
+            print(
+                f"[warning] platform reported success, but the log contains "
+                f"{len(silent_failures)} problem(s){suffix}",
+                file=sys.stderr,
+            )
+            for f in silent_failures:
+                print(f"  {f}", file=sys.stderr)
+            if args.StrictLog and exit_code == 0:
+                exit_code = 1
 
         sys.exit(exit_code)
 

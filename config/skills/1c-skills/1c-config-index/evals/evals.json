@@ -1,0 +1,39 @@
+{
+  "skill_name": "1c-config-index",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Построй индекс выгрузки конфигурации в каталоге src, запиши в .cache/config-index.json.",
+      "expected_output": "Скрипт config-index вызван с -ConfigPath src и -OutFile .cache/config-index.json. Индекс содержит declared, objects, types, commonModules.",
+      "expectations": [
+        "Вызван скрипт config-index с параметром -ConfigPath src",
+        "Вызван скрипт с параметром -OutFile .cache/config-index.json",
+        "Выходной JSON содержит ключ format с версией схемы индекса",
+        "Выходной JSON содержит ключ declared (состав Configuration.xml) и objects",
+        "Пустые корзины объектов в индекс не пишутся"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Нужен индекс расширения в src/cfe/МоёРасширение, только в stdout, без файла.",
+      "expected_output": "Скрипт вызван только с -ConfigPath, JSON напечатан в stdout, kind равен extension.",
+      "expectations": [
+        "Вызван скрипт config-index с параметром -ConfigPath src/cfe/МоёРасширение",
+        "Параметр -OutFile не задан — индекс выведен в stdout",
+        "В JSON ключ kind равен extension",
+        "В JSON есть namePrefix расширения"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Построй индекс src с подробным отчётом: какие объекты объявлены, но файлов нет.",
+      "expected_output": "Скрипт вызван с флагом -Detailed. В отчёте перечислены missing-объекты и время сборки.",
+      "expectations": [
+        "Вызван скрипт config-index с параметром -ConfigPath src",
+        "Вызван скрипт с флагом -Detailed",
+        "В JSON ключ missing содержит объекты без файлов на диске",
+        "Отчёт включает время сборки индекса"
+      ]
+    }
+  ]
+}

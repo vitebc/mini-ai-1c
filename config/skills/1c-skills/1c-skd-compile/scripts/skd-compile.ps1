@@ -58,6 +58,12 @@ function Esc-Xml {
 	return $s.Replace('&','&amp;').Replace('<','&lt;').Replace('>','&gt;').Replace('"','&quot;')
 }
 
+# Значение атрибута: сверх содержимого экранируется кавычка.
+function Esc-Attr {
+	param([string]$s)
+	return (Esc-Xml $s).Replace('"','&quot;')
+}
+
 function Resolve-QueryValue {
 	param([string]$val, [string]$baseDir)
 	if (-not $val.StartsWith("@")) { return $val }
@@ -953,7 +959,13 @@ function Emit-SingleParam {
 	}
 
 	# Value
-	Emit-ParamValue -type $parsed.type -val $parsed.value -indent "`t`t"
+	if (Test-EmptyParamValue $parsed.value) {
+		if (-not $parsed.valueListAllowed) {
+			Emit-EmptyParamValue -type $parsed.type -indent "`t`t"
+		}
+	} else {
+		Emit-ParamValue -type $parsed.type -val $parsed.value -indent "`t`t"
+	}
 
 	# Hidden implies useRestriction=true + availableAsField=false
 	if ($parsed.hidden -eq $true) {
@@ -1076,6 +1088,33 @@ function Emit-Parameters {
 			}
 			Emit-SingleParam -p $null -parsed $endParsed
 		}
+	}
+}
+
+# Параметр без значения: ссылочный тип и тип без указания дают nil, строка - пустой элемент.
+# Формы записи пустого значения параметра. Разворачиваются в отсутствие значения, а не в
+# значение из этих букв: замер на платформе 8.3.27.2214 показал, что просочившийся маркер
+# делает схему нечитаемой - дата со значением null, булево с пустым содержимым и вариант
+# периода из подчеркивания отвергаются при разборе.
+$script:EmptyValueTokens = @('', '_', 'null')
+
+function Test-EmptyParamValue {
+	param($val)
+	if ($null -eq $val) { return $true }
+	if ($val -is [string]) { return $script:EmptyValueTokens -contains $val.Trim() }
+	return $false
+}
+
+function Emit-EmptyParamValue {
+	param([string]$type, [string]$indent)
+	# Составной тип не ссылочный и не строковый: у него несколько типов, и приписывать
+	# пустому значению строковый тип нельзя - платформа такую схему отвергает. Типы в
+	# составном разделяются ПРОБЕЛОМ; запятая стоит внутри квалификаторов одиночного типа.
+	if ($type -and $type.Trim() -match '\s') { return }
+	if (-not $type -or $type -match '^[A-Za-z]+Ref\.') {
+		X "$indent<value xsi:nil=`"true`"/>"
+	} elseif ($type -match '^string') {
+		X "$indent<value xsi:type=`"xs:string`"/>"
 	}
 }
 
@@ -2183,6 +2222,16 @@ function Emit-SettingsVariants {
 			Emit-OutputParameters -params $s.outputParameters -indent "`t`t`t"
 		}
 
+		if ($s.additionalProperties) {
+			X "`t`t`t<dcsset:additionalProperties>"
+			foreach ($prop in $s.additionalProperties.PSObject.Properties) {
+				X "`t`t`t`t<v8:Property name=`"$(Esc-Attr $prop.Name)`">"
+				X "`t`t`t`t`t<v8:Value xsi:type=`"xs:string`">$(Esc-Xml "$($prop.Value)")</v8:Value>"
+				X "`t`t`t`t</v8:Property>"
+			}
+			X "`t`t`t</dcsset:additionalProperties>"
+		}
+
 		# DataParameters
 		if ($s.dataParameters -eq 'auto') {
 			# Auto-generate dataParameters for all non-hidden params.
@@ -2251,14 +2300,8 @@ function Emit-SettingsVariants {
 # --- 12. Assemble XML ---
 
 X "<?xml version=`"1.0`" encoding=`"UTF-8`"?>"
-X "<DataCompositionSchema xmlns=`"http://v8.1c.ru/8.1/data-composition-system/schema`""
-X "`t`txmlns:dcscom=`"http://v8.1c.ru/8.1/data-composition-system/common`""
-X "`t`txmlns:dcscor=`"http://v8.1c.ru/8.1/data-composition-system/core`""
-X "`t`txmlns:dcsset=`"http://v8.1c.ru/8.1/data-composition-system/settings`""
-X "`t`txmlns:v8=`"http://v8.1c.ru/8.1/data/core`""
-X "`t`txmlns:v8ui=`"http://v8.1c.ru/8.1/data/ui`""
-X "`t`txmlns:xs=`"http://www.w3.org/2001/XMLSchema`""
-X "`t`txmlns:xsi=`"http://www.w3.org/2001/XMLSchema-instance`">"
+# Платформа пишет шапку схемы одной строкой.
+X '<DataCompositionSchema xmlns="http://v8.1c.ru/8.1/data-composition-system/schema" xmlns:dcscom="http://v8.1c.ru/8.1/data-composition-system/common" xmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core" xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
 
 Emit-DataSources
 Emit-DataSets

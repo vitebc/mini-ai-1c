@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# add-help v1.9 — Add built-in help to 1C object
+# help-add v1.19 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -9,6 +9,28 @@ import re
 import sys
 
 from lxml import etree
+
+# Регистронезависимый ввод — паритет с PS1: в PowerShell имена параметров и [ValidateSet]
+# регистр не различают, в argparse совпадение точное.
+def ci_parse_args(parser, argv=None):
+    """parse_args по правилам PS: имена параметров и значения choices регистронезависимы."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    names = {s.lower(): s for a in parser._actions for s in a.option_strings}
+    for i, tok in enumerate(argv):
+        if tok.startswith('-') and tok.lower() in names:
+            argv[i] = names[tok.lower()]
+    # choices — зеркало [ValidateSet]; канонизируем ДО разбора, иначе argparse отвергнет регистр
+    choice_map = {}
+    for a in parser._actions:
+        if a.choices:
+            for s in a.option_strings:
+                choice_map[s] = {str(c).lower(): c for c in a.choices}
+    for i in range(len(argv) - 1):
+        m = choice_map.get(argv[i])
+        if m and argv[i + 1].lower() in m:
+            argv[i + 1] = m[argv[i + 1].lower()]
+    return parser.parse_args(argv)
+
 
 NSMAP = {"md": "http://v8.1c.ru/8.3/MDClasses"}
 
@@ -191,6 +213,16 @@ def assert_edit_allowed(target_path, require):
 
 def detect_format_version(d):
     while d:
+        # Автономная внешняя обработка/отчёт: своего Configuration.xml у неё нет, версию несёт
+        # корень самой обработки. Без этого форма и макет внутри обработки 2.21 писались бы 2.17.
+        ext_path = d + ".xml"
+        if os.path.isfile(ext_path):
+            with open(ext_path, "r", encoding="utf-8-sig") as f:
+                ext_head = f.read(2000)
+            if re.search(r'<(ExternalDataProcessor|ExternalReport)[ >]', ext_head):
+                m = re.search(r'<MetaDataObject[^>]+version="(\d+\.\d+)"', ext_head)
+                if m:
+                    return m.group(1)
         cfg_path = os.path.join(d, "Configuration.xml")
         if os.path.isfile(cfg_path):
             with open(cfg_path, "r", encoding="utf-8-sig") as f:
@@ -222,21 +254,22 @@ def _detect_xml_style(path):
 
 
 def _finalize_xml_bytes(xml_bytes, style):
-    """Привести сериализованные байты к стилю оригинала (или к дефолту, если style is None)."""
-    enc_decl = style["enc"] if style else "utf-8"
+    """Привести байты к стилю оригинала; для НОВОГО файла (style is None) — к канону
+    выгрузки Конфигуратора: encoding="UTF-8", CRLF в разделителях, без перевода в конце."""
+    enc_decl = style["enc"] if style else "UTF-8"
     xml_bytes = xml_bytes.replace(
         b"<?xml version='1.0' encoding='UTF-8'?>",
         b'<?xml version="1.0" encoding="' + enc_decl.encode("ascii") + b'"?>')
     # Канонизировать переносы к LF (убирает &#13; от \r в tail'ах)
     xml_bytes = (xml_bytes.replace(b"&#13;\n", b"\n").replace(b"&#13;", b"")
                  .replace(b"\r\n", b"\n").replace(b"\r", b"\n"))
-    # Финальный перенос — как в оригинале (новый файл → есть)
-    want_final_nl = style["final_nl"] if style else True
+    # Финальный перенос — как в оригинале (новый файл → нет, канон #57)
+    want_final_nl = style["final_nl"] if style else False
     xml_bytes = xml_bytes.rstrip(b"\n")
     if want_final_nl:
         xml_bytes += b"\n"
-    # EOL — как в оригинале (новый файл → LF, текущее поведение)
-    if style and style["crlf"]:
+    # EOL — как в оригинале (новый файл → CRLF, канон #57)
+    if (style["crlf"] if style else True):
         xml_bytes = xml_bytes.replace(b"\n", b"\r\n")
     return xml_bytes
 
@@ -252,10 +285,24 @@ def save_xml_with_bom(tree, path):
         f.write(xml_bytes)
 
 
-def write_text_with_bom(path, text):
-    """Write text to file with UTF-8 BOM."""
-    with open(path, "w", encoding="utf-8-sig") as f:
-        f.write(text)
+def write_utf8_bom(path, content):
+    # newline='' — без трансляции: иначе текстовый режим Python дал бы CRLF на Windows
+    # и LF на macOS, то есть вывод навыка зависел бы от ОС.
+    with open(path, 'w', encoding='utf-8-sig', newline='') as f:
+        f.write(content)
+
+
+
+def write_xml_file(path, content):
+    """XML в каноне выгрузки Конфигуратора: CRLF в разделителях, без перевода в конце.
+
+    Копия этой функции есть в каждом навыке-эмиттере (навыки автономны). Держать
+    копии одинаковыми — сознательно: разошедшиеся копии сводят на нет весь смысл.
+
+    HTML-страница сюда НЕ идёт — платформа хранит её с LF.
+    """
+    text = content.replace('\r\n', '\n').replace('\n', '\r\n').rstrip('\r\n')
+    write_utf8_bom(path, text)
 
 
 def main():
@@ -265,7 +312,7 @@ def main():
     parser.add_argument("-ObjectName", required=True)
     parser.add_argument("-Lang", default="ru")
     parser.add_argument("-SrcDir", default="src")
-    args = parser.parse_args()
+    args = ci_parse_args(parser)
 
     object_name = args.ObjectName
     lang = args.Lang
@@ -301,7 +348,7 @@ def main():
         '</Help>'
     )
 
-    write_text_with_bom(help_xml_path, help_xml)
+    write_xml_file(help_xml_path, help_xml)
 
     # --- 2. Help/<lang>.html ---
 
@@ -324,7 +371,7 @@ def main():
         '</html>'
     )
 
-    write_text_with_bom(help_html_path, help_html)
+    write_utf8_bom(help_html_path, help_html)
 
     # --- 3. Check IncludeHelpInContents in form metadata ---
 

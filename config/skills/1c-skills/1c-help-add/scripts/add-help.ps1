@@ -1,4 +1,4 @@
-﻿# help-add v1.9 — Add built-in help to 1C object
+﻿# help-add v1.19 — Add built-in help to 1C object (+write_xml_file/write_utf8_bom: общий эталон записи)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -149,10 +149,20 @@ function Assert-EditAllowed([string]$targetPath, [string]$require) {
 function Detect-FormatVersion([string]$dir) {
 	$d = $dir
 	while ($d) {
+		# Автономная внешняя обработка/отчёт: своего Configuration.xml у неё нет, версию несёт
+		# корень самой обработки. Без этого форма и макет внутри обработки 2.21 писались бы 2.17.
+		$extPath = "$d.xml"
+		if (Test-Path $extPath) {
+			$extText = [System.IO.File]::ReadAllText($extPath, [System.Text.Encoding]::UTF8)
+			$extHead = $extText.Substring(0, [Math]::Min(2000, $extText.Length))
+			if ($extHead -match '<(ExternalDataProcessor|ExternalReport)[ >]' -and $extHead -match '<MetaDataObject[^>]+version="(\d+\.\d+)"') { return $Matches[1] }
+		}
 		$cfgPath = Join-Path $d "Configuration.xml"
 		if (Test-Path $cfgPath) {
-			$content = [System.IO.File]::ReadAllText($cfgPath, [System.Text.Encoding]::UTF8)
-			$head = $content.Substring(0, [Math]::Min(2000, $content.Length))
+			$cfgText = [System.IO.File]::ReadAllText($cfgPath, [System.Text.Encoding]::UTF8)
+			# Длину среза берём по СТРОКЕ, а не по размеру файла: размер в БАЙТАХ, Substring считает
+			# СИМВОЛЫ, и на кириллице байт больше — короткий Configuration.xml ронял навык исключением.
+			$head = $cfgText.Substring(0, [Math]::Min(2000, $cfgText.Length))
 			if ($head -match '<MetaDataObject[^>]+version="(\d+\.\d+)"') { return $Matches[1] }
 		}
 		$parent = Split-Path $d -Parent
@@ -195,7 +205,18 @@ $helpXml = @"
 </Help>
 "@
 
-[System.IO.File]::WriteAllText($helpXmlPath, $helpXml, $encBom)
+# XML в каноне выгрузки Конфигуратора: CRLF в разделителях, без перевода в конце.
+#
+# Копия этой функции есть в каждом навыке-эмиттере (навыки автономны). Держать
+# копии одинаковыми — сознательно: разошедшиеся копии сводят на нет весь смысл.
+#
+# HTML-страница сюда НЕ идёт — платформа хранит её с LF.
+function Write-XmlFile([string]$path, [string]$text, $encoding) {
+	$t = ($text -replace "`r`n", "`n") -replace "`n", "`r`n"
+	[System.IO.File]::WriteAllText($path, $t.TrimEnd("`r", "`n"), $encoding)
+}
+
+Write-XmlFile $helpXmlPath $helpXml $encBom
 
 # --- 2. Help/<lang>.html ---
 
@@ -255,11 +276,26 @@ if (Test-Path $formsDir) {
 				$settings = New-Object System.Xml.XmlWriterSettings
 				$settings.Encoding = $encBom
 				$settings.Indent = $false
-				$stream = New-Object System.IO.FileStream($formMeta.FullName, [System.IO.FileMode]::Create)
-				$writer = [System.Xml.XmlWriter]::Create($stream, $settings)
+				$settings.NewLineHandling = [System.Xml.NewLineHandling]::None
+				# Через MemoryStream, а не прямо в файл: нужен шаг пост-обработки строки.
+				$memStream = New-Object System.IO.MemoryStream
+				$writer = [System.Xml.XmlWriter]::Create($memStream, $settings)
 				$xmlDoc.Save($writer)
-				$writer.Close()
-				$stream.Close()
+				$writer.Flush(); $writer.Close()
+
+				$xmlText = [System.Text.Encoding]::UTF8.GetString($memStream.ToArray())
+				$memStream.Close()
+				if ($xmlText.Length -gt 0 -and $xmlText[0] -eq [char]0xFEFF) { $xmlText = $xmlText.Substring(1) }
+				$xmlText = $xmlText.Replace('encoding="utf-8"', 'encoding="UTF-8"')
+				# Пустой элемент: XmlWriter отдаёт `<a />`, Конфигуратор пишет `<a/>`. Внутри
+				# CDATA/комментария ` />` может быть содержимым (там `>` не экранируется),
+				# поэтому они идут первыми ветками альтернации и возвращаются как есть.
+				$xmlText = [regex]::Replace($xmlText, '(?s)<!\[CDATA\[.*?\]\]>|<!--.*?-->|(?<=\S) />', { param($m) if ($m.Value -eq ' />') { '/>' } else { $m.Value } })
+				# Целевой перевод строки: стиль файла-назначения — правка наследует его (#44/#46/#47),
+				# новый файл получает канон выгрузки CRLF. Зеркало _detect_xml_style в py-порту.
+				$targetEol = if ((Test-Path -LiteralPath $formMeta.FullName) -and ([System.IO.File]::ReadAllText($formMeta.FullName) -notmatch "`r`n")) { "`n" } else { "`r`n" }
+				$xmlText = ($xmlText -replace "`r`n", "`n") -replace "`n", $targetEol
+				[System.IO.File]::WriteAllText($formMeta.FullName, $xmlText, $encBom)
 
 				Write-Host "     IncludeHelpInContents добавлен: $($formMeta.Name)"
 			}

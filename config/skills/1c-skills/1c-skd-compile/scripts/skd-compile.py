@@ -12,6 +12,12 @@ import uuid
 def esc_xml(s):
     return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
 
+
+def esc_attr(s):
+    """Значение атрибута: сверх содержимого экранируется кавычка."""
+    return esc_xml(s).replace('"', '&quot;')
+
+
 def fmt_dec(v):
     """Format decimal: 30.0 → '30', 16.625 → '16.625' (match PS1 output)."""
     return str(int(v)) if v == int(v) else str(v)
@@ -765,6 +771,39 @@ def emit_total_fields(lines, defn):
 
 # === Parameters ===
 
+REF_TYPE_RE = re.compile(r'^[A-Za-z]+Ref\.')
+
+
+# Формы записи пустого значения параметра. Разворачиваются в отсутствие значения, а не в
+# значение из этих букв: замер на платформе 8.3.27.2214 показал, что просочившийся маркер
+# делает схему нечитаемой - дата со значением null, булево с пустым содержимым и вариант
+# периода из подчеркивания отвергаются при разборе.
+EMPTY_VALUE_TOKENS = ('', '_', 'null')
+
+
+def is_empty_param_value(val):
+    """Значение параметра пустое: не задано вовсе либо задано маркером пустоты."""
+    return val is None or (isinstance(val, str) and val.strip() in EMPTY_VALUE_TOKENS)
+
+
+def emit_empty_param_value(lines, type_str, indent):
+    """Параметр без значения: ссылочный тип и тип без указания дают nil, строка - пустой элемент.
+
+    Составной тип не относится ни к тем, ни к другим: у него несколько типов, и приписывать
+    пустому значению строковый тип нельзя - платформа такую схему отвергает. Для остальных
+    типов элемент значения не пишется вовсе.
+
+    Типы в составном разделяются ПРОБЕЛОМ. Запятая тут не признак: она стоит внутри
+    квалификаторов одиночного типа - string(10,fix), Number(5,2).
+    """
+    if type_str and ' ' in type_str.strip():
+        return
+    if not type_str or REF_TYPE_RE.match(type_str):
+        lines.append(f'{indent}<value xsi:nil="true"/>')
+    elif type_str.startswith('string'):
+        lines.append(f'{indent}<value xsi:type="xs:string"/>')
+
+
 def emit_param_value(lines, type_str, val, indent):
     if val is None:
         return
@@ -821,7 +860,11 @@ def emit_single_param(lines, p, parsed):
         lines.append('\t\t</valueType>')
 
     # Value
-    emit_param_value(lines, parsed.get('type', ''), parsed.get('value'), '\t\t')
+    if is_empty_param_value(parsed.get('value')):
+        if not parsed.get('valueListAllowed'):
+            emit_empty_param_value(lines, parsed.get('type', ''), '\t\t')
+    else:
+        emit_param_value(lines, parsed.get('type', ''), parsed.get('value'), '\t\t')
 
     # Hidden implies useRestriction=true + availableAsField=false
     if parsed.get('hidden') is True:
@@ -1839,6 +1882,16 @@ def emit_settings_variants(lines, defn):
         if s.get('outputParameters'):
             emit_output_parameters(lines, s['outputParameters'], '\t\t\t')
 
+        # Дополнительные свойства: имя идет в атрибут и требует экранирования кавычки,
+        # значение - в содержимое, где кавычка допустима.
+        if s.get('additionalProperties'):
+            lines.append('\t\t\t<dcsset:additionalProperties>')
+            for prop_name, prop_value in s['additionalProperties'].items():
+                lines.append(f'\t\t\t\t<v8:Property name="{esc_attr(str(prop_name))}">')
+                lines.append(f'\t\t\t\t\t<v8:Value xsi:type="xs:string">{esc_xml(str(prop_value))}</v8:Value>')
+                lines.append('\t\t\t\t</v8:Property>')
+            lines.append('\t\t\t</dcsset:additionalProperties>')
+
         # DataParameters
         if s.get('dataParameters') == 'auto':
             # Auto-generate dataParameters for all non-hidden params.
@@ -1965,14 +2018,8 @@ def main():
     lines = []
 
     lines.append('<?xml version="1.0" encoding="UTF-8"?>')
-    lines.append('<DataCompositionSchema xmlns="http://v8.1c.ru/8.1/data-composition-system/schema"')
-    lines.append('\t\txmlns:dcscom="http://v8.1c.ru/8.1/data-composition-system/common"')
-    lines.append('\t\txmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core"')
-    lines.append('\t\txmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings"')
-    lines.append('\t\txmlns:v8="http://v8.1c.ru/8.1/data/core"')
-    lines.append('\t\txmlns:v8ui="http://v8.1c.ru/8.1/data/ui"')
-    lines.append('\t\txmlns:xs="http://www.w3.org/2001/XMLSchema"')
-    lines.append('\t\txmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">')
+    # Платформа пишет шапку схемы одной строкой.
+    lines.append('<DataCompositionSchema xmlns="http://v8.1c.ru/8.1/data-composition-system/schema" xmlns:dcscom="http://v8.1c.ru/8.1/data-composition-system/common" xmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core" xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">')
 
     emit_data_sources(lines, data_sources)
     emit_data_sets(lines, defn, default_source)

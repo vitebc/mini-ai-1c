@@ -49,6 +49,10 @@ def write_text_with_bom(path, text):
         f.write(text)
 
 
+# Идентификатор 1С: буквы, цифры, подчеркивание; первый символ не цифра.
+FORM_NAME_RE = re.compile(r"^[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*$")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -62,6 +66,9 @@ def main():
 
     object_path = args.ObjectPath
     form_name = args.FormName
+    if not FORM_NAME_RE.match(form_name):
+        print(f"FormName '{form_name}' не является идентификатором 1С: допустимы буквы, цифры и подчеркивание, первый символ не цифра", file=sys.stderr)
+        sys.exit(1)
     synonym = args.Synonym if args.Synonym is not None else form_name
     purpose = args.Purpose
     set_default = args.SetDefault

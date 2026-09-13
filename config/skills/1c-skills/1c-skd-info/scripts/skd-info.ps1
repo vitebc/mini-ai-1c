@@ -9,7 +9,9 @@ param(
 	[int]$Batch = 0,
 	[int]$Limit = 150,
 	[int]$Offset = 0,
-	[string]$OutFile
+	[string]$OutFile,
+	# Сырой вывод запроса: только текст, без заголовков и разбивки на пакеты.
+	[switch]$Raw
 )
 
 $ErrorActionPreference = "Stop"
@@ -662,7 +664,12 @@ function Show-Query {
 
 	$totalQueryLines = ($rawQuery -split "`n").Count
 
-	if ($batches.Count -le 1) {
+	if ($Raw) {
+		# Сырой вывод: текст запроса как есть, без заголовков и разбивки на пакеты.
+		foreach ($ql in ($rawQuery.Trim() -split "`n")) {
+			$lines.Add($ql.TrimEnd())
+		}
+	} elseif ($batches.Count -le 1) {
 		# Single query
 		$lines.Add("=== Query: $dsNameStr ($totalQueryLines lines) ===")
 		$lines.Add("")

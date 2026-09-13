@@ -1737,7 +1737,7 @@ $script:eventSuffixMap = @{
 	"BeforeDeleteRow"      = "ПередУдалением"
 	"BeforeRowChange"      = "ПередНачаломИзменения"
 	"OnStartEdit"          = "ПриНачалеРедактирования"
-	"OnEndEdit"            = "ПриОкончанииРедактирования"
+	"OnEditEnd"            = "ПриОкончанииРедактирования"
 	"Selection"            = "ВыборСтроки"
 	"OnCurrentPageChange"  = "ПриСменеСтраницы"
 	"TextEditEnd"          = "ОкончаниеВводаТекста"
@@ -1745,7 +1745,17 @@ $script:eventSuffixMap = @{
 	"DragStart"            = "НачалоПеретаскивания"
 	"Drag"                 = "Перетаскивание"
 	"DragCheck"            = "ПроверкаПеретаскивания"
-	"Drop"                 = "Помещение"
+	"BeforeEditEnd"        = "ПередОкончаниемРедактирования"
+	"OnActivateCell"       = "ПриАктивизацииЯчейки"
+	"OnActivateField"      = "ПриАктивизацииПоля"
+	"ValueChoice"          = "ВыборЗначения"
+	"DragEnd"              = "ОкончаниеПеретаскивания"
+	"OnGetDataAtServer"    = "ПриПолученииДанныхНаСервере"
+	"BeforeLoadUserSettingsAtServer"= "ПередЗагрузкойПользовательскихНастроекНаСервере"
+	"OnUpdateUserSettingSetAtServer"= "ПриОбновленииСоставаПользовательскихНастроекНаСервере"
+	"Creating"             = "Создание"
+	"EditTextChange"       = "ИзменениеТекстаРедактирования"
+	"OnActivate"           = "ПриАктивизации"
 	"AfterDeleteRow"       = "ПослеУдаления"
 }
 
@@ -1767,7 +1777,7 @@ function Get-ElementName {
 }
 
 $script:knownEvents = @{
-	"input"     = @("OnChange","StartChoice","ChoiceProcessing","AutoComplete","TextEditEnd","Clearing","Creating","EditTextChange")
+	"input"     = @("OnChange","StartChoice","ChoiceProcessing","AutoComplete","TextEditEnd","Clearing","Creating","EditTextChange","Opening")
 	"check"     = @("OnChange")
 	"label"     = @("Click","URLProcessing")
 	"labelField"= @("OnChange","StartChoice","ChoiceProcessing","Click","URLProcessing","Clearing")
@@ -1818,6 +1828,94 @@ function Emit-Companion {
 	X "$indent<$tag name=`"$name`" id=`"$id`"/>"
 }
 
+# Дополнения командной панели динамического списка. Замер на платформе 8.3.27.2214:
+# у каждого вида свое значение типа источника, элементом источника платформа ставит имя
+# родительской таблицы, а объявленное дополнение НЕ заменяет автоматическое.
+$script:AdditionTypes = @{
+	searchString  = @{ Tag = "SearchStringAddition";  Source = "SearchStringRepresentation" }
+	viewStatus    = @{ Tag = "ViewStatusAddition";    Source = "ViewStatusRepresentation" }
+	searchControl = @{ Tag = "SearchControlAddition"; Source = "SearchControl" }
+}
+
+# Положение в панели. Умолчание платформа не пишет, поэтому его не пишем и мы.
+$script:HorizontalLocations = @{
+	"auto" = $null; "авто" = $null
+	"left" = "Left"; "слева" = "Left"
+	"right" = "Right"; "справа" = "Right"
+	"center" = "Center"; "центр" = "Center"
+}
+
+# Имя таблицы, внутри которой идет разбор: источник дополнения по умолчанию.
+$script:CurrentTable = New-Object System.Collections.Stack
+
+function Resolve-HorizontalLocation {
+	param($value)
+	if (-not $value) { return $null }
+	$key = "$value".Trim().ToLower()
+	if ($script:HorizontalLocations.ContainsKey($key)) { return $script:HorizontalLocations[$key] }
+	return "$value"
+}
+
+function Emit-Addition {
+	param($el, [string]$name, $eid, [string]$indent, [string]$kind)
+	$tag = $script:AdditionTypes[$kind].Tag
+	$sourceType = $script:AdditionTypes[$kind].Source
+	X "$indent<$tag name=`"$name`" id=`"$eid`">"
+	$inner = "$indent`t"
+
+	$source = if ($el.source) { "$($el.source)" }
+		elseif ($script:CurrentTable.Count -gt 0) { $script:CurrentTable.Peek() }
+		else { "" }
+	if (-not $source) {
+		Write-Warning "Дополнение '$name': источник не задан и родительской таблицы нет - укажите source"
+	}
+	X "$inner<AdditionSource>"
+	X "$inner`t<Item>$source</Item>"
+	X "$inner`t<Type>$sourceType</Type>"
+	X "$inner</AdditionSource>"
+
+	Emit-Title -el $el -name $name -indent $inner
+	Emit-CommonFlags -el $el -indent $inner
+	if ($el.width) { X "$inner<Width>$($el.width)</Width>" }
+	if ($null -ne $el.horizontalStretch) {
+		$hs = if ($el.horizontalStretch) { "true" } else { "false" }
+		X "$inner<HorizontalStretch>$hs</HorizontalStretch>"
+	}
+	$location = Resolve-HorizontalLocation $el.horizontalLocation
+	if ($location) { X "$inner<HorizontalLocation>$location</HorizontalLocation>" }
+
+	Emit-Companion -tag "ContextMenu" -name "${name}КонтекстноеМеню" -indent $inner
+	Emit-Companion -tag "ExtendedTooltip" -name "${name}РасширеннаяПодсказка" -indent $inner
+	X "$indent</$tag>"
+}
+
+function Emit-TableAddition {
+	param($el, [string]$tableName, [string]$kind, [string]$additionName, [string]$indent)
+	$tag = $script:AdditionTypes[$kind].Tag
+	$settings = $null
+	if ($el.additions) { $settings = $el.additions.$kind }
+	if (-not $settings) {
+		Emit-Companion -tag $tag -name $additionName -indent $indent
+		return
+	}
+	if (-not $settings.source) {
+		$settings | Add-Member -NotePropertyName source -NotePropertyValue $tableName -Force
+	}
+	Emit-Addition -el $settings -name $additionName -eid (New-Id) -indent $indent -kind $kind
+}
+
+function Emit-CommandBarChildren {
+	param($el, [string]$indent)
+	# Ключ принимает и строку - имя готовой панели в наборах генерации формы.
+	# Элементами считается только список объектов.
+	if ($el.commandBar -isnot [System.Object[]]) { return }
+	$children = @($el.commandBar | Where-Object { $_ -is [System.Management.Automation.PSCustomObject] })
+	if ($children.Count -eq 0) { return }
+	X "$indent`t<ChildItems>"
+	foreach ($child in $children) { Emit-Element -el $child -indent "$indent`t`t" }
+	X "$indent`t</ChildItems>"
+}
+
 function Emit-Element {
 	param($el, [string]$indent)
 
@@ -1825,7 +1923,7 @@ function Emit-Element {
 	$typeKey = $null
 	$xmlTag = $null
 
-	foreach ($key in @("group","input","check","label","labelField","table","pages","page","button","picture","picField","calendar","cmdBar","popup")) {
+	foreach ($key in @("group","input","check","label","labelField","table","pages","page","button","picture","picField","calendar","cmdBar","popup","searchString","viewStatus","searchControl")) {
 		if ($el.$key -ne $null) {
 			$typeKey = $key
 			break
@@ -1842,6 +1940,8 @@ function Emit-Element {
 		# type keys
 		"group"=1;"input"=1;"check"=1;"label"=1;"labelField"=1;"table"=1;"pages"=1;"page"=1
 		"button"=1;"picture"=1;"picField"=1;"calendar"=1;"cmdBar"=1;"popup"=1
+		"searchString"=1;"viewStatus"=1;"searchControl"=1;"source"=1
+		"horizontalLocation"=1;"additions"=1;"commandBar"=1
 		# naming & binding
 		"name"=1;"path"=1;"title"=1
 		# visibility & state
@@ -1884,6 +1984,9 @@ function Emit-Element {
 	$id = New-Id
 
 	switch ($typeKey) {
+		"searchString"  { Emit-Addition -el $el -name $name -eid $id -indent $indent -kind "searchString" }
+		"viewStatus"    { Emit-Addition -el $el -name $name -eid $id -indent $indent -kind "viewStatus" }
+		"searchControl" { Emit-Addition -el $el -name $name -eid $id -indent $indent -kind "searchControl" }
 		"group"    { Emit-Group -el $el -name $name -id $id -indent $indent }
 		"input"    { Emit-Input -el $el -name $name -id $id -indent $indent }
 		"check"    { Emit-Check -el $el -name $name -id $id -indent $indent }
@@ -2114,6 +2217,8 @@ function Emit-Table {
 	param($el, [string]$name, [int]$id, [string]$indent)
 
 	X "$indent<Table name=`"$name`" id=`"$id`">"
+	# Имя таблицы нужно вложенным дополнениям: источник по умолчанию - она сама.
+	$script:CurrentTable.Push($name) | Out-Null
 	$inner = "$indent`t"
 
 	if ($el.path) { X "$inner<DataPath>$($el.path)</DataPath>" }
@@ -2150,13 +2255,18 @@ function Emit-Table {
 		X "$inner<AutoCommandBar name=`"${name}КоманднаяПанель`" id=`"$acbId`">"
 		$afVal = if ($el.tableAutofill) { "true" } else { "false" }
 		X "$inner`t<Autofill>$afVal</Autofill>"
+		Emit-CommandBarChildren -el $el -indent $inner
+		X "$inner</AutoCommandBar>"
+	} elseif ($el.commandBar -is [System.Object[]] -and @($el.commandBar | Where-Object { $_ -is [System.Management.Automation.PSCustomObject] }).Count -gt 0) {
+		X "$inner<AutoCommandBar name=`"${name}КоманднаяПанель`" id=`"$(New-Id)`">"
+		Emit-CommandBarChildren -el $el -indent $inner
 		X "$inner</AutoCommandBar>"
 	} else {
 		Emit-Companion -tag "AutoCommandBar" -name "${name}КоманднаяПанель" -indent $inner
 	}
-	Emit-Companion -tag "SearchStringAddition" -name "${name}СтрокаПоиска" -indent $inner
-	Emit-Companion -tag "ViewStatusAddition" -name "${name}СостояниеПросмотра" -indent $inner
-	Emit-Companion -tag "SearchControlAddition" -name "${name}УправлениеПоиском" -indent $inner
+	Emit-TableAddition -el $el -tableName $name -kind "searchString" -additionName "${name}СтрокаПоиска" -indent $inner
+	Emit-TableAddition -el $el -tableName $name -kind "viewStatus" -additionName "${name}СостояниеПросмотра" -indent $inner
+	Emit-TableAddition -el $el -tableName $name -kind "searchControl" -additionName "${name}УправлениеПоиском" -indent $inner
 
 	# Columns
 	if ($el.columns -and $el.columns.Count -gt 0) {
@@ -2169,6 +2279,7 @@ function Emit-Table {
 
 	Emit-Events -el $el -elementName $name -indent $inner -typeKey "table"
 
+	$null = $script:CurrentTable.Pop()
 	X "$indent</Table>"
 }
 

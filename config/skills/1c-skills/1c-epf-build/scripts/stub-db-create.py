@@ -781,7 +781,12 @@ def main():
     parser.add_argument('-SourceDir', required=True)
     parser.add_argument('-V8Path', required=True)
     parser.add_argument('-TempBasePath', default='')
+    parser.add_argument('-AdditionalV8Arguments', default='',
+                        help='Extra platform arguments, comma-separated (appended to every platform run)')
     args = parser.parse_args()
+
+    # Дополнительные аргументы приходят от вызывающего скрипта одной строкой через запятую.
+    extra_args = [p.strip() for p in args.AdditionalV8Arguments.split(',') if p.strip()]
 
     type_map = scan_ref_types(args.SourceDir)
     register_columns = scan_register_columns(args.SourceDir)
@@ -1037,7 +1042,7 @@ def main():
     # Create infobase
     print(f'Creating infobase: {temp_base}')
     result = subprocess.run(
-        [args.V8Path, 'CREATEINFOBASE', f'File={temp_base}', '/DisableStartupDialogs'],
+        [args.V8Path, 'CREATEINFOBASE', f'File={temp_base}', '/DisableStartupDialogs'] + extra_args,
         capture_output=True, text=True,
     )
     if result.returncode != 0:
@@ -1049,7 +1054,7 @@ def main():
         # LoadConfigFromFiles
         print('Loading configuration from files...')
         result = subprocess.run(
-            [args.V8Path, 'DESIGNER', f'/F{temp_base}', '/LoadConfigFromFiles', cfg_dir, '/DisableStartupDialogs'],
+            [args.V8Path, 'DESIGNER', f'/F{temp_base}', '/LoadConfigFromFiles', cfg_dir, '/DisableStartupDialogs'] + extra_args,
             capture_output=True, text=True,
         )
         if result.returncode != 0:
@@ -1060,7 +1065,7 @@ def main():
         print('Updating database configuration...')
         update_log = os.path.join(tempfile.gettempdir(), 'stub_update_log.txt')
         result = subprocess.run(
-            [args.V8Path, 'DESIGNER', f'/F{temp_base}', '/UpdateDBCfg', '/Out', update_log, '/DisableStartupDialogs'],
+            [args.V8Path, 'DESIGNER', f'/F{temp_base}', '/UpdateDBCfg', '/Out', update_log, '/DisableStartupDialogs'] + extra_args,
             capture_output=True, text=True,
         )
         if result.returncode != 0:

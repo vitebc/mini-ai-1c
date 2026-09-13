@@ -19,7 +19,7 @@ allowed-tools:
 ## Usage
 
 ```
-/erf-init <Name> [Synonym] [SrcDir] [--with-skd]
+/erf-init <Name> [Synonym] [SrcDir] [--with-skd] [-FormatVersion <Version>]
 ```
 
 | Параметр  | Обязательный | По умолчанию | Описание                              |
@@ -28,11 +28,12 @@ allowed-tools:
 | Synonym   | нет          | = Name       | Синоним (отображаемое имя)            |
 | SrcDir    | нет          | `src`        | Каталог исходников относительно CWD   |
 | --WithSKD | нет          | —            | Создать пустую СКД и привязать к MainDataCompositionSchema |
+| -FormatVersion | нет       | `2.17`       | Версия формата выгрузки в шапке XML (проверено 2.17–2.21; вне диапазона — предупреждение, нечисловое — отказ; с 2.21 в шапке `xmlns:pal`) |
 
 ## Команда
 
 ```powershell
-powershell.exe -NoProfile -File 1c-erf-init/scripts/init.ps1 -Name "<Name>" [-Synonym "<Synonym>"] [-SrcDir "<SrcDir>"] [-WithSKD]
+powershell.exe -NoProfile -File 1c-erf-init/scripts/init.ps1 -Name "<Name>" [-Synonym "<Synonym>"] [-SrcDir "<SrcDir>"] [-WithSKD] [-FormatVersion "<Version>"]
 ```
 
 ## Дальнейшие шаги

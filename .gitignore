@@ -1,2 +1,4 @@
 config/etalon/
 graphify-out/
+__pycache__/
+*.pyc

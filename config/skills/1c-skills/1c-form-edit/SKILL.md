@@ -99,8 +99,11 @@ powershell.exe -NoProfile -File 1c-form-edit/scripts/form-edit.ps1 -FormPath "<�
 | `pages` | Pages | ExtendedTooltip |
 | `page` | Page | ExtendedTooltip |
 | `button` | Button | ExtendedTooltip |
+| `searchString` / `viewStatus` / `searchControl` | SearchStringAddition / ViewStatusAddition / SearchControlAddition | ContextMenu, ExtendedTooltip |
 
 Группы и таблицы поддерживают `children`/`columns` для вложенных элементов.
+
+Дубль имени — отказ: если элемент с таким именем уже есть в форме, правка отклоняется до записи.
 
 ### Кнопки: command и stdCommand
 
@@ -108,13 +111,25 @@ powershell.exe -NoProfile -File 1c-form-edit/scripts/form-edit.ps1 -FormPath "<�
 - `"stdCommand": "Close"` → `Form.StandardCommand.Close`
 - `"stdCommand": "Товары.Add"` → `Form.Item.Товары.StandardCommand.Add` (стандартная команда элемента)
 
+### Дополнения командной панели
+
+Объявленные дополнения (`searchString`, `viewStatus`, `searchControl`) — отдельные элементы командной панели со своим именем:
+
+```json
+{ "elements": [
+  { "searchString": "ПоискСписка", "source": "Список", "width": 15 }
+] }
+```
+
+`source` обязателен: редактор дописывает элемент в готовую форму и родительскую таблицу по входу не знает. Остальные ключи: `title`, `visible`, `width`, `horizontalStretch`, `horizontalLocation` (`left` / `right` / `center`).
+
 ### Допустимые события (`on`)
 
 Компилятор предупреждает об ошибках в именах событий. Основные:
 
-- **input**: `OnChange`, `StartChoice`, `ChoiceProcessing`, `Clearing`, `AutoComplete`, `TextEditEnd`
+- **input**: `OnChange`, `StartChoice`, `ChoiceProcessing`, `Clearing`, `AutoComplete`, `TextEditEnd`, `Opening`
 - **check**: `OnChange`
-- **table**: `OnStartEdit`, `OnEditEnd`, `OnChange`, `Selection`, `BeforeAddRow`, `BeforeDeleteRow`, `OnActivateRow`
+- **table**: `OnStartEdit`, `OnEditEnd`, `OnChange`, `Selection`, `ValueChoice`, `BeforeAddRow`, `BeforeDeleteRow`, `AfterDeleteRow`, `BeforeRowChange`, `BeforeEditEnd`, `OnActivateRow`, `OnActivateCell`, `OnActivateField`, `Drag`, `DragStart`, `DragCheck`, `DragEnd`, `OnGetDataAtServer`, `BeforeLoadUserSettingsAtServer`, `OnUpdateUserSettingSetAtServer`
 - **label/picture**: `Click`, `URLProcessing`
 - **pages**: `OnCurrentPageChange`
 - **button**: `Click`

@@ -82,6 +82,14 @@ $encBom = New-Object System.Text.UTF8Encoding($true)
 
 # --- Detect format version ---
 
+# Версии формата сравниваются по составным частям, а не как десятичная дробь:
+# 2.9 старее, чем 2.21, хотя как число больше.
+function Get-FormatVersionRank {
+	param([string]$Version)
+	if ($Version -match '^(\d+)\.(\d+)$') { return [int]$Matches[1] * 100 + [int]$Matches[2] }
+	return 0
+}
+
 function Detect-FormatVersion([string]$dir) {
 	$d = $dir
 	while ($d) {
@@ -98,6 +106,8 @@ function Detect-FormatVersion([string]$dir) {
 }
 
 $formatVersion = Detect-FormatVersion (Resolve-Path $SrcDir).Path
+# Начиная с формата 2.21 (8.5) в шапке объявляется палитра - между lf и style.
+$palNs = if ((Get-FormatVersionRank $formatVersion) -ge 221) { ' xmlns:pal="http://v8.1c.ru/8.1/data/ui/colors/palette"' } else { '' }
 
 # --- 1. Метаданные макета (Templates/<TemplateName>.xml) ---
 
@@ -105,7 +115,7 @@ $templateUuid = [guid]::NewGuid().ToString()
 
 $templateMetaXml = @"
 <?xml version="1.0" encoding="UTF-8"?>
-<MetaDataObject xmlns="http://v8.1c.ru/8.3/MDClasses" xmlns:app="http://v8.1c.ru/8.2/managed-application/core" xmlns:cfg="http://v8.1c.ru/8.1/data/enterprise/current-config" xmlns:cmi="http://v8.1c.ru/8.2/managed-application/cmi" xmlns:ent="http://v8.1c.ru/8.1/data/enterprise" xmlns:lf="http://v8.1c.ru/8.2/managed-application/logform" xmlns:style="http://v8.1c.ru/8.1/data/ui/style" xmlns:sys="http://v8.1c.ru/8.1/data/ui/fonts/system" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:web="http://v8.1c.ru/8.1/data/ui/colors/web" xmlns:win="http://v8.1c.ru/8.1/data/ui/colors/windows" xmlns:xen="http://v8.1c.ru/8.3/xcf/enums" xmlns:xpr="http://v8.1c.ru/8.3/xcf/predef" xmlns:xr="http://v8.1c.ru/8.3/xcf/readable" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version=`"$formatVersion`">
+<MetaDataObject xmlns="http://v8.1c.ru/8.3/MDClasses" xmlns:app="http://v8.1c.ru/8.2/managed-application/core" xmlns:cfg="http://v8.1c.ru/8.1/data/enterprise/current-config" xmlns:cmi="http://v8.1c.ru/8.2/managed-application/cmi" xmlns:ent="http://v8.1c.ru/8.1/data/enterprise" xmlns:lf="http://v8.1c.ru/8.2/managed-application/logform"$palNs xmlns:style="http://v8.1c.ru/8.1/data/ui/style" xmlns:sys="http://v8.1c.ru/8.1/data/ui/fonts/system" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:web="http://v8.1c.ru/8.1/data/ui/colors/web" xmlns:win="http://v8.1c.ru/8.1/data/ui/colors/windows" xmlns:xen="http://v8.1c.ru/8.3/xcf/enums" xmlns:xpr="http://v8.1c.ru/8.3/xcf/predef" xmlns:xr="http://v8.1c.ru/8.3/xcf/readable" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version=`"$formatVersion`">
 	<Template uuid="$templateUuid">
 		<Properties>
 			<Name>$TemplateName</Name>
@@ -147,11 +157,8 @@ switch ($TemplateType) {
 		[System.IO.File]::WriteAllText($templateFilePath, "", $encBom)
 	}
 	"SpreadsheetDocument" {
-		$content = @"
-<?xml version="1.0" encoding="UTF-8"?>
-<SpreadsheetDocument xmlns="http://v8.1c.ru/spreadsheet/document" xmlns:ss="http://v8.1c.ru/spreadsheet/document" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:xs="http://www.w3.org/2001/XMLSchema">
-</SpreadsheetDocument>
-"@
+		# Пустой табличный документ платформа выгружает одним тегом и без хвостового перевода строки.
+		$content = '<?xml version="1.0" encoding="UTF-8"?>' + "`r`n" + '<SpreadsheetDocument xmlns="http://v8.1c.ru/spreadsheet/document" xmlns:ss="http://v8.1c.ru/spreadsheet/document" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:xs="http://www.w3.org/2001/XMLSchema"/>'
 		[System.IO.File]::WriteAllText($templateFilePath, $content, $encBom)
 	}
 	"BinaryData" {

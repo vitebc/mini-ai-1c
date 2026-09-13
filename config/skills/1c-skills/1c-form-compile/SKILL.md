@@ -95,11 +95,15 @@ powershell.exe -NoProfile -File 1c-form-compile/scripts/form-compile.ps1 -FromOb
 
 **Форма** (`events`): `OnCreateAtServer`, `OnOpen`, `BeforeClose`, `OnClose`, `NotificationProcessing`, `ChoiceProcessing`, `OnReadAtServer`, `BeforeWriteAtServer`, `OnWriteAtServer`, `AfterWriteAtServer`, `BeforeWrite`, `AfterWrite`, `FillCheckProcessingAtServer`, `BeforeLoadDataFromSettingsAtServer`, `OnLoadDataFromSettingsAtServer`, `ExternalEvent`, `Opening`
 
-**input / picField**: `OnChange`, `StartChoice`, `ChoiceProcessing`, `AutoComplete`, `TextEditEnd`, `Clearing`, `Creating`, `EditTextChange`
+**input**: `OnChange`, `StartChoice`, `ChoiceProcessing`, `AutoComplete`, `TextEditEnd`, `Clearing`, `Creating`, `EditTextChange`, `Opening`
+
+**picField**: `OnChange`, `StartChoice`, `ChoiceProcessing`, `Click`, `Clearing`
 
 **check**: `OnChange`
 
-**table**: `OnStartEdit`, `OnEditEnd`, `OnChange`, `Selection`, `ValueChoice`, `BeforeAddRow`, `BeforeDeleteRow`, `AfterDeleteRow`, `BeforeRowChange`, `BeforeEditEnd`, `OnActivateRow`, `OnActivateCell`, `Drag`, `DragStart`, `DragCheck`, `DragEnd`
+**table**: `OnStartEdit`, `OnEditEnd`, `OnChange`, `Selection`, `ValueChoice`, `BeforeAddRow`, `BeforeDeleteRow`, `AfterDeleteRow`, `BeforeRowChange`, `BeforeEditEnd`, `OnActivateRow`, `OnActivateCell`, `OnActivateField`, `Drag`, `DragStart`, `DragCheck`, `DragEnd`, `OnGetDataAtServer`, `BeforeLoadUserSettingsAtServer`, `OnUpdateUserSettingSetAtServer`
+
+**calendar**: `OnChange`, `OnActivate`
 
 **label / picture**: `Click`, `URLProcessing`
 
@@ -175,6 +179,26 @@ powershell.exe -NoProfile -File 1c-form-compile/scripts/form-compile.ps1 -FromOb
 | `enableStartDrag: true` | Разрешить начало перетаскивания |
 | `rowPictureDataPath` | Путь к картинке строки (напр. `"Список.DefaultPicture"`) |
 | `tableAutofill: false` | Управление Autofill внутреннего AutoCommandBar |
+| `additions` | Настройка штатных дополнений: `{"viewStatus": {"horizontalLocation": "left"}}` (без настройки пишется пустой тег — дополняет платформа) |
+| `commandBar: [...]` | Элементы командной панели таблицы, в т.ч. объявленные дополнения `searchString` / `viewStatus` / `searchControl` (источник по умолчанию — сама таблица) |
+
+### Дополнения командной панели (additions / commandBar)
+
+Штатные дополнения таблицы (строка поиска, состояние просмотра, управление поиском) без настройки выдаются пустым тегом — платформа дополняет их сама. Отличия от умолчания задаются ключом `additions`:
+
+```json
+{ "table": "Список", "path": "Список", "additions": { "viewStatus": { "horizontalLocation": "left" } } }
+```
+
+Объявленное дополнение — отдельный элемент со своим именем внутри `commandBar` таблицы. Оно НЕ заменяет штатное:
+
+```json
+{ "table": "Список", "path": "Список", "commandBar": [
+  { "searchString": "ПоискСписка", "width": 15, "horizontalStretch": true }
+] }
+```
+
+Ключи дополнения: `source` (умолчание — имя родительской таблицы), `title`, `visible`, `width`, `horizontalStretch`, `horizontalLocation` (`left` / `right` / `center` и русские синонимы; `auto` в XML не пишется). Тип источника задаётся видом дополнения: `SearchStringRepresentation`, `ViewStatusRepresentation`, `SearchControl`.
 
 ### Страницы (pages + page)
 

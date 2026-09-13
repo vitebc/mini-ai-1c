@@ -50,17 +50,26 @@ powershell.exe -NoProfile -File 1c-mxl-compile/scripts/mxl-compile.ps1 -JsonPath
 
 ```
 { columns, page, defaultWidth, columnWidths,
+  languages, currentLanguage, defaultLanguage, textLanguages,
+  columnSets: { name: { columns, columnWidths, id } },
   fonts: { name: { face, size, bold, italic, underline, strikeout } },
-  styles: { name: { font, align, valign, border, borderWidth, wrap, format } },
-  areas: [{ name, rows: [{ height, rowStyle, cells: [
+  styles: { name: { font, align, valign, border, borderWidth, wrap, format, textColor } },
+  rows: [...],
+  areas: [{ name, columnSet, rows: [{ height, hidden, style, rowStyle, columnSet, cells: [
     { col, span, rowspan, style, param, detail, text, template }
-  ]}]}]
+  ]}]}],
+  namedAreas: [{ name, rows, cols }]
 }
 ```
 
 Ключевые правила:
 - `page` — формат страницы (`"A4-landscape"`, `"A4-portrait"` или число). Автоматически вычисляет `defaultWidth` из суммы пропорций `"Nx"`
 - `col` — 1-based позиция колонки
-- `rowStyle` — автозаполнение пустот стилем (рамки по всей ширине)
+- `rowStyle` — автозаполнение пустот стилем (рамки по всей ширине); `style` строки — собственный стиль без автозаполнения; `hidden` — скрытая строка
 - Тип заполнения определяется автоматически: `param` → Parameter, `text` → Text, `template` → Template
 - `rowspan` — объединение строк вниз (rowStyle учитывает занятые ячейки)
+- Строка массивом: элемент на колонку (`"Текст"`, `"{Парам}"`, `"Текст [Парам]"`, `null` — пропуск, `">"` — span, `"|"` — rowspan, `{...}` — ячейка без `col`)
+- Область без `name` — строки попадают в документ без именованной области; строки вне областей — поле `rows` верхнего уровня
+- `namedAreas[]` — области по координатам: только `rows` → Rows, только `cols` → Columns, обе оси → Rectangle
+- `columnSets` — свои ширины для части строк (`columnSet` области/строки); `id` без задания выводится как UUIDv3 имени
+- `text`/`template` — строка или объект по языкам (`{ "ru": "...", "en": "..." }`); языки задают `languages`/`currentLanguage`/`defaultLanguage`

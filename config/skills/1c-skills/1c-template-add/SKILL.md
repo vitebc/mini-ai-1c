@@ -88,3 +88,7 @@ powershell.exe -NoProfile -File 1c-template-add/scripts/add-template.ps1 -Object
 
 - `<SrcDir>/<ObjectName>.xml` — добавляется `<Template>` в конец `ChildObjects`
 - Для ExternalReport/Report: может обновляться `MainDataCompositionSchema`
+
+## Версия формата
+
+Версия формата в шапке наследуется от базовой конфигурации: `Detect-FormatVersion` читает `version` из `Configuration.xml` вверх от `SrcDir` (дефолт `2.17`). С формата 2.21 в шапку добавляется `xmlns:pal` (между `lf` и `style`). Пустой табличный макет платформа выгружает одним тегом без хвостового перевода строки.

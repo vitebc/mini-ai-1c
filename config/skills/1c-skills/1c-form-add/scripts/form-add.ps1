@@ -52,6 +52,13 @@ if (-not (Test-Path $ObjectPath)) {
 	exit 1
 }
 
+# Идентификатор 1С: буквы, цифры, подчеркивание; первый символ не цифра.
+if ($FormName -notmatch '^[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*$') {
+	# Console.Error, not Write-Error: the latter is wrapped and prefixed by the host.
+	[Console]::Error.WriteLine("FormName '$FormName' не является идентификатором 1С: допустимы буквы, цифры и подчеркивание, первый символ не цифра")
+	exit 1
+}
+
 $objectXmlFull = Resolve-Path $ObjectPath
 $script:formatVersion = Detect-FormatVersion (Split-Path $objectXmlFull.Path -Parent)
 

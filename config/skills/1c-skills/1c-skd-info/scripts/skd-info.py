@@ -278,6 +278,8 @@ def main():
     parser.add_argument("-Limit", type=int, default=150)
     parser.add_argument("-Offset", type=int, default=0)
     parser.add_argument("-OutFile", default=None)
+    # Сырой вывод запроса: только текст, без заголовков и разбивки на пакеты.
+    parser.add_argument("-Raw", action="store_true")
     args = parser.parse_args()
 
     # --- Resolve path ---
@@ -643,7 +645,11 @@ def main():
 
         total_query_lines = len(raw_query.split("\n"))
 
-        if len(batches) <= 1:
+        if args.Raw:
+            # Сырой вывод: текст запроса как есть, без заголовков и разбивки на пакеты.
+            for ql in raw_query.strip().split("\n"):
+                lines.append(ql.rstrip())
+        elif len(batches) <= 1:
             # Single query
             lines.append(f"=== Query: {ds_name_str} ({total_query_lines} lines) ===")
             lines.append("")

@@ -1,7 +1,9 @@
 # skd-validate v1.1 — Validate 1C DCS structure (Python port)
 # Source: https://github.com/Desko77/claude-code-skills-1c
 import argparse
+import json
 import os
+import re
 import sys
 
 from lxml import etree
@@ -16,6 +18,7 @@ parser.add_argument("-TemplatePath", required=True)
 parser.add_argument("-Detailed", action="store_true")
 parser.add_argument("-MaxErrors", type=int, default=20)
 parser.add_argument("-OutFile", default="")
+parser.add_argument("-IndexPath", default="")
 args = parser.parse_args()
 
 template_path = args.TemplatePath
@@ -684,6 +687,195 @@ else:
 
     if v_ok:
         report_ok(f"{len(variant_nodes)} settingsVariant(s) found")
+
+# ── Data sets vs configuration ────────────────────────────────
+# Набор данных типа Query несет текст запроса, типа Object - имя объекта. И то и другое может
+# ссылаться на объект, которого в конфигурации уже нет. Разбирается только ДВУХЧАСТНОЕ имя
+# метаданных: третья часть в запросе бывает и табличной частью, и значением перечисления, и
+# отличить их без разбора структуры запроса нельзя.
+
+# Имя таблицы в запросе -> тип метаданных. Оба языка запроса.
+QUERY_TABLE_PREFIX_MAP = {
+    'Справочник': 'Catalog', 'Catalog': 'Catalog',
+    'Документ': 'Document', 'Document': 'Document',
+    'Перечисление': 'Enum', 'Enum': 'Enum',
+    'РегистрСведений': 'InformationRegister', 'InformationRegister': 'InformationRegister',
+    'РегистрНакопления': 'AccumulationRegister', 'AccumulationRegister': 'AccumulationRegister',
+    'РегистрБухгалтерии': 'AccountingRegister', 'AccountingRegister': 'AccountingRegister',
+    'РегистрРасчета': 'CalculationRegister', 'CalculationRegister': 'CalculationRegister',
+    'ПланСчетов': 'ChartOfAccounts', 'ChartOfAccounts': 'ChartOfAccounts',
+    'ПланВидовХарактеристик': 'ChartOfCharacteristicTypes',
+    'ChartOfCharacteristicTypes': 'ChartOfCharacteristicTypes',
+    'ПланВидовРасчета': 'ChartOfCalculationTypes', 'ChartOfCalculationTypes': 'ChartOfCalculationTypes',
+    'ПланОбмена': 'ExchangePlan', 'ExchangePlan': 'ExchangePlan',
+    'БизнесПроцесс': 'BusinessProcess', 'BusinessProcess': 'BusinessProcess',
+    'Задача': 'Task', 'Task': 'Task',
+    'Константа': 'Constant', 'Constant': 'Constant',
+    'ЖурналДокументов': 'DocumentJournal', 'DocumentJournal': 'DocumentJournal',
+    'Последовательность': 'Sequence', 'Sequence': 'Sequence',
+    'КритерийОтбора': 'FilterCriterion', 'FilterCriterion': 'FilterCriterion',
+}
+
+if not stopped and args.IndexPath:
+    skd_index_objects = None
+    skd_index_lenient = False
+    try:
+        with open(args.IndexPath, "r", encoding="utf-8") as fh:
+            skd_index = json.load(fh)
+        if skd_index.get("format") != 1:
+            report_warn("Index format %s is not supported, data set check skipped"
+                        % skd_index.get("format"))
+        else:
+            skd_index_objects = skd_index.get("objects") or {}
+            skd_index_lenient = skd_index.get("kind") == "extension"
+    except Exception as exc:
+        report_warn("Index could not be read (%s), data set check skipped" % exc)
+
+    if skd_index_objects is not None:
+        ident = r'[A-Za-z_\u0410-\u044F\u0401\u0451][A-Za-z0-9_\u0410-\u044F\u0401\u0451]*'
+        name_re = re.compile(r'\b(' + ident + r')\.(' + ident + r')')
+        skd_missing = 0
+        skd_checked = 0
+        skd_seen = set()
+
+        def check_skd_name(prefix, name, where):
+            global skd_missing, skd_checked
+            kind = QUERY_TABLE_PREFIX_MAP.get(prefix)
+            if kind is None:
+                return
+            key = kind + "." + name
+            if (key, where) in skd_seen:
+                return
+            skd_seen.add((key, where))
+            skd_checked += 1
+            if key in skd_index_objects:
+                return
+            skd_missing += 1
+            if skd_index_lenient:
+                report_warn("Набор данных '%s': объекта '%s.%s' нет в этой выгрузке - ожидается "
+                            "в основной конфигурации" % (where, prefix, name))
+            else:
+                report_warn("Набор данных '%s': объекта '%s.%s' нет в конфигурации"
+                            % (where, prefix, name))
+
+        for ds in data_set_nodes:
+            ds_name_node = find(ds, "s:name")
+            where = inner_text(ds_name_node) if ds_name_node is not None else "?"
+            query_node = find(ds, "s:query")
+            if query_node is not None and text_of(query_node):
+                # Литералы и комментарии выкидываются: внутри них имя таблицы - просто текст.
+                q = text_of(query_node)
+                q = re.sub(r'/\*.*?\*/', ' ', q, flags=re.S)
+                q = re.sub(r'//[^\n]*', ' ', q)
+                q = re.sub(r'"(?:[^"]|"")*"', ' ', q)
+                for m in name_re.finditer(q):
+                    check_skd_name(m.group(1), m.group(2), where)
+            obj_node = find(ds, "s:objectName")
+            if obj_node is not None and text_of(obj_node):
+                parts = text_of(obj_node).split(".")
+                if len(parts) >= 2:
+                    check_skd_name(parts[0], parts[1], where)
+
+        if skd_missing == 0 and skd_checked > 0:
+            report_ok("Data set objects: %d checked against index, all exist" % skd_checked)
+        elif skd_checked == 0:
+            report_ok("Data set objects: no metadata names to check")
+
+if stopped:
+    finalize()
+    sys.exit(1)
+
+# ── Типы и квалификаторы полей ──
+
+# Имя встроенного типа записывается с префиксом схемы XML: без него платформа считает тип
+# неизвестным и поле теряет тип. Числовой квалификатор рядом со строковым типом (и наоборот)
+# платформа отвергает: набор квалификаторов привязан к типу.
+XS_BUILTIN_TYPES = {"string", "decimal", "boolean", "dateTime", "date", "time",
+                    "base64Binary", "integer", "double"}
+
+
+def _local(el):
+    return el.tag.split("}")[-1]
+
+
+def _child(parent, name):
+    for el in parent:
+        if _local(el) == name:
+            return el
+    return None
+
+
+type_issues = 0
+parent_by_child = {child: parent for parent in root.iter() for child in parent}
+
+for type_node in root.iter():
+    if _local(type_node) != "Type":
+        continue
+    type_text = (type_node.text or "").strip()
+    if not type_text:
+        continue
+
+    if type_text in XS_BUILTIN_TYPES:
+        report_error(f"Тип '{type_text}' записан без префикса схемы XML, "
+                     f"ожидается 'xs:{type_text}'")
+        type_issues += 1
+        continue
+    if not type_text.startswith("xs:"):
+        continue
+
+    parent = parent_by_child.get(type_node)
+    if parent is None:
+        continue
+    number_q = _child(parent, "NumberQualifiers")
+    string_q = _child(parent, "StringQualifiers")
+    short_type = type_text[3:]
+
+    if short_type == "decimal":
+        if number_q is None:
+            report_error(f"Тип '{type_text}' без NumberQualifiers: платформа не знает "
+                         f"разрядность числа")
+            type_issues += 1
+        else:
+            for required in ("Digits", "FractionDigits"):
+                if _child(number_q, required) is None:
+                    report_error(f"NumberQualifiers у типа '{type_text}' без <{required}>")
+                    type_issues += 1
+        if string_q is not None:
+            report_error(f"Тип '{type_text}' несет StringQualifiers: квалификаторы не "
+                         f"соответствуют типу")
+            type_issues += 1
+    elif short_type == "string":
+        if number_q is not None:
+            report_error(f"Тип '{type_text}' несет NumberQualifiers: квалификаторы не "
+                         f"соответствуют типу")
+            type_issues += 1
+    elif number_q is not None or string_q is not None:
+        report_error(f"Тип '{type_text}' не принимает квалификаторы, а они заданы")
+        type_issues += 1
+
+    # Знак числа задается перечислением платформы: иное значение она не разбирает.
+    if number_q is not None:
+        sign_node = _child(number_q, "AllowedSign")
+        if sign_node is not None:
+            sign_value = (sign_node.text or "").strip()
+            if sign_value not in ("Any", "Nonnegative", "Negative"):
+                report_error(f"AllowedSign='{sign_value}' вне набора Any, Nonnegative, Negative")
+                type_issues += 1
+
+# Значение времени разработки для ссылочного типа - представление ссылки, а не подчеркивание.
+# Подчеркивание платформа читает как пустую ссылку и молча теряет заданное значение.
+XSI_TYPE_ATTR = "{http://www.w3.org/2001/XMLSchema-instance}type"
+for value_node in root.iter():
+    if _local(value_node) != "value":
+        continue
+    if not value_node.get(XSI_TYPE_ATTR, "").endswith("DesignTimeValue"):
+        continue
+    if (value_node.text or "").strip() == "_":
+        report_error("DesignTimeValue задан подчеркиванием: ссылочное значение так не записывается")
+        type_issues += 1
+
+if type_issues == 0:
+    report_ok("Типы и квалификаторы полей: замечаний нет")
 
 # ── Final output ──────────────────────────────────────────────
 
