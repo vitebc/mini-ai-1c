@@ -452,11 +452,18 @@ pub async fn fetch_models_from_api(
     // OpenAI/OpenRouter: { "data": [ { "id": "..." } ] }
     // Some proxies may include context_window or max_tokens.
     // LM Studio's /v1/models does NOT include context info — handled below via /api/v0/models.
+    // llama.cpp: data[].meta.n_ctx (рабочий контекст) и n_ctx_train.
+    #[derive(Deserialize)]
+    struct LlamaMeta {
+        n_ctx: Option<u32>,
+        n_ctx_train: Option<u32>,
+    }
     #[derive(Deserialize)]
     struct OpenAiModel {
         id: String,
         context_window: Option<u32>,
         max_tokens: Option<u32>,
+        meta: Option<LlamaMeta>,
     }
     #[derive(Deserialize)]
     struct OpenAiResponse {
@@ -472,7 +479,13 @@ pub async fn fetch_models_from_api(
         .data
         .into_iter()
         .map(|m| {
-            let cw = m.context_window.or(m.max_tokens).unwrap_or(4096);
+            let cw = m
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.n_ctx)
+                .or(m.context_window)
+                .or(m.max_tokens)
+                .unwrap_or(4096);
             Model {
                 id: m.id.clone(),
                 name: m.id.clone(),
