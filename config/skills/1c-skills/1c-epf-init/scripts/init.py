@@ -89,6 +89,10 @@ def main():
     name = args.Name
     synonym = args.Synonym if args.Synonym else name
     src_dir = args.SrcDir
+    # P1 sandbox: дефолт src (каталог скилла) → песочница
+    sandbox = os.environ.get("MINI_AI_1C_SANDBOX_PATH", "").strip()
+    if sandbox and src_dir == "src":
+        src_dir = sandbox
 
     uuid1 = new_uuid()
     uuid2 = new_uuid()

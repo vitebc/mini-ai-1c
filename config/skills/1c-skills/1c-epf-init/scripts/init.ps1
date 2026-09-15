@@ -16,6 +16,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# P1 sandbox: дефолтный SrcDir="src" (от каталога скилла) → песочница
+if ($env:MINI_AI_1C_SANDBOX_PATH -and $SrcDir -eq "src") {
+	$SrcDir = $env:MINI_AI_1C_SANDBOX_PATH
+}
+
 # --- Format version ---
 # Проверенный диапазон: 2.17 (8.3.24) … 2.21 (8.5). Полная лестница — docs/1c-configuration-spec.md,
 # «Лестница версий». Версии ниже 2.17 (платформы 8.3.23 и старше) реальны, поэтому запретом их не
