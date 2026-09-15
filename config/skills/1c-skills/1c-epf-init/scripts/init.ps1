@@ -20,6 +20,10 @@ $ErrorActionPreference = "Stop"
 if ($env:MINI_AI_1C_SANDBOX_PATH -and $SrcDir -eq "src") {
 	$SrcDir = $env:MINI_AI_1C_SANDBOX_PATH
 }
+if (-not $Name.Trim()) {
+	[Console]::Error.WriteLine("Parameter -Name is required and must be non-empty. Usage: /epf-init <Name> [Synonym] [SrcDir] [FormatVersion]")
+	exit 2
+}
 
 # --- Format version ---
 # Проверенный диапазон: 2.17 (8.3.24) … 2.21 (8.5). Полная лестница — docs/1c-configuration-spec.md,

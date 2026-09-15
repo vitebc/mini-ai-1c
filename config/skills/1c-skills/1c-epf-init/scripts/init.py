@@ -93,6 +93,9 @@ def main():
     sandbox = os.environ.get("MINI_AI_1C_SANDBOX_PATH", "").strip()
     if sandbox and src_dir == "src":
         src_dir = sandbox
+    if not name.strip():
+        print("error: -Name is required and must be non-empty. Usage: /epf-init <Name> [Synonym] [SrcDir] [FormatVersion]", file=sys.stderr)
+        sys.exit(2)
 
     uuid1 = new_uuid()
     uuid2 = new_uuid()
