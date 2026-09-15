@@ -1005,12 +1005,39 @@ pub async fn stream_chat(
                     });
                     continue;
                 } else {
-                    // Model returned empty response twice — stop the loop and inform the user.
-                    crate::app_log!("[AI] Model returned empty response twice (context ~{}t). Emitting fallback.",
-                        api_messages.iter().map(|m| m.content.as_deref().unwrap_or("").len() / 4).sum::<usize>());
-                    let _ = task_app_handle.emit("chat-chunk",
-                        "\n\n> **[Система]** Модель не смогла сформировать ответ, раз за разом возвращая пустой результат. Это обычно происходит при сбое стрима, исчерпании лимита рассуждений или перегрузке провайдера — контекст диалога тут не при чём. Попробуйте отправить короткое сообщение на русском («продолжи») или начните новый чат.");
-                    break;
+                    // Второй пустой подряд — пробуем ужатый промпт (без каталога тулов) один раз, затем честный fallback
+                    if api_messages.iter().any(|m| m.content.as_deref().unwrap_or("").contains("ПРЕДЫДУЩИЙ ОТВЕТ ПУСТОЙ — ПОВТОРИ С УЖАТЫМ ПРОМПТОМ")) {
+                        crate::app_log!("[AI] Model returned empty response twice even after compressed retry (context ~{}t). Emitting fallback.",
+                            api_messages.iter().map(|m| m.content.as_deref().unwrap_or("").len() / 4).sum::<usize>());
+                        let rep_pen = crate::llm_profiles::get_active_profile()
+                            .and_then(|p| p.repetition_penalty)
+                            .unwrap_or(1.0);
+                        let fallback = if rep_pen >= 1.2 {
+                            "\n\n> **[Система]** Модель дважды вернула пустой ответ. Возможные причины: переполнение контекста сервера, высокий `repetition_penalty` (>=1.2 — известна дегенерация Qwen), сбой стрима. Проверьте `n_ctx` сервера (`/props`), снизьте `repetition_penalty` до 1.05-1.1, или отправьте «продолжи» / начните новый чат."
+                        } else {
+                            "\n\n> **[Система]** Модель дважды вернула пустой ответ. Проверьте `n_ctx` сервера (llama.cpp `GET /props` → `n_ctx`), лимит рассуждений, перегрузку провайдера или переполнение контекста. Попробуйте «продолжи» или новый чат."
+                        };
+                        let _ = task_app_handle.emit("chat-chunk", fallback);
+                        break;
+                    }
+                    crate::app_log!("[AI] Model empty twice — retrying once with compressed prompt");
+                    let _ = task_app_handle.emit("chat-status", "Пустой ответ — пробую ужатый промпт...");
+                    api_messages.push(ApiMessage {
+                        role: "user".to_string(),
+                        reasoning_content: None,
+                        content: Some("ПРЕДЫДУЩИЙ ОТВЕТ ПУСТОЙ — ПОВТОРИ С УЖАТЫМ ПРОМПТОМ: вызови инструмент или дай текст, без повтора пустого.".to_string()),
+                        tool_calls: None,
+                        tool_call_id: None,
+                        name: None,
+                    });
+                    // Ужимаем историю: оставляем последние 8 сообщений + system
+                    if api_messages.len() > 10 {
+                        let keep = api_messages.split_off(api_messages.len() - 8);
+                        let system = api_messages.remove(0);
+                        api_messages = vec![system];
+                        api_messages.extend(keep);
+                    }
+                    continue;
                 }
             }
             // Check for BSL blocks
@@ -1491,6 +1518,7 @@ mod tests {
             enable_thinking: None,
             disable_streaming: None,
             stream_timeout_secs: None,
+            repetition_penalty: None,
             extra_headers: None,
             lightweight_prompt: None,
             context_compress_strategy: String::new(),

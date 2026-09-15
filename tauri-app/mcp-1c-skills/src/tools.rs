@@ -439,7 +439,32 @@ pub fn call_tool(
             }
             let (script, runtime) = resolve_skill_script(skills_dir, id)
                 .ok_or_else(|| format!("Skill \"{}\" не имеет исполняемого скрипта (scripts/*.ps1 или *.py)", id))?;
-            let flat = args_to_flat_list(args.get("args").unwrap_or(&json!({})));
+            let mut flat = args_to_flat_list(args.get("args").unwrap_or(&json!({})));
+            // P1: если песочница задана и скрипт вызван с дефолтным SrcDir="src" (или без него) — перенаправить в песочницу
+            if let Some(sandbox) = sandbox_env_value() {
+                let sandbox = sandbox.trim_end_matches(['/', '\\']).to_string();
+                let name_val = flat
+                    .windows(2)
+                    .find(|w| w[0].eq_ignore_ascii_case("-Name"))
+                    .map(|w| w[1].clone())
+                    .unwrap_or_default();
+                if !name_val.is_empty() {
+                    let mut has_src = false;
+                    for i in 0..flat.len() {
+                        if flat[i].eq_ignore_ascii_case("-SrcDir") && i + 1 < flat.len() {
+                            has_src = true;
+                            if flat[i + 1] == "src" {
+                                flat[i + 1] = sandbox.clone();
+                            }
+                            break;
+                        }
+                    }
+                    if !has_src {
+                        flat.push("-SrcDir".to_string());
+                        flat.push(sandbox.clone());
+                    }
+                }
+            }
             let timeout_ms = args
                 .get("timeout_ms")
                 .and_then(|v| v.as_u64())
@@ -520,7 +545,7 @@ fn execute_command(
             Err(e) => {
                 return CommandOutput {
                     stdout: String::new(),
-                    stderr: format!("Failed to spawn: {}", e),
+                    stderr: format!("Failed to spawn '{}': {}. Hint: check that `command` is executable and arguments are passed separately in `args`.", command, e),
                     exit_code: 1,
                     duration_ms: started.elapsed().as_millis() as u64,
                 }

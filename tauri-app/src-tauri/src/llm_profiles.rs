@@ -98,6 +98,8 @@ pub struct LLMProfile {
     pub disable_streaming: Option<bool>,
     #[serde(default)]
     pub stream_timeout_secs: Option<u32>,
+    #[serde(default)]
+    pub repetition_penalty: Option<f32>,
     /// Пользовательские HTTP-заголовки для OpenAI-совместимых Custom-профилей.
     /// Например, `x-opencode-session` для прокси opencode Zen.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -130,6 +132,7 @@ impl LLMProfile {
             enable_thinking: None,
             disable_streaming: None,
             stream_timeout_secs: None,
+            repetition_penalty: None,
             extra_headers: None,
             lightweight_prompt: None,
             context_compress_strategy: String::new(),

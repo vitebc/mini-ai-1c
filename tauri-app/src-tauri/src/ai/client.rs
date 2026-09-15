@@ -18,6 +18,59 @@ use super::tools::*;
 use crate::llm_profiles::{get_active_profile, LLMProvider};
 
 const QWEN_MIN_REQUEST_GAP_MS: u64 = 1_100;
+
+/// Проверка эффективного n_ctx сервера llama.cpp (GET /props) vs профиля — варнинг при расхождении >20%.
+async fn warn_if_llama_server_ctx_mismatch(profile: &crate::llm_profiles::LLMProfile) {
+    if !matches!(profile.provider, crate::llm_profiles::LLMProvider::Custom) {
+        return;
+    }
+    let base = profile.get_base_url();
+    let lower = base.to_ascii_lowercase();
+    if !(lower.contains("8080") || lower.contains("12600") || lower.contains("192.168.60.105")) {
+        return;
+    }
+    let root = base
+        .trim()
+        .trim_end_matches('/')
+        .trim_end_matches("/v1")
+        .trim_end_matches('/')
+        .to_string();
+    let url = format!("{root}/props");
+    let client = match crate::http_client::build_http_client() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let resp = match tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        client.get(&url).send(),
+    )
+    .await
+    {
+        Ok(Ok(r)) if r.status().is_success() => r,
+        _ => return,
+    };
+    let body: serde_json::Value = match resp.json().await {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let server_n_ctx = body
+        .get("default_generation_settings")
+        .and_then(|v| v.get("n_ctx"))
+        .and_then(|v| v.as_u64())
+        .or_else(|| body.get("n_ctx").and_then(|v| v.as_u64()))
+        .map(|v| v as u32);
+    let Some(server_n_ctx) = server_n_ctx else { return; };
+    let profile_ctx = profile.context_window_override.unwrap_or(profile.max_tokens);
+    if profile_ctx > 0 && server_n_ctx > 0 {
+        let diff = (server_n_ctx as i32 - profile_ctx as i32).abs() as f32 / server_n_ctx as f32;
+        if diff > 0.2 {
+            crate::app_log!(
+                "[CTX][WARN] n_ctx сервера {} != профиля {} (diff {:.0}%), проверьте -c/--ctx-size сервера",
+                server_n_ctx, profile_ctx, diff * 100.0
+            );
+        }
+    }
+}
 const QWEN_MAX_RETRY_DELAY_SECS: u64 = 10;
 const QWEN_MAX_429_ATTEMPTS: u32 = 3;
 
@@ -317,6 +370,11 @@ pub async fn stream_chat_completion(
     }
 
     let profile = get_active_profile().ok_or("No active LLM profile")?;
+    // Сверка n_ctx сервера (не блокирует чат, 3с таймаут)
+    {
+        let p = profile.clone();
+        tokio::spawn(async move { warn_if_llama_server_ctx_mismatch(&p).await });
+    }
     let has_tool_heavy_context = qwen_has_tool_heavy_context(&messages);
     // Build system prompt: use lightweight variant for local providers (Ollama/LMStudio)
     // to avoid smaller models rephrasing instead of responding.
@@ -488,6 +546,7 @@ pub async fn stream_chat_completion(
         },
         thinking_budget_tokens: dynamic_thinking_budget,
         reasoning_effort: profile.reasoning_effort.clone(),
+        repetition_penalty: profile.repetition_penalty,
     };
 
     let mut headers = HeaderMap::new();
@@ -1820,6 +1879,7 @@ mod tests {
             enable_thinking: Some(true),
             thinking_budget_tokens: Some(24_000),
             reasoning_effort: None,
+            repetition_penalty: None,
         };
 
         let changed = reduce_qwen_request_pressure(&mut request, true, true);

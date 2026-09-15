@@ -1196,6 +1196,32 @@ export function LLMSettings({ profiles, onUpdate }: LLMSettingsProps) {
                                 </div>
                             )}
 
+                            {/* Repetition penalty — все провайдеры, варнинг при >=1.2 */}
+                            <div className="flex items-center justify-between pt-3 px-1">
+                                <div>
+                                    <span className="text-xs text-zinc-400 font-medium">Repetition penalty</span>
+                                    <p className="text-[10px] text-zinc-600 mt-0.5">
+                                        Штраф повторов. &gt;=1.2 вызывает пустые выдачи Qwen. Рекомендуется 1.05-1.1 для локальных
+                                    </p>
+                                    {(editForm.repetition_penalty ?? 1.0) >= 1.2 && (
+                                        <p className="text-[10px] text-amber-400 mt-1 font-medium">⚠️ Высокий — риск дегенерации/пустых ответов</p>
+                                    )}
+                                </div>
+                                <input
+                                    type="number"
+                                    min={0.8}
+                                    max={2.0}
+                                    step={0.05}
+                                    placeholder="1.0"
+                                    value={editForm.repetition_penalty ?? ''}
+                                    onChange={e => {
+                                        const v = parseFloat(e.target.value);
+                                        setEditForm({ ...editForm, repetition_penalty: isNaN(v) ? undefined : v });
+                                    }}
+                                    className="w-20 bg-[var(--input-bg)] border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 text-right focus:outline-none focus:border-zinc-500"
+                                />
+                            </div>
+
                             {/* Thinking mode toggle — Qwen CLI only */}
                             {editForm.provider === 'QwenCli' && (
                                 <div className="flex items-center justify-between pt-3 px-1">

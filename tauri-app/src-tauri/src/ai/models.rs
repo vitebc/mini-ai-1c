@@ -78,6 +78,8 @@ pub struct ChatRequest {
     /// Token budget for thinking step (1024–38912, default 8192)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking_budget_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repetition_penalty: Option<f32>,
 }
 
 /// Streaming chunk from OpenAI API

@@ -127,13 +127,13 @@ pub fn list_tools() -> Vec<Value> {
         }),
         json!({
             "name": "run_command",
-            "description": "Execute a shell command (PowerShell/bash). Working directory is inside sandbox (or absolute path). Returns stdout, stderr, exit_code. On Windows PowerShell output is forced to UTF-8.",
+            "description": "Execute a shell command. `command` = executable file (argv[0]), `args` = array of separate arguments — never combine into one shell string. `cwd` is relative to sandbox root. For skill scripts use run_skill, not run_command. Returns stdout/stderr/exit_code. Examples: {\"command\":\"powershell\",\"args\":[\"-NoProfile\",\"-Command\",\"Get-ChildItem\"]} | {\"command\":\"cargo\",\"args\":[\"build\",\"--release\"]}",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "command": { "type": "string", "description": "Command to execute (e.g. \"node\", \"powershell\", \"cargo build\")" },
-                    "args": { "type": "array", "items": { "type": "string" }, "description": "Arguments (optional)" },
-                    "cwd": { "type": "string", "description": "Working directory relative to sandbox root (default: sandbox root)" },
+                    "command": { "type": "string", "description": "Executable file (argv[0]), e.g. \"powershell\", \"cmd\", \"cargo\", \"node\". Never pass a full shell string with spaces here — put arguments into `args` separately." },
+                    "args": { "type": "array", "items": { "type": "string" }, "description": "Arguments as array, one element per token (e.g. [\"-NoProfile\",\"-Command\",\"Get-ChildItem\"])" },
+                    "cwd": { "type": "string", "description": "Working directory relative to sandbox root (default: sandbox root). Absolute paths outside sandbox are rejected." },
                     "timeout_ms": { "type": "number", "description": "Timeout in milliseconds (default: 30000, max: 300000)" }
                 },
                 "required": ["command"]
@@ -463,7 +463,7 @@ pub fn execute_command(
             Err(e) => {
                 return CommandOutput {
                     stdout: String::new(),
-                    stderr: format!("Failed to spawn: {}", e),
+                    stderr: format!("Failed to spawn '{}': {}. Hint: `command` must be executable alone (e.g. \"powershell\"), put arguments into `args` array separately, not inside `command`.", command, e),
                     exit_code: 1,
                     duration_ms: started.elapsed().as_millis() as u64,
                 }
